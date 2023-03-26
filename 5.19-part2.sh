@@ -31,6 +31,8 @@ sed -i 's/luci-theme-bootstrap/luci-theme-argonne/g' ./feeds/luci/collections/lu
 #name
 sed -i "s/hostname='OpenWrt'/hostname='OpenWrt-eay'/g" ./package/base-files/files/bin/config_generate
 sed -i "s/local rv = {/	local weekTab = { ["0"] = '星期天',["1"] = '星期一',["2"] = '星期二',["3"] = '星期三',["4"] = '星期四',["5"] = '星期五',["6"] = '星期六'}
-local rv = {/g" ./package/lean/autocore/files/x86/index
-sed -i "s/os.date()/os.date("%Y-%m-%d %H:%M:%S ", os.time()).. weekTab[tostring(os.date("%w", os.time()))]/g" ./package/lean/autocore/files/x86/index
+local rv = {/g" ./package/lean/autocore/files/x86/index.html
+sed -i "s/os.date()/os.date("%Y-%m-%d %H:%M:%S ", os.time()).. weekTab[tostring(os.date("%w", os.time()))]/g" ./package/lean/autocore/files/x86/index.html
  
+
+ package\lean\autocore\files\x86
