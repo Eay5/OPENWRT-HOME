@@ -39,6 +39,6 @@ sed -i "s/local rv = {//	local weekTab = {
 			["5"] = '星期五',
 			["6"] = '星期六',
 		}
-        local rv = {//g" ./package/lean/autocore/files/x86/bin/index.htm
-sed -i "s/os.date()/os.date("%Y-%m-%d %H:%M:%S ", os.time()).. weekTab[tostring(os.date("%w", os.time()))]/g" ./package/lean/autocore/files/x86/bin/index.htm
+        local rv = {//g" ./package/lean/autocore/files/x86/bin/index
+sed -i "s/os.date()/os.date("%Y-%m-%d %H:%M:%S ", os.time()).. weekTab[tostring(os.date("%w", os.time()))]/g" ./package/lean/autocore/files/x86/bin/index
  
