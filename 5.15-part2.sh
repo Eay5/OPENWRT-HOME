@@ -30,4 +30,6 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' ./package/lean/default-settings
 sed -i 's/luci-theme-bootstrap/luci-theme-argonne/g' ./feeds/luci/collections/luci/Makefile
 #name
 sed -i "s/hostname='OpenWrt'/hostname='OpenWrt-eay'/g" ./package/base-files/files/bin/config_generate
+#time
+sed -i "s/UTC='OpenWrt'/hostname='CST'/g" ./package/base-files/files/bin/config_generate
  
