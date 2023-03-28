@@ -2,9 +2,9 @@
 ###
  # @Author: eay
  # @Date: 2022-01-13 17:09:14
- # @LastEditors: eay
+ # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2022-03-05 10:03:42
+ # @LastEditTime: 2023-03-19 18:34:44
  # @Description: 
 ### 
 #
@@ -23,9 +23,10 @@
 
 # Add a feed source
 sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
-sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
+sed -i '$a src-git passwall https://github.com/xiaorouji/openwrt-passwall.git' feeds.conf.default
+# sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 #ddns-go
-#git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
+git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
 #smartdns
 #git clone https://github.com/pymumu/smartdns.git package/smartdns
 #git clone https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
