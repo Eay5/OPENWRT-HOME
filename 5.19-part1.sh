@@ -4,7 +4,7 @@
  # @Date: 2022-01-13 17:09:14
  # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2023-03-29 14:17:14
+ # @LastEditTime: 2023-04-22 21:03:53
  # @Description: 
 ### 
 #
@@ -24,6 +24,7 @@
 # Add a feed source
 sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
 sed -i '$a src-git passwall https://github.com/xiaorouji/openwrt-passwall.git' feeds.conf.default
+sed -i '$a src-git darkmatter git://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
 # sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 #ddns-go
 git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
