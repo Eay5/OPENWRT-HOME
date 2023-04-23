@@ -4,7 +4,7 @@
  # @Date: 2022-01-13 14:44:27
  # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2022-07-13 06:23:42
+ # @LastEditTime: 2023-04-23 23:47:15
  # @Description: 
 ### 
 #
@@ -27,7 +27,8 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' ./package/lean/default-settings
 #4.an-theme
 #取消bootstrap为默认主题：
 #sed -i 's/luci-theme-bootstrap/luci-theme-argon-jerrykuku/g' ./feeds/luci/collections/luci/Makefile
-sed -i 's/luci-theme-bootstrap/luci-theme-darkmatter/g' ./feeds/luci/collections/luci/Makefile
+#sed -i 's/luci-theme-bootstrap/luci-theme-darkmatter/g' ./feeds/luci/collections/luci/Makefile
+sed -i 's/luci-theme-bootstrap/luci-theme-argonne/g' ./feeds/luci/collections/luci/Makefile
 #name
 sed -i "s/hostname='OpenWrt'/hostname='OpenWrt-eay'/g" ./package/base-files/files/bin/config_generate
  
