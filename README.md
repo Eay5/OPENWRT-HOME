@@ -17,7 +17,7 @@ lean固件源码地址：[https://github.com/coolsnowwolf/lede](https://github.c
 project-openwrt固件源码地址：[https://github.com/project-openwrt/openwrt](https://github.com/project-openwrt/openwrt)
 
 ## 插件来源：
-kenzok8插件合集 ：[https://github.com/xiaorouji/openwrt-passwall-package](https://github.com/xiaorouji/openwrt-passwall-package)
+kenzok8插件合集 ：[https://github.com/kenzok8/small-package](https://github.com/kenzok8/small-package)
 
 xiaorouji插件 ：[https://github.com/xiaorouji/openwrt-passwall.git](https://github.com/xiaorouji/openwrt-passwall.git)
 
