@@ -4,7 +4,7 @@
  # @Date: 2022-01-13 17:09:14
  # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2023-05-06 12:01:19
+ # @LastEditTime: 2023-03-29 14:17:14
  # @Description: 
 ### 
 #
@@ -28,7 +28,7 @@ sed -i '$a  src-git small8 https://github.com/kenzok8/small-package' feeds.conf.
 sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 
 #sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
-
+git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argonnew
 
 #ddns-go
 git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
