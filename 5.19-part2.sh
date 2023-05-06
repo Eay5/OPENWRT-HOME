@@ -2,9 +2,9 @@
 ###
  # @Author: eay
  # @Date: 2022-01-13 14:41:53
- # @LastEditors: error: error: git config user.name & please set dead value or install git && error: git config user.email & please set dead value or install git & please set dead value or install git
+ # @LastEditors: eay
  # @Autor: Seven
- # @LastEditTime: 2023-05-06 07:18:30
+ # @LastEditTime: 2022-03-01 17:30:44
  # @Description: 
 ### 
 #
@@ -28,8 +28,7 @@ sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.4/g' ./target/linux/x86/Makefi
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' ./package/lean/default-settings/files/zzz-default-settings
 #4.an-theme
 #取消bootstrap为默认主题：
-#sed -i 's/luci-theme-bootstrap/luci-theme-argon-jerrykuku/g' ./feeds/luci/collections/luci/Makefile
+sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' ./feeds/luci/collections/luci/Makefile
 #sed -i 's/luci-theme-bootstrap/luci-theme-darkmatter/g' ./feeds/luci/collections/luci/Makefile
-# sed -i 's/luci-theme-bootstrap/luci-app-argon/g' ./feeds/luci/collections/luci/Makefile
 #name
 sed -i "s/hostname='OpenWrt'/hostname='OpenWrt-eay'/g" ./package/base-files/files/bin/config_generate
