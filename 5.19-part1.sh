@@ -2,9 +2,9 @@
 ###
  # @Author: eay
  # @Date: 2022-01-13 17:09:14
- # @LastEditors: eay 1015714710@QQ.COM
+ # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2023-05-06 00:47:54
+ # @LastEditTime: 2023-05-06 12:01:19
  # @Description: 
 ### 
 #
@@ -24,7 +24,7 @@
 # Add a feed source
 # sed -i '$a src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
 # sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
-sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+sed -i '$a  src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
 sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 
 #sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
