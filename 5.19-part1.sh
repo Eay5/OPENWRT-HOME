@@ -3,10 +3,10 @@
 
 # Add a feed source
 # sed -i '$a src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
-# sed -i '$a src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
+sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 sed -i '$a  src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git' feeds.conf.default
 # sed -i '$a src-git liuran001_packages https://github.com/liuran001/openwrt-packages' feeds.conf.default
-sed -i '$a src-git passwall https://github.com/xiaorouji/openwrt-passwall.git' feeds.conf.default
+# sed -i '$a src-git passwall https://github.com/xiaorouji/openwrt-passwall.git' feeds.conf.default
 
 #sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
 git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argonnew
