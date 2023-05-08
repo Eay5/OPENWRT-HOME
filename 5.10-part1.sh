@@ -10,7 +10,7 @@ sed -i '$a src-git smallpasswall https://github.com/kenzok8/small' feeds.conf.de
 # sed -i '$a src-git passwall https://github.com/xiaorouji/openwrt-passwall.git' feeds.conf.default
 
 sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
-git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argonenew
+git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argone
 #ddns-go
 git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
 #smartdns
