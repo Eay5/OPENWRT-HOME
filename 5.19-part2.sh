@@ -4,7 +4,7 @@
  # @Date: 2022-01-13 14:41:53
  # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2023-05-07 23:59:52
+ # @LastEditTime: 2023-05-08 23:33:03
  # @Description: 
 ### 
 #
@@ -28,6 +28,6 @@ sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.4/g' ./target/linux/x86/Makefi
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' ./package/lean/default-settings/files/zzz-default-settings
 #4.an-theme
 #取消bootstrap为默认主题：
-sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' ./feeds/luci/collections/luci/Makefile
+sed -i 's/luci-theme-bootstrap/luci-theme-argonenew/g' ./feeds/luci/collections/luci/Makefile
 #name
 sed -i "s/hostname='OpenWrt'/hostname='OpenWrt-eay'/g" ./package/base-files/files/bin/config_generate
