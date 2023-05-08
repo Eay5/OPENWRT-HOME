@@ -4,7 +4,7 @@
  # @Date: 2022-01-13 14:41:53
  # @LastEditors: eay 1015714710@qq.com
  # @Autor: Seven
- # @LastEditTime: 2023-05-08 23:33:03
+ # @LastEditTime: 2023-05-08 23:47:37
  # @Description: 
 ### 
 #
@@ -23,7 +23,7 @@
 #ip
 sed -i 's/192.168.1.1/10.10.10.133/g' ./package/base-files/files/bin/config_generate
 # 编译5.10
-sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.4/g' ./target/linux/x86/Makefile
+sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=6.1/g' ./target/linux/x86/Makefile
 #2. Clear the login password
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' ./package/lean/default-settings/files/zzz-default-settings
 #4.an-theme
