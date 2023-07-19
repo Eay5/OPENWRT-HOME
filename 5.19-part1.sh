@@ -6,8 +6,7 @@
 # sed -i '$a src-git smallpasswall https://github.com/kenzok8/small' feeds.conf.default
 # #stable
 # sed -i '$a src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git' feeds.conf.default
-sed -i '$a src-git passwall https://github.com/xiaorouji/openwrt-passwall.git' feeds.conf.default
-sed -i '$a src-git NueXini_Packages https://github.com/NueXini/NueXini_Packages.git' feeds.conf.default
+sed -i '1i src-git ysx88 https://github.com/ysx88/openwrt-packages' feeds.conf.default
 # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git luci-theme-argon
 # # sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
 # # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argonenew
