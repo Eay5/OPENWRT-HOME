@@ -24,8 +24,8 @@ on:
     types: [started]
 
 env:
-  # REPO_URL: https://github.com/coolsnowwolf/lede
-  REPO_URL: https://github.com/Eay5/lede-new.git
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  # REPO_URL: https://github.com/Eay5/lede-new.git
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 5.10.config
@@ -40,7 +40,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: 检查项目分支
