@@ -30,4 +30,4 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' ./package/lean/default-settings
 #取消bootstrap为默认主题：
 sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' ./feeds/luci/collections/luci/Makefile
 #name
-sed -i "s/hostname='OpenWrt'/hostname='SINOITC'/g" ./package/base-files/files/bin/config_generate
+sed -i "s/hostname='OpenWrt'/hostname='EAY'/g" ./package/base-files/files/bin/config_generate
