@@ -2,10 +2,8 @@
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
 #new
-#sed -i '$a  src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
-# sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
-sed -i '$a src-git smpackage https://github.com/kenzok8/small-package' feeds.conf.default
-rm -rf feeds/smpackage/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd-alt,miniupnpd-iptables,wireless-regdb}
+sed -i '$a  src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
+sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
 # sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git luci-theme-argon
 # # sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
