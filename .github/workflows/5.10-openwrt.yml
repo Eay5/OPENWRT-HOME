@@ -93,9 +93,6 @@ jobs:
 
       - name: 读取插件
         run: cd openwrt && ./scripts/feeds install -a
-        
-      - name: 清理旧文件
-        run: make dirclean
 
       - name: 更改设置
         run: |
