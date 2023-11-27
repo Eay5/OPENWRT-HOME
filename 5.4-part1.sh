@@ -2,17 +2,18 @@
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
 #new
-sed -i '$a  src-git small8 https://github.com/kenzok8/small-package' feeds.conf.default
 sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
+# sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 # sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
 # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git luci-theme-argon
 # # sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
 # # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argonenew
 # #ddns-go
 
-pushd feeds/packages/lang
-rm -rf golang && svn co https://github.com/openwrt/packages/branches/openwrt-23.05/lang/golang
-popd
+# pushd feeds/packages/lang
+# rm -rf golang && svn co https://github.com/openwrt/packages/branches/openwrt-23.05/lang/golang
+# popd
 # git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
  
 # #smartdns
