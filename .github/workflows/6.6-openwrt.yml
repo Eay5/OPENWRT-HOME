@@ -108,6 +108,11 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
+      - name: 获取内核版本号
+        run: |
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.6' openwrt/include/kernel-6.6 | cut -d' ' -f3)
+          echo "KERNEL_VERSION_6_6=${KERNEL_VERSION}" >> $GITHUB_ENV
+
       - name: 开始编译固件
         id: compile
         run: |
@@ -179,7 +184,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
-          name: ${{ env.FILE_TIME }} 「 openwrt6.6-X86-64 」
+          name: OpenWrt 6.6${{ env.KERNEL_VERSION_6_6 }}-X86-64_${{ env.FILE_DATE }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*

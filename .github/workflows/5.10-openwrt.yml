@@ -118,6 +118,11 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
+      - name: 获取内核版本号
+        run: |
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.10' openwrt/include/kernel-5.10 | cut -d' ' -f3)
+          echo "KERNEL_VERSION_5_10=${KERNEL_VERSION}" >> $GITHUB_ENV
+
       - name: 开始编译固件
         id: compile
         run: |
@@ -189,7 +194,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: ${{ env.FILE_TIME }} 「 openwrt5.10-X86-64 」
+          name: OpenWrt 5.10${{ env.KERNEL_VERSION_5_10 }}-X86-64_${{ env.FILE_DATE }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
