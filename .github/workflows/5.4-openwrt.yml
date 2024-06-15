@@ -71,13 +71,7 @@ jobs:
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-          
-      - name: 下载并执行add_turboacc.sh
-        working-directory: ${{ github.workspace }}/openwrt
-        run: |
-            curl -sSL https://raw.githubusercontent.com/chenmozhijin/turboacc/luci/add_turboacc.sh -o add_turboacc.sh
-            bash add_turboacc.sh
-  
+
       - name: 加载自定义设置
         run: |
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
