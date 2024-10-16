@@ -10,13 +10,12 @@ rm -rf feeds/packages/net/{alist,adguardhome,xray*,v2ray*,v2ray*,sing*,smartdns}
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
 ./scripts/feeds install -a 
-curl -sSL https://raw.githubusercontent.com/chenmozhijin/turboacc/luci/add_turboacc.sh -o add_turboacc.sh && bash add_turboacc.sh
 # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git luci-theme-argon
 # # sed -i '$a src-git darkmatter https://github.com/apollo-ng/luci-theme-darkmatter.git' feeds.conf.default
 # # git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argonenew
 # #ddns-go
 # pushd feeds/packages/lang
-# git clone https://github.com/sirpdboy/luci-app-ddns-go.git package/ddns-go
+git clone https://github.com/chenmozhijin/turboacc.git feeds/luci/applications/luci-app-turboacc
 # #smartdns
 # #git clone https://github.com/pymumu/smartdns.git package/smartdns
 # #git clone https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
