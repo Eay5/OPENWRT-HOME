@@ -19,7 +19,7 @@
 #
 #主题
 #ip
-# sed -i 's/192.168.1.1/10.10.10.133/g' openwrt/package/base-files/files/bin/config_generate
+sed -i 's/192.168.1.1/192.168.0.133/g' openwrt/package/base-files/files/bin/config_generate
 
 # 编译5.10
 sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.4/g' ./target/linux/x86/Makefile

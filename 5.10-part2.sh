@@ -18,7 +18,7 @@
 # Description: OpenWrt DIY script part 2 (After Update feeds)
  
 #ip
-# sed -i 's/192.168.1.1/10.10.10.133/g' openwrt/package/base-files/files/bin/config_generate
+sed -i 's/192.168.1.1/192.168.0.133/g' openwrt/package/base-files/files/bin/config_generate
 # 编译5.10
 sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.10/g' ./target/linux/x86/Makefile
 #2. Clear the login password
