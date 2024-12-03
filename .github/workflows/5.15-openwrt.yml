@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检查项目分支
-        uses:  actions/checkout@main
+        uses:  actions/checkout@v3
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -99,7 +99,7 @@ jobs:
         run: |
           cd openwrt
           make defconfig
-          make download -j8
+          make download -j16
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
