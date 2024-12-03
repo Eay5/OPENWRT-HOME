@@ -70,6 +70,10 @@ jobs:
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+          
+      - name: 清理旧的构建目录
+        run: |
+          rm -rf openwrt/staging_dir openwrt/build_dir
 
       - name: 加载自定义设置
         run: |
