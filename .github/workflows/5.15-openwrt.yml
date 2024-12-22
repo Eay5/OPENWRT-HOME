@@ -172,7 +172,7 @@ jobs:
           [ $UPLOAD_COWTRANSFER = true ] >> release.txt
           echo "::set-output name=status::success"
       - name: 发布至release
-        uses: softprops/action-gh-release@master
+        uses:  softprops/action-gh-release@v1
         if: steps.tag.outputs.status == 'success' && !cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
