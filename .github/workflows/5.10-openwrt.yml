@@ -151,6 +151,14 @@ jobs:
           rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "::set-output name=status::success"
+
+      - name: 上传固件到github
+        uses: actions/upload-artifact@main
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt-5.10${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+          
       # - name: 上传固件到NN网盘
       #   id: cowtransfer
       #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
@@ -168,16 +176,6 @@ jobs:
       #     ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
       #     echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
       #     echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
-
-      - name: 上传固件到WT网盘
-        id: wetransfer
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
-        run: |
-          curl -fsSL https://github.com/transfer.sh/transfer.sh/releases/download/latest/transfer-linux-amd64.tar.gz -o transfer.tar.gz
-          tar -xzvf transfer.tar.gz
-          ./transfer wet -s -p 16 --no-progress $FIRMWARE 2>&1 | tee wetransfer.log
-          echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-          echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
 
       - name: 创建release标签
         id: tag

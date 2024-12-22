@@ -138,6 +138,7 @@ jobs:
           rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "::set-output name=status::success"
+
       - name: 上传固件到github
         uses: actions/upload-artifact@main
         if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -162,6 +163,7 @@ jobs:
       #     ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
       #     echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
       #     echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
+      
       - name: 创建release标签
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
