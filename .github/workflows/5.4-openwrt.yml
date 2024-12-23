@@ -66,6 +66,7 @@ jobs:
           # 清理多余包
           sudo apt-get autoremove -y
           sudo apt-get clean
+          sudo apt-get check 
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
