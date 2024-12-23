@@ -50,35 +50,22 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # 更新APT源并启用多架构支持
-          sudo rm -rf /etc/apt/sources.list.d/*
-          sudo apt-get update -y
-          sudo apt-get install -y software-properties-common gnupg2
-          sudo add-apt-repository universe
-          sudo add-apt-repository multiverse
-          sudo dpkg --add-architecture i386
-          sudo apt-get update -y
-          # 安装核心依赖
-          sudo apt-get install -y \
-            build-essential cmake gcc-multilib g++-multilib libc6-dev-i386 \
-            binutils bison flex ccache device-tree-compiler fastjar gettext help2man \
-            libelf-dev libssl-dev libtool zlib1g-dev
-          # 安装特定开发工具
-          sudo apt-get install -y \
-            asciidoc autoconf automake bc bzip2 curl gawk intltool libglib2.0-dev \
-            libgmp-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev \
-            libncursesw5-dev libpython3-dev libreadline-dev make ninja-build patch \
-            pkgconf python3 python3-pip python3-setuptools python3-pyelftools \
-            rsync squashfs-tools subversion swig texinfo unzip wget xmlto xxd
-          # 替代失效包
-          sudo apt-get install -y \
-            ack-grep default-jdk msmtp p7zip-full rename vim upx-ucl uglifyjs
-          # 安装antl3
-          pip3 install antlr3
-          # 清理和验证
-          sudo apt-get autoremove --purge -y
+          sudo bash -c 'cat > /etc/apt/sources.list << EOF
+          deb http://archive.ubuntu.com/ubuntu jammy main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-updates main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
+          EOF'
+          sudo apt-get update
+          # 修复 libc6-dev-i386 替代问题
+          sudo apt-get install -y libc6-i386
+          # 替代 gettext 和 build-essential
+          sudo apt-get install -y gettext-base gcc g++ make
+          # 安装其他工具
+          sudo apt-get install -y ccache cmake device-tree-compiler binutils bison flex \
+            zlib1g-dev libssl-dev libtool
+          # 清理多余包
+          sudo apt-get autoremove -y
           sudo apt-get clean
-          sudo apt-get check
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
