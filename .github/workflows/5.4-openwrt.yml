@@ -1,4 +1,3 @@
-#
 # Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
 #
 # This is free software, licensed under the MIT License.
@@ -25,7 +24,6 @@ on:
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
-# REPO_URL: https://github.com/Eay5/lede-new.git
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 5.4.config
@@ -46,6 +44,19 @@ jobs:
       - name: 检查项目分支
         uses: actions/checkout@main
 
+      - name: 设置缓存路径
+        id: cache-setup
+        run: |
+          echo "CACHE_DIR=/workdir/cache" >> $GITHUB_ENV
+
+      - name: 恢复缓存
+        uses: actions/cache@v3
+        with:
+          path: /workdir/cache
+          key: ${{ runner.os }}-lede-cache-${{ hashFiles('**/feeds.conf.default', '**/.config') }}
+          restore-keys: |
+            ${{ runner.os }}-lede-cache-
+
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -56,28 +67,18 @@ jobs:
           deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
           EOF'
           sudo apt-get update
-          # 修复 libc6-dev-i386 替代问题
-          sudo apt-get install -y libc6-i386
-          # 替代 gettext 和 build-essential
-          sudo apt-get install -y gettext-base gcc g++ make
-          # 安装其他工具
-          sudo apt-get install -y ccache cmake device-tree-compiler binutils bison flex \
-            zlib1g-dev libssl-dev libtool
-          # 清理多余包
+          sudo apt-get install -y build-essential gcc g++ gettext-base \
+            ccache cmake device-tree-compiler binutils bison flex zlib1g-dev \
+            libssl-dev libtool libc6-i386 libc6-dev-i386
           sudo apt-get autoremove -y
           sudo apt-get clean
-          sudo apt-get check 
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
-          sudo mkdir -p /workdir
-          sudo chown $USER:$GROUPS /workdir
 
       - name: 下载固件源码
         working-directory: /workdir
         run: |
-          df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-          
+
       - name: 清理旧的构建目录
         run: |
           rm -rf openwrt/staging_dir openwrt/build_dir
@@ -103,37 +104,21 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
-      - name: SSH链接管理
-        uses: P3TERX/ssh2actions@v1.0.0
-        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
-        env:
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
-      - name: 下载安装包
-        id: package
-        run: |
-          cd openwrt
-          make defconfig
-          make download -j16
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
-
-      - name: 获取内核版本号
-        run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3)
-          echo "KERNEL_VERSION_5_4=${KERNEL_VERSION}" >> $GITHUB_ENV
-
-      - name: 开始编译固件
+      - name: 编译固件
         id: compile
         run: |
           cd openwrt
-          echo -e "$(nproc) thread compile"
+          make defconfig
+          make download -j$(nproc)
           make -j$(nproc) || make -j1 V=s
-          echo "::set-output name=status::success"
-          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      - name: 保存缓存
+        uses: actions/cache@v3
+        with:
+          path: /workdir/cache
+          key: ${{ runner.os }}-lede-cache-${{ hashFiles('**/feeds.conf.default', '**/.config') }}
+          restore-keys: |
+            ${{ runner.os }}-lede-cache-
 
       - name: 查看磁盘使用情况
         if: (!cancelled())
@@ -162,35 +147,15 @@ jobs:
           name: OpenWrt-5.4${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      # - name: 上传固件到NN网盘
-      #   id: cowtransfer
-      #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
-      #   run: |
-      #     curl -fsSL git.io/file-transfer | sh
-      #     ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
-      #     echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
-      #     echo "::set-output name=url::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
-
-      # - name: 上传固件到WT网盘
-      #   id: wetransfer
-      #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
-      #   run: |
-      #     curl -fsSL git.io/file-transfer | sh
-      #     ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
-      #     echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-      #     echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
-
       - name: 创建release标签
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
           echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
-          touch release.txt
-          [ $UPLOAD_COWTRANSFER = true ] >> release.txt
           echo "::set-output name=status::success"
 
       - name: 发布至release
-        uses:  softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v1
         if: steps.tag.outputs.status == 'success' && !cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
