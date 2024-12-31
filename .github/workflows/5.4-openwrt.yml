@@ -1,3 +1,4 @@
+#
 # Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
 #
 # This is free software, licensed under the MIT License.
@@ -24,6 +25,7 @@ on:
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
+# REPO_URL: https://github.com/Eay5/lede-new.git
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 5.4.config
@@ -56,6 +58,11 @@ jobs:
           key: ${{ runner.os }}-lede-cache-${{ hashFiles('**/feeds.conf.default', '**/.config') }}
           restore-keys: |
             ${{ runner.os }}-lede-cache-
+
+      - name: 创建工作目录
+        run: |
+          mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
 
       - name: 安装编译环境
         env:
@@ -104,21 +111,37 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
-      - name: 编译固件
-        id: compile
+      - name: SSH链接管理
+        uses: P3TERX/ssh2actions@v1.0.0
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: 下载安装包
+        id: package
         run: |
           cd openwrt
           make defconfig
-          make download -j$(nproc)
-          make -j$(nproc) || make -j1 V=s
+          make download -j16
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
 
-      - name: 保存缓存
-        uses: actions/cache@v3
-        with:
-          path: /workdir/cache
-          key: ${{ runner.os }}-lede-cache-${{ hashFiles('**/feeds.conf.default', '**/.config') }}
-          restore-keys: |
-            ${{ runner.os }}-lede-cache-
+      - name: 获取内核版本号
+        run: |
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3)
+          echo "KERNEL_VERSION_5_4=${KERNEL_VERSION}" >> $GITHUB_ENV
+
+      - name: 开始编译固件
+        id: compile
+        run: |
+          cd openwrt
+          echo -e "$(nproc) thread compile"
+          make -j$(nproc) || make -j1 V=s
+          echo "::set-output name=status::success"
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: 查看磁盘使用情况
         if: (!cancelled())
@@ -146,6 +169,7 @@ jobs:
         with:
           name: OpenWrt-5.4${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
+
 
       - name: 创建release标签
         id: tag
