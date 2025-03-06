@@ -32,40 +32,26 @@ env:
   DIY_P2_SH: 6.6-part2.sh
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: true
-  UPLOAD_WETRANSFER: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
+
     steps:
       - name: 检查项目分支
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
 
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo bash -c 'cat > /etc/apt/sources.list << EOF
-          deb http://archive.ubuntu.com/ubuntu jammy main universe multiverse restricted
-          deb http://archive.ubuntu.com/ubuntu jammy-updates main universe multiverse restricted
-          deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
-          EOF'
           sudo apt-get update
-          # 修复 libc6-dev-i386 替代问题
-          sudo apt-get install -y libc6-i386
-          # 替代 gettext 和 build-essential
-          sudo apt-get install -y gettext-base gcc g++ make
-          # 安装其他工具
-          sudo apt-get install -y ccache cmake device-tree-compiler binutils bison flex \
-            zlib1g-dev libssl-dev libtool
-          # 清理多余包
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          sudo apt-get check 
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          sudo apt-get install -y build-essential ccache cmake device-tree-compiler binutils bison flex \
+            zlib1g-dev libssl-dev libtool gawk git subversion unzip time xsltproc \
+            libncurses5-dev libncursesw5-dev g++-multilib gcc-multilib python3 python3-distutils
+          sudo timedatectl set-timezone "$TZ"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
@@ -78,7 +64,7 @@ jobs:
 
       - name: 清理旧的构建目录
         run: |
-          rm -rf openwrt/staging_dir openwrt/build_dir
+          rm -rf openwrt/staging_dir openwrt/build_dir openwrt/tmp
 
       - name: 加载自定义设置
         run: |
@@ -87,11 +73,11 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
-      - name: 下载插件
-        run: cd openwrt && ./scripts/feeds update -a
-
-      - name: 读取插件
-        run: cd openwrt && ./scripts/feeds install -a
+      - name: 下载和安装插件
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
       - name: 更改设置
         run: |
@@ -103,7 +89,7 @@ jobs:
 
       - name: SSH链接管理
         uses: P3TERX/ssh2actions@v1.0.0
-        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -113,8 +99,7 @@ jobs:
         run: |
           cd openwrt
           make defconfig
-          make download -j16
-          find dl -size -1024c -exec ls -l {} \;
+          make download -j8
           find dl -size -1024c -exec rm -f {} \;
 
       - name: 获取内核版本号
@@ -135,10 +120,12 @@ jobs:
 
       - name: 查看磁盘使用情况
         if: (!cancelled())
-        run: df -hT
+        run: |
+          df -hT
+          free -m
 
       - name: 上传bin压缩目录
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         with:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -154,46 +141,28 @@ jobs:
           echo "::set-output name=status::success"
 
       - name: 上传固件到github
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         if: steps.organize.outputs.status == 'success' && !cancelled()
         with:
           name: OpenWrt-6.6${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      # - name: 上传固件到NN网盘
-      #   id: cowtransfer
-      #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
-      #   run: |
-      #     curl -fsSL git.io/file-transfer | sh
-      #     ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
-      #     echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
-      #     echo "::set-output name=url::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
-
-      # - name: 上传固件到WT网盘
-      #   id: wetransfer
-      #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
-      #   run: |
-      #     curl -fsSL git.io/file-transfer | sh
-      #     ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
-      #     echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-      #     echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
-
-      - name: 创建release标签
+      - name: 创建 Release标签
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
           echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
           touch release.txt
-          [ $UPLOAD_COWTRANSFER = true ] >> release.txt
+          echo "Built on ${{ env.FILE_DATE }}" >> release.txt
           echo "::set-output name=status::success"
 
-      - name: 发布至release
-        uses:  softprops/action-gh-release@v1
+      - name: 发布至 Release
+        uses: softprops/action-gh-release@v1
         if: steps.tag.outputs.status == 'success' && !cancelled()
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: OpenWrt 6.6${{ env.KERNEL_VERSION_6_6 }}-X86-64_${{ env.FILE_DATE }}
+          name: OpenWrt 6.6${{ env.KERNEL_VERSION_6_6}}-X86-64_${{ env.FILE_DATE }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
@@ -211,4 +180,4 @@ jobs:
           keep_latest: 30
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{  secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
