@@ -42,13 +42,20 @@ jobs:
           sudo -E apt update
           sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* snap*
           sudo -E apt -y full-upgrade
-          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool libtool-bin llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool libtool-bin llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev > apt_install.log 2>&1
           sudo -E systemctl daemon-reload
           sudo -E apt -y autoremove --purge
           sudo -E apt clean
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
+
+      - name: 上传 APT 安装日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Apt-Install-Log
+          path: apt_install.log
 
       - name: 下载固件源码
         run: |
@@ -79,22 +86,13 @@ jobs:
           echo "检查磁盘空间和内存："
           df -hT
           free -m
-
-          # 确保安装 libtool
           sudo -E apt -y install libtool libtool-bin
-
-          # 下载编译所需的 package
           make download -j8 V=s || { echo "下载失败，请检查网络或源"; exit 1; }
-
-          # 清理工具链并编译
           echo "开始清理工具链..."
           make tools/clean -j1 V=s 2>&1 | tee tools.log || { echo "工具清理失败，请检查 tools.log"; exit 1; }
           make toolchain/install -j$(nproc) V=s 2>&1 | tee -a tools.log || { echo "工具链安装失败"; exit 1; }
-
           echo -e "$(nproc) 线程编译固件"
-          make -j$(nproc) || { echo "多线程编译失败，尝试单线程编译..."; make -j1 V=s 2>&1 | tee build.log; }
-
-          # 设置状态
+          make -j$(nproc) V=s 2>&1 | tee build.log || { echo "多线程编译失败，尝试单线程编译..."; make -j1 V=s 2>&1 | tee -a build.log; }
           if [ $? -ne 0 ]; then
             echo "编译失败，上传日志供调试..."
             echo "status=failure" >> $GITHUB_ENV
@@ -103,18 +101,26 @@ jobs:
             echo "status=success" >> $GITHUB_ENV
           fi
 
-      - name: 上传工具构建日志（失败时）
-        if: env.status == 'failure'
+      - name: 上传编译日志
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Tools-Build-Log
-          path: openwrt/tools.log
+          name: Build-Logs
+          path: |
+            openwrt/tools.log
+            openwrt/build.log
 
       - name: 组织固件文件
         if: env.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
+          echo "当前目录内容："
+          ls -lh
+          if [ -z "$(ls *.bin *.img 2>/dev/null)" ]; then
+            echo "错误：未找到固件文件 (*.bin 或 *.img)"
+            exit 1
+          fi
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
       - name: 上传固件到 Artifacts
@@ -122,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-6.12
-          path: ${{ env.FIRMWARE }}
+          path: ${{ env.FIRMWARE }}/*.bin
 
       - name: 生成 Release 信息
         if: env.status == 'success'
@@ -138,7 +144,7 @@ jobs:
           name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12 }}-X86-64
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
+          files: ${{ env.FIRMWARE }}/*.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
