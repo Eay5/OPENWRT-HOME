@@ -1,4 +1,4 @@
-name: Build OpenWrt
+name: Build 6.12-OpenWrt
 
 on:
   repository_dispatch:
