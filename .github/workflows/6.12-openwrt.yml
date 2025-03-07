@@ -1,7 +1,15 @@
 name: Build OpenWrt
 
 on:
+  repository_dispatch:
   workflow_dispatch:
+    inputs:
+      ssh:
+        description: "SSH connection to Actions"
+        required: false
+        default: "false"
+  schedule:
+    - cron: 0 19 * * *  # 每天 UTC 19:00 触发
   push:
     branches:
       - main
@@ -101,12 +109,6 @@ jobs:
         with:
           name: Tools-Build-Log
           path: openwrt/tools.log
-
-      - name: 检查磁盘使用情况
-        if: always()
-        run: |
-          df -hT
-          free -m
 
       - name: 组织固件文件
         if: env.status == 'success'
