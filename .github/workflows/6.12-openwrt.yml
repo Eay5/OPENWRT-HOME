@@ -36,7 +36,7 @@ jobs:
 
       - name: 清理 Docker 镜像和不必要的软件包
         run: |
-          docker rmi `docker images -q` || true
+          docker rmi $(docker images -q) || true
           sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt update
@@ -70,6 +70,7 @@ jobs:
           cd openwrt
           [ -e ../$CONFIG_FILE ] && mv ../$CONFIG_FILE .config
           [ -e ../$DIY_P1_SH ] && chmod +x ../$DIY_P1_SH && ../$DIY_P1_SH
+          [ -e ../$DIY_P2_SH ] && chmod +x ../$DIY_P2_SH && ../$DIY_P2_SH
           make defconfig
 
       - name: 获取内核版本
@@ -110,46 +111,53 @@ jobs:
             openwrt/tools.log
             openwrt/build.log
 
-      - name: 组织固件文件
-        if: env.status == 'success'
+      - name: 整理编译好的固件
+        id: organize
+        if: env.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
           echo "当前目录内容："
           ls -lh
-          if [ -z "$(ls *.bin *.img 2>/dev/null)" ]; then
-            echo "错误：未找到固件文件 (*.bin 或 *.img)"
+          if [ -z "$(ls * 2>/dev/null)" ]; then
+            echo "错误：未找到任何固件文件，编译可能失败"
+            echo "status=failure" >> $GITHUB_ENV
             exit 1
+          else
+            echo "找到以下固件文件，将全部上传："
+            ls -lh
+            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+            echo "status=success" >> $GITHUB_ENV
           fi
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: 上传固件到 Artifacts
-        if: env.status == 'success'
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-6.12
-          path: ${{ env.FIRMWARE }}/*.bin
+          name: OpenWrt-6.12${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}/*
 
       - name: 生成 Release 信息
-        if: env.status == 'success'
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
         run: |
           echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
           touch release.txt
           echo "Built on $(date)" >> release.txt
 
       - name: 发布 Release
-        if: env.status == 'success' && env.UPLOAD_RELEASE == 'true'
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12 }}-X86-64
+          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12 }}-X86-64${{ env.FILE_DATE }}
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*.bin
+          files: ${{ env.FIRMWARE }}/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 删除旧的 Releases
-        if: env.status == 'success' && env.UPLOAD_RELEASE == 'true'
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
         uses: dev-drprasad/delete-older-releases@master
         with:
           keep_latest: 30
