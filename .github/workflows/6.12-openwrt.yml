@@ -9,10 +9,9 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *  # 每天 UTC 19:00 触发
-  push:
-    branches:
-      - main
+    - cron: "0 19 * * *"
+  watch:
+    types: [started]
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -23,26 +22,30 @@ env:
   DIY_P2_SH: 6.12-part2.sh
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: true
+  UPLOAD_WETRANSFER: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
-  DEBIAN_FRONTEND: noninteractive
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
-      - name: Checkout Repository
+      - name: 检查项目分支
         uses: actions/checkout@v4
 
-      - name: 清理 Docker 镜像和不必要的软件包
+      - name: 安装编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          docker rmi $(docker images -q) || true
+          docker rmi `docker images -q`
           sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt update
-          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* snap*
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
           sudo -E apt -y full-upgrade
-          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool libtool-bin llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev > apt_install.log 2>&1
+          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
           sudo -E systemctl daemon-reload
           sudo -E apt -y autoremove --purge
           sudo -E apt clean
@@ -50,115 +53,102 @@ jobs:
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
-      - name: 上传 APT 安装日志
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Apt-Install-Log
-          path: apt_install.log
-
       - name: 下载固件源码
+        working-directory: /workdir
         run: |
-          git clone $REPO_URL -b $REPO_BRANCH openwrt
+          git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      - name: 加载自定义设置
+        run: |
+          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x $DIY_P1_SH && cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
+
+      - name: 下载并安装插件
+        run: |
           cd openwrt
-          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 加载自定义配置
+      - name: 载入配置
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          chmod +x $DIY_P2_SH && cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+      - name: SSH 远程管理
+        uses: P3TERX/ssh2actions@v1.0.0
+        if: github.event.inputs.ssh == 'true'
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: 下载依赖
         run: |
           cd openwrt
-          [ -e ../$CONFIG_FILE ] && mv ../$CONFIG_FILE .config
-          [ -e ../$DIY_P1_SH ] && chmod +x ../$DIY_P1_SH && ../$DIY_P1_SH
-          [ -e ../$DIY_P2_SH ] && chmod +x ../$DIY_P2_SH && ../$DIY_P2_SH
           make defconfig
+          make download -j16
+          find dl -size -1024c -exec rm -f {} \;
 
-      - name: 获取内核版本
+      - name: 获取内核版本号
+        run: |
+          echo "KERNEL_VERSION_6_12=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)" >> $GITHUB_ENV
+
+      - name: 编译固件
         run: |
           cd openwrt
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' include/kernel-6.12 | cut -d' ' -f3)
-          echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
+          make -j$(nproc) || make -j1 V=s
+          echo "COMPILATION_SUCCESS=true" >> $GITHUB_ENV
 
-      - name: 更新工具链并编译固件
-        id: compile
-        run: |
-          set -e
-          cd openwrt
-          echo "检查磁盘空间和内存："
-          df -hT
-          free -m
-          sudo -E apt -y install libtool libtool-bin
-          make download -j8 V=s || { echo "下载失败，请检查网络或源"; exit 1; }
-          echo "开始清理工具链..."
-          make tools/clean -j1 V=s 2>&1 | tee tools.log || { echo "工具清理失败，请检查 tools.log"; exit 1; }
-          make toolchain/install -j$(nproc) V=s 2>&1 | tee -a tools.log || { echo "工具链安装失败"; exit 1; }
-          echo -e "$(nproc) 线程编译固件"
-          make -j$(nproc) V=s 2>&1 | tee build.log || { echo "多线程编译失败，尝试单线程编译..."; make -j1 V=s 2>&1 | tee -a build.log; }
-          if [ $? -ne 0 ]; then
-            echo "编译失败，上传日志供调试..."
-            echo "status=failure" >> $GITHUB_ENV
-            exit 1
-          else
-            echo "status=success" >> $GITHUB_ENV
-          fi
-
-      - name: 上传编译日志
-        if: always()
+      - name: 上传 bin 目录
         uses: actions/upload-artifact@v4
+        if: env.COMPILATION_SUCCESS == 'true' && env.UPLOAD_BIN_DIR == 'true'
         with:
-          name: Build-Logs
-          path: |
-            openwrt/tools.log
-            openwrt/build.log
+          name: OpenWrt_bin_${{ env.FILE_DATE }}
+          path: openwrt/bin
 
-      - name: 整理编译好的固件
-        id: organize
-        if: env.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+      - name: 组织固件文件
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
-          echo "当前目录内容："
-          ls -lh
-          if [ -z "$(ls * 2>/dev/null)" ]; then
-            echo "错误：未找到任何固件文件，编译可能失败"
-            echo "status=failure" >> $GITHUB_ENV
-            exit 1
-          else
-            echo "找到以下固件文件，将全部上传："
-            ls -lh
-            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-            echo "status=success" >> $GITHUB_ENV
-          fi
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+          echo "FIRMWARE_DIR=$PWD" >> $GITHUB_ENV
 
-      - name: 上传固件到 Artifacts
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+      - name: 上传固件到 GitHub
         uses: actions/upload-artifact@v4
+        if: env.UPLOAD_FIRMWARE == 'true'
         with:
-          name: OpenWrt-6.12${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE }}/*
+          name: OpenWrt-6.12_${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE_DIR }}
 
-      - name: 生成 Release 信息
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      - name: 创建 Release
+        if: env.UPLOAD_RELEASE == 'true'
         run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
-          touch release.txt
-          echo "Built on $(date)" >> release.txt
+          TAG_NAME=$(date +"%Y.%m.%d-%H%M")
+          echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
+          echo "OpenWrt 6.12 - $TAG_NAME" > release.txt
 
-      - name: 发布 Release
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      - name: 发布固件
         uses: softprops/action-gh-release@v1
-        with:
-          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12 }}-X86-64${{ env.FILE_DATE }}
-          tag_name: ${{ env.release_tag }}
-          body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
+        if: env.UPLOAD_RELEASE == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        with:
+          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12 }}_${{ env.FILE_DATE }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE_DIR }}/*
+
+      - name: 清理旧的工作流运行
+        uses: GitRML/delete-workflow-runs@main
+        with:
+          retain_days: 1
+          keep_minimum_runs: 3
 
       - name: 删除旧的 Releases
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
         uses: dev-drprasad/delete-older-releases@master
+        if: env.UPLOAD_RELEASE == 'true'
         with:
           keep_latest: 30
           delete_tags: true

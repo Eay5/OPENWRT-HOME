@@ -1,4 +1,3 @@
-#
 # Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
 #
 # This is free software, licensed under the MIT License.
@@ -6,12 +5,10 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
 # Description: Build OpenWrt using GitHub Actions
-#
 
 name: Build 5.4-OpenWrt
 
 on:
-  repository_dispatch:
   workflow_dispatch:
     inputs:
       ssh:
@@ -19,9 +16,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *  # 每天 19:00 UTC (03:00 Asia/Shanghai)
-  watch:
-    types: [started]
+    - cron: "0 19 * * *"  # 每天 19:00 UTC (03:00 Asia/Shanghai)
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -41,23 +36,19 @@ jobs:
 
     steps:
       - name: 检查项目分支
-        uses: actions/checkout@v4  # 更新到最新版本
+        uses: actions/checkout@v4
 
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          docker rmi `docker images -q`
-          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
-          sudo -E apt-mark hold grub-efi-amd64-signed
-          sudo -E apt update
-          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
-          sudo -E apt -y full-upgrade
-          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-          sudo -E systemctl daemon-reload
-          sudo -E apt -y autoremove --purge
-          sudo -E apt clean
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          sudo apt update
+          sudo apt -y full-upgrade
+          sudo apt -y install build-essential ccache curl git gawk gcc-multilib g++-multilib \
+            gettext libncurses5-dev libncursesw5-dev libssl-dev python3 python3-pip unzip \
+            wget zlib1g-dev bzip2 patch pkgconf rsync subversion upx-ucl ninja-build
+          sudo apt -y autoremove --purge
+          sudo apt clean
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
@@ -66,11 +57,8 @@ jobs:
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
-          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-      - name: 清理旧的构建目录
-        run: |
-          rm -rf openwrt/staging_dir openwrt/build_dir openwrt/tmp
+          cd openwrt
+          rm -rf staging_dir build_dir tmp
 
       - name: 加载自定义设置
         run: |
@@ -94,8 +82,8 @@ jobs:
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
       - name: SSH 链接管理
-        uses: P3TERX/ssh2actions@v1.0.0
-        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
+        uses: P3TERX/ssh2actions@v2.0.0  # 更新到最新版本（假设可用）
+        if: github.event.inputs.ssh == 'true' || contains(github.event.action, 'ssh')
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -105,12 +93,13 @@ jobs:
         run: |
           cd openwrt
           make defconfig
-          make download -j8  # 减少并行下载线程以避免资源耗尽
-          find dl -size -1024c -exec rm -f {} \;
+          make download -j$(nproc)
+          find dl -size -1024c -delete
 
       - name: 获取内核版本号
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3)
+          cd openwrt
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' include/kernel-5.4 | cut -d' ' -f3)
           echo "KERNEL_VERSION_5_4=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       - name: 开始编译固件
@@ -118,17 +107,17 @@ jobs:
         run: |
           cd openwrt
           echo -e "$(nproc) thread compile"
-          make -j$(nproc) || make -j1 V=s  # 如果多线程失败，单线程带详细日志重试
+          timeout 4h make -j$(nproc) || make -j1 V=s
           echo "::set-output name=status::success"
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: 查看磁盘使用情况
-        if: (!cancelled())
+        if: always()  # 无论成功或失败都执行
         run: |
           df -hT
-          free -m  # 增加内存使用情况查看
+          free -m
 
       - name: 上传 bin 压缩目录
         uses: actions/upload-artifact@v4
@@ -176,14 +165,14 @@ jobs:
       - name: 删除工作流运行
         uses: GitRML/delete-workflow-runs@main
         with:
-          retain_days: 1
-          keep_minimum_runs: 3
+          retain_days: 7
+          keep_minimum_runs: 5
 
       - name: 删除旧的 Releases
         uses: dev-drprasad/delete-older-releases@master
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         with:
-          keep_latest: 30
+          keep_latest: 10
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

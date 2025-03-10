@@ -1,13 +1,3 @@
-#
-# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# Description: Build OpenWrt using GitHub Actions
-#
-
 name: Build 5.10-OpenWrt
 
 on:
@@ -47,37 +37,36 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          docker rmi `docker images -q`
-          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
-          sudo -E apt-mark hold grub-efi-amd64-signed
-          sudo -E apt update
-          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
-          sudo -E apt -y full-upgrade
-          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-          sudo -E systemctl daemon-reload
-          sudo -E apt -y autoremove --purge
-          sudo -E apt clean
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
-          sudo mkdir -p /workdir
-          sudo chown $USER:$GROUPS /workdir
+          docker rmi $(docker images -q) || true
+          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
+          sudo apt update
+          sudo apt -y purge azure-cli* docker* ghc* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* snap*
+          sudo apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang \
+                              cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git \
+                              gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+                              libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+                              libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools \
+                              python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim \
+                              wget xmlto xxd zlib1g-dev
+          sudo apt clean
+          sudo timedatectl set-timezone "Asia/Shanghai"
+          sudo mkdir -p /workdir && sudo chown $USER:$GROUPS /workdir
 
       - name: 下载固件源码
         working-directory: /workdir
         run: |
-          df -hT $PWD
+          df -hT
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
       - name: 清理旧的构建目录
-        run: |
-          rm -rf openwrt/staging_dir openwrt/build_dir openwrt/tmp
+        run: rm -rf openwrt/{staging_dir,build_dir,tmp}
 
       - name: 加载自定义设置
         run: |
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
           chmod +x $DIY_P1_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
+          cd openwrt && $GITHUB_WORKSPACE/$DIY_P1_SH
 
       - name: 下载和安装插件
         run: |
@@ -90,98 +79,80 @@ jobs:
           [ -e files ] && mv files openwrt/files
           [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
           chmod +x $DIY_P2_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
+          cd openwrt && $GITHUB_WORKSPACE/$DIY_P2_SH
 
       - name: SSH链接管理
+        if: inputs.ssh == 'true'
         uses: P3TERX/ssh2actions@v1.0.0
-        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
       - name: 下载安装包
-        id: package
         run: |
           cd openwrt
           make defconfig
           make download -j8
-          find dl -size -1024c -exec rm -f {} \;
+          find dl -size -1024c -delete
 
       - name: 获取内核版本号
-        run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.10' openwrt/include/kernel-5.10 | cut -d' ' -f3)
-          echo "KERNEL_VERSION_5_10=${KERNEL_VERSION}" >> $GITHUB_ENV
+        run: echo "KERNEL_VERSION_5_10=$(grep 'LINUX_VERSION-5.10' openwrt/include/kernel-5.10 | cut -d' ' -f3)" >> $GITHUB_ENV
 
       - name: 开始编译固件
-        id: compile
         run: |
           cd openwrt
-          echo -e "$(nproc) thread compile"
-          make -j$(nproc) || make -j1 V=s
-          echo "::set-output name=status::success"
-          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          make -j$(nproc) V=s || make -j1 V=s
+          echo "DEVICE_NAME=_$(sed -rn 's/.*DEVICE_(.*)=y/\1/p' .config)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: 查看磁盘使用情况
-        if: (!cancelled())
-        run: |
-          df -hT
-          free -m
+        run: df -hT && free -m
 
       - name: 上传bin压缩目录
         uses: actions/upload-artifact@v4
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        if: env.UPLOAD_BIN_DIR == 'true'
         with:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
       - name: 整理编译好的固件
-        id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-          echo "::set-output name=status::success"
 
-      - name: 上传固件到github
+      - name: 上传固件到 GitHub
         uses: actions/upload-artifact@v4
-        if: steps.organize.outputs.status == 'success' && !cancelled()
+        if: env.UPLOAD_FIRMWARE == 'true'
         with:
           name: OpenWrt-5.10${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      - name: 创建 Release标签
-        id: tag
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      - name: 创建 Release 标签
         run: |
-          echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
-          touch release.txt
-          echo "Built on ${{ env.FILE_DATE }}" >> release.txt
-          echo "::set-output name=status::success"
+          echo "RELEASE_TAG=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          echo "Built on ${{ env.FILE_DATE }}" > release.txt
 
       - name: 发布至 Release
         uses: softprops/action-gh-release@v1
-        if: steps.tag.outputs.status == 'success' && !cancelled()
+        if: env.UPLOAD_RELEASE == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           name: OpenWrt 5.10${{ env.KERNEL_VERSION_5_10 }}-X86-64_${{ env.FILE_DATE }}
-          tag_name: ${{ steps.tag.outputs.release_tag }}
+          tag_name: ${{ env.RELEASE_TAG }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
-      - name: 删除工作流运行
+      - name: 清理工作流运行
         uses: GitRML/delete-workflow-runs@main
         with:
           retain_days: 1
           keep_minimum_runs: 3
 
-      - name: 删除旧的Releases
+      - name: 删除旧的 Releases
         uses: dev-drprasad/delete-older-releases@master
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        if: env.UPLOAD_RELEASE == 'true'
         with:
           keep_latest: 30
           delete_tags: true
