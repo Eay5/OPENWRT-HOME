@@ -1,3 +1,4 @@
+#
 # Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
 #
 # This is free software, licensed under the MIT License.
@@ -5,10 +6,12 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
 # Description: Build OpenWrt using GitHub Actions
+#
 
 name: Build 5.4-OpenWrt
 
 on:
+  repository_dispatch:
   workflow_dispatch:
     inputs:
       ssh:
@@ -16,10 +19,13 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: "0 19 * * *"  # 每天 19:00 UTC (03:00 Asia/Shanghai)
+    - cron: 0 19 * * *
+  watch:
+    types: [started]
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
+# REPO_URL: https://github.com/Eay5/lede-new.git
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 5.4.config
@@ -27,28 +33,41 @@ env:
   DIY_P2_SH: 5.4-part2.sh
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: true
+  UPLOAD_WETRANSFER: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 使用 22.04 以确保工具链兼容性
+    runs-on: ubuntu-24.04
 
     steps:
       - name: 检查项目分支
-        uses: actions/checkout@v4
+        uses: actions/checkout@main
 
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt update
-          sudo apt -y full-upgrade
-          sudo apt -y install build-essential ccache curl git gawk gcc-multilib g++-multilib \
-            gettext libncurses5-dev libncursesw5-dev libssl-dev python3 python3-pip unzip \
-            wget zlib1g-dev bzip2 patch pkgconf rsync subversion upx-ucl ninja-build
-          sudo apt -y autoremove --purge
-          sudo apt clean
+          sudo bash -c 'cat > /etc/apt/sources.list << EOF
+          deb http://archive.ubuntu.com/ubuntu jammy main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-updates main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
+          EOF'
+          sudo apt-get update
+          # 修复 libc6-dev-i386 替代问题
+          sudo apt-get install -y libc6-i386
+          # 替代 gettext 和 build-essential
+          sudo apt-get install -y gettext-base gcc g++ make
+          # 安装其他工具
+          sudo apt-get install -y ccache cmake device-tree-compiler binutils bison flex \
+            zlib1g-dev libssl-dev libtool
+          # 清理多余包
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo apt-get check 
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
@@ -57,8 +76,11 @@ jobs:
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
-          cd openwrt
-          rm -rf staging_dir build_dir tmp
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+          
+      - name: 清理旧的构建目录
+        run: |
+          rm -rf openwrt/staging_dir openwrt/build_dir
 
       - name: 加载自定义设置
         run: |
@@ -67,11 +89,11 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
-      - name: 下载和安装插件
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+      - name: 下载插件
+        run: cd openwrt && ./scripts/feeds update -a
+
+      - name: 读取插件
+        run: cd openwrt && ./scripts/feeds install -a
 
       - name: 更改设置
         run: |
@@ -81,9 +103,9 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
-      - name: SSH 链接管理
-        uses: P3TERX/ssh2actions@v2.0.0  # 更新到最新版本（假设可用）
-        if: github.event.inputs.ssh == 'true' || contains(github.event.action, 'ssh')
+      - name: SSH链接管理
+        uses: P3TERX/ssh2actions@v1.0.0
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -93,13 +115,13 @@ jobs:
         run: |
           cd openwrt
           make defconfig
-          make download -j$(nproc)
-          find dl -size -1024c -delete
+          make download -j16
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
 
       - name: 获取内核版本号
         run: |
-          cd openwrt
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' include/kernel-5.4 | cut -d' ' -f3)
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3)
           echo "KERNEL_VERSION_5_4=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       - name: 开始编译固件
@@ -107,20 +129,18 @@ jobs:
         run: |
           cd openwrt
           echo -e "$(nproc) thread compile"
-          timeout 4h make -j$(nproc) || make -j1 V=s
+          make -j$(nproc) || make -j1 V=s
           echo "::set-output name=status::success"
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: 查看磁盘使用情况
-        if: always()  # 无论成功或失败都执行
-        run: |
-          df -hT
-          free -m
+        if: (!cancelled())
+        run: df -hT
 
-      - name: 上传 bin 压缩目录
-        uses: actions/upload-artifact@v4
+      - name: 上传bin压缩目录
+        uses: actions/upload-artifact@main
         if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         with:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -135,24 +155,42 @@ jobs:
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "::set-output name=status::success"
 
-      - name: 上传固件到 GitHub
-        uses: actions/upload-artifact@v4
+      - name: 上传固件到github
+        uses: actions/upload-artifact@main
         if: steps.organize.outputs.status == 'success' && !cancelled()
         with:
           name: OpenWrt-5.4${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      - name: 创建 Release 标签
+      # - name: 上传固件到NN网盘
+      #   id: cowtransfer
+      #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
+      #   run: |
+      #     curl -fsSL git.io/file-transfer | sh
+      #     ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
+      #     echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
+      #     echo "::set-output name=url::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
+
+      # - name: 上传固件到WT网盘
+      #   id: wetransfer
+      #   if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
+      #   run: |
+      #     curl -fsSL git.io/file-transfer | sh
+      #     ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
+      #     echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+      #     echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
+
+      - name: 创建release标签
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
           echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
           touch release.txt
-          echo "Built on ${{ env.FILE_DATE }}" >> release.txt
+          [ $UPLOAD_COWTRANSFER = true ] >> release.txt
           echo "::set-output name=status::success"
 
-      - name: 发布至 Release
-        uses: softprops/action-gh-release@v1
+      - name: 发布至release
+        uses:  softprops/action-gh-release@v1
         if: steps.tag.outputs.status == 'success' && !cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -165,14 +203,14 @@ jobs:
       - name: 删除工作流运行
         uses: GitRML/delete-workflow-runs@main
         with:
-          retain_days: 7
-          keep_minimum_runs: 5
+          retain_days: 1
+          keep_minimum_runs: 3
 
-      - name: 删除旧的 Releases
+      - name: 删除旧的Releases
         uses: dev-drprasad/delete-older-releases@master
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         with:
-          keep_latest: 10
+          keep_latest: 30
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{  secrets.GITHUB_TOKEN }}
