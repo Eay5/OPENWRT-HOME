@@ -9,7 +9,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *
+    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
   watch:
     types: [started]
 
@@ -29,11 +29,13 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 改为 Ubuntu 22.04
+    runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04
     steps:
+      # 检查项目分支并获取代码
       - name: 检查项目分支
         uses: actions/checkout@v4
 
+      # 安装编译环境
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -44,18 +46,15 @@ jobs:
           deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
           EOF'
           sudo apt-get update
-          sudo apt-get install -y libc6-i386
-          sudo apt-get install -y gettext-base gcc g++ make
-          sudo apt-get install -y ccache cmake device-tree-compiler binutils bison flex \
-            zlib1g-dev libssl-dev libtool
-          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint bzip2 \
-            curl gawk gcc-multilib g++-multilib gettext git gperf haveged help2man \
-            intltool libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
-            libreadline-dev lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
-            python3 python3-pyelftools python3-setuptools qemu-utils rsync scons \
-            squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget \
-            xmlto xxd
+          sudo apt-get install -y libc6-i386 gettext-base gcc g++ make ccache cmake \
+            device-tree-compiler binutils bison flex zlib1g-dev libssl-dev libtool \
+            ack antlr3 asciidoc autoconf automake autopoint bzip2 curl gawk \
+            gcc-multilib g++-multilib gettext git gperf haveged help2man intltool \
+            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd
           sudo apt-get autoremove -y
           sudo apt-get clean
           sudo apt-get check
@@ -63,14 +62,7 @@ jobs:
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
-      - name: 安装 Go 1.22.6
-        run: |
-          wget https://go.dev/dl/go1.22.6.linux-amd64.tar.gz
-          sudo tar -C /usr/local -xzf go1.22.6.linux-amd64.tar.gz
-          echo "export PATH=$PATH:/usr/local/go/bin" >> $GITHUB_ENV
-          echo "export GOROOT_BOOTSTRAP=/usr/local/go" >> $GITHUB_ENV
-          go version
-
+      # 下载固件源码
       - name: 下载固件源码
         working-directory: /workdir
         run: |
@@ -78,10 +70,12 @@ jobs:
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
+      # 清理旧的构建目录
       - name: 清理旧的构建目录
         run: |
           rm -rf openwrt/staging_dir openwrt/build_dir
 
+      # 加载自定义设置
       - name: 加载自定义设置
         run: |
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
@@ -89,12 +83,36 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
+      # 下载插件
       - name: 下载插件
-        run: cd openwrt && ./scripts/feeds update -a
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
 
+      # 读取插件
       - name: 读取插件
-        run: cd openwrt && ./scripts/feeds install -a
+        run: |
+          cd openwrt
+          ./scripts/feeds install -a
 
+      # 下载并安装工具链
+      - name: 下载并安装工具链
+        run: |
+          cd openwrt
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
+
+      # 上传工具链安装日志
+      - name: 上传工具链安装日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-install-logs
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      # 更改设置
       - name: 更改设置
         run: |
           [ -e files ] && mv files openwrt/files
@@ -103,6 +121,7 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
+      # SSH 链接管理（可选）
       - name: SSH链接管理
         uses: P3TERX/ssh2actions@v1.0.0
         if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
@@ -110,35 +129,55 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
+      # 下载安装包
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
           make defconfig
-          make download -j16
+          make download -j16 V=s 2>&1 | tee download.log
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      - name: 获取内核版本号
+      # 检查磁盘空间
+      - name: 检查磁盘空间
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
-          echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
+          df -hT
 
+      # 开始编译固件
       - name: 开始编译固件
         id: compile
         run: |
           cd openwrt
-          echo -e "$(nproc) thread compile"
-          make -j$(nproc) || make -j1 V=s
+          echo -e "Compiling with 2 threads"
+          make -j2 V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
           echo "status=success" >> $GITHUB_ENV
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
+      # 上传构建日志
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: openwrt/build.log
+
+      # 获取内核版本号
+      - name: 获取内核版本号
+        if: env.status == 'success'
+        run: |
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
+          echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
+
+      # 查看磁盘使用情况
       - name: 查看磁盘使用情况
         if: (!cancelled())
-        run: df -hT
+        run: |
+          df -hT
 
+      # 上传 bin 压缩目录
       - name: 上传bin压缩目录
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
@@ -146,6 +185,7 @@ jobs:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
+      # 整理编译好的固件
       - name: 整理编译好的固件
         id: organize
         if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
@@ -160,6 +200,7 @@ jobs:
             echo "status=failure" >> $GITHUB_ENV
           fi
 
+      # 上传固件到 GitHub Artifacts
       - name: 上传固件到github
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && !cancelled()
@@ -167,6 +208,7 @@ jobs:
           name: OpenWrt-6.12${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
+      # 创建 Release 标签
       - name: 创建 Release标签
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
@@ -176,6 +218,7 @@ jobs:
           [ "$UPLOAD_COWTRANSFER" = true ] && echo "Cowtransfer enabled" >> release.txt
           echo "status=success" >> $GITHUB_ENV
 
+      # 发布至 Release
       - name: 发布至 Release
         uses: softprops/action-gh-release@v1
         if: env.status == 'success' && !cancelled()
@@ -187,15 +230,19 @@ jobs:
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
+      # 删除工作流运行
       - name: 删除工作流运行
         uses: GitRML/delete-workflow-runs@main
         with:
           retain_days: 1
           keep_minimum_runs: 3
 
+      # 删除旧的 Releases
       - name: 删除旧的Releases
         uses: dev-drprasad/delete-older-releases@master
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           keep_latest: 30
           delete_tags: true
