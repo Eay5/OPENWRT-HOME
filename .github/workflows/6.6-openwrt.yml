@@ -29,7 +29,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04
+    runs-on: ubuntu-24.04  # 使用 Ubuntu 24.04 (已更新)
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
@@ -190,23 +190,33 @@ jobs:
         id: organize
         if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
-          if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
-            cd openwrt/bin/targets/*/*
+          FIRMWARE_PATH=$(find openwrt/bin/targets/*/* -type d -name "packages" -prune -o -type f -print)
+          if [ -n "$FIRMWARE_PATH" ]; then
+            FIRMWARE_DIR=$(dirname "$FIRMWARE_PATH")
+            cd "$FIRMWARE_DIR"
             rm -rf packages
-            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+            echo "FIRMWARE=$FIRMWARE_DIR" >> $GITHUB_ENV
             echo "status=success" >> $GITHUB_ENV
+            echo "Firmware directory: $FIRMWARE_DIR" # 输出固件目录路径
+            ls -la # 列出固件目录内容，方便查看
           else
             echo "No firmware found in openwrt/bin/targets/"
             echo "status=failure" >> $GITHUB_ENV
           fi
+          echo "Organize firmware status: ${{ env.status }}" # 输出状态
 
-      # 上传固件到 GitHub Artifacts
+      # 上传固件到github
       - name: 上传固件到github
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && !cancelled()
         with:
           name: OpenWrt-6.6${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
+      - name: 检查上传固件内容 # 新增步骤：检查上传内容
+        if: env.status == 'success' && !cancelled()
+        run: |
+          echo "Listing files in ${{ env.FIRMWARE }} before upload:"
+          ls -la ${{ env.FIRMWARE }}
 
       # 创建 Release 标签
       - name: 创建 Release标签
@@ -237,7 +247,7 @@ jobs:
           retain_days: 1
           keep_minimum_runs: 3
 
-      # 删除旧的 Releases
+      # 删除旧的Releases
       - name: 删除旧的Releases
         uses: dev-drprasad/delete-older-releases@master
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()

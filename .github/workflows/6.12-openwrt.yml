@@ -104,7 +104,14 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 修复 Go 版本问题并安装工具链
+      # **新增步骤：清理 Golang host 构建缓存**
+      - name: 清理 Golang host 构建缓存
+        run: |
+          cd openwrt
+          rm -rf build_dir/hostpkg/go-1.24.0
+          rm -rf dl/go1.20.6.linux-amd64.tar.gz dl/go1.24.0.src.tar.gz
+
+      # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
           cd openwrt
@@ -221,7 +228,7 @@ jobs:
             echo "status=failure" >> $GITHUB_ENV
           fi
 
-      # 上传固件到 GitHub Artifacts
+      # 上传固件到github
       - name: 上传固件到github
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && !cancelled()
@@ -258,7 +265,7 @@ jobs:
           retain_days: 1
           keep_minimum_runs: 3
 
-      # 删除旧的 Releases
+      # 删除旧的Releases
       - name: 删除旧的Releases
         uses: dev-drprasad/delete-older-releases@master
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
