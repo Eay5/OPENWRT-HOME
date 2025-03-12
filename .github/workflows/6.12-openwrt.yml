@@ -104,10 +104,21 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 下载并安装工具链
+      # 修复 Go 版本问题并安装工具链
       - name: 下载并安装工具链
         run: |
           cd openwrt
+          # 检查并替换默认的 Go bootstrap 版本
+          GO_BOOTSTRAP_VERSION="1.22.6"
+          GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
+          GO_BOOTSTRAP_HASH="e854ffb0f0ae4f5e3cd0f996ed12d5cc824de92f9ef445d793744368b2c7d903"
+          if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
+            echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
+            rm -f dl/go1.20.6.linux-amd64.tar.gz
+            wget -P dl $GO_BOOTSTRAP_URL
+            echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
+            ln -sf go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz dl/go1.20.6.linux-amd64.tar.gz
+          fi
           make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
