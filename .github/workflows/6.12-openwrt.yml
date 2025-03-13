@@ -88,9 +88,6 @@ jobs:
           chmod +x $DIY_P1_SH
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-          echo "Checking target device in .config:"
-          cat openwrt/.config | grep '^CONFIG_TARGET.*DEVICE.*=y' || echo "Warning: No target device found in .config"
 
       # 下载插件
       - name: 下载插件
@@ -104,79 +101,39 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # **新增步骤：清理 Golang host 构建缓存**
-      - name: 清理 Golang host 构建缓存
+      # 更改设置并应用配置
+      - name: 更改设置
         run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          chmod +x $DIY_P2_SH
           cd openwrt
-          rm -rf build_dir/hostpkg/go-1.24.0
-          rm -rf dl/go1.20.6.linux-amd64.tar.gz dl/go1.24.0.src.tar.gz
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+          make defconfig  # 确保应用 .config 文件
 
       # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          # 检查并替换默认的 Go bootstrap 版本
-          GO_BOOTSTRAP_VERSION="1.22.6"
-          GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
-          GO_BOOTSTRAP_HASH="e854ffb0f0ae4f5e3cd0f996ed12d5cc824de92f9ef445d793744368b2c7d903"
-          if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
-            echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
-            rm -f dl/go1.20.6.linux-amd64.tar.gz
-            wget -P dl $GO_BOOTSTRAP_URL
-            echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
-            ln -sf go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz dl/go1.20.6.linux-amd64.tar.gz
-          fi
           make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
-
-      # 上传工具链安装日志
-      - name: 上传工具链安装日志
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: toolchain-install-logs
-          path: |
-            openwrt/tools_install.log
-            openwrt/toolchain_install.log
-
-      # 更改设置
-      - name: 更改设置
-        run: |
-          [ -e files ] && mv files openwrt/files
-          chmod +x $DIY_P2_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
-
-      # SSH 链接管理（可选）
-      - name: SSH链接管理
-        uses: P3TERX/ssh2actions@v1.0.0
-        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
-        env:
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
       # 下载安装包
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
-          make defconfig
           make download -j16 V=s 2>&1 | tee download.log
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # 检查磁盘空间
-      - name: 检查磁盘空间
-        run: |
-          df -hT
-
-      # 开始编译固件并检查输出
+      # 开始编译固件
       - name: 开始编译固件
         id: compile
         run: |
           cd openwrt
-          echo -e "Compiling with 1 thread to avoid resource issues"
-          make -j1 V=s 2>&1 | tee build.log || echo "Compilation failed"
+          echo -e "Compiling with $(nproc) threads"
+          make -j$(nproc) V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
           echo "Checking generated firmware:"
           ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
           echo "status=success" >> $GITHUB_ENV
@@ -198,12 +155,6 @@ jobs:
         run: |
           KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
-
-      # 查看磁盘使用情况
-      - name: 查看磁盘使用情况
-        if: (!cancelled())
-        run: |
-          df -hT
 
       # 上传 bin 压缩目录
       - name: 上传bin压缩目录
