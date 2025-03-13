@@ -81,16 +81,29 @@ jobs:
         run: |
           rm -rf openwrt/staging_dir openwrt/build_dir
 
-      # 加载自定义设置并验证配置
+      # 检查自定义文件是否存在
+      - name: 检查自定义配置文件
+        run: |
+          ls -l $GITHUB_WORKSPACE/
+          [ -f $CONFIG_FILE ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
+          [ -f $DIY_P1_SH ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
+          [ -f $DIY_P2_SH ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+
+      # 加载自定义设置
       - name: 加载自定义设置
         run: |
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
           chmod +x $DIY_P1_SH
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE .config
+          # 清理可能导致递归依赖的包
+          sed -i '/CONFIG_PACKAGE_luci-app-bypass/d' .config
+          sed -i '/CONFIG_PACKAGE_luci-app-fchomo/d' .config
+          sed -i '/CONFIG_PACKAGE_geoview/d' .config
+          make defconfig
           echo "Checking target device in .config:"
-          cat openwrt/.config | grep '^CONFIG_TARGET.*DEVICE.*=y' || echo "Warning: No target device found in .config"
+          cat .config | grep '^CONFIG_TARGET.*DEVICE.*=y' || echo "Warning: No target device found in .config"
 
       # 下载插件
       - name: 下载插件
@@ -104,7 +117,7 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # **新增步骤：清理 Golang host 构建缓存**
+      # 清理 Golang host 构建缓存
       - name: 清理 Golang host 构建缓存
         run: |
           cd openwrt
@@ -146,7 +159,7 @@ jobs:
           chmod +x $DIY_P2_SH
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
-          make defconfig  # 确保 .config 被应用
+          make defconfig
 
       # SSH 链接管理（可选）
       - name: SSH链接管理
@@ -161,7 +174,7 @@ jobs:
         id: package
         run: |
           cd openwrt
-          make defconfig  # 再次确认配置，避免遗漏
+          make defconfig
           make download -j16 V=s 2>&1 | tee download.log
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
@@ -171,7 +184,7 @@ jobs:
         run: |
           df -hT
 
-      # 开始编译固件并检查输出
+      # 开始编译固件
       - name: 开始编译固件
         id: compile
         run: |
