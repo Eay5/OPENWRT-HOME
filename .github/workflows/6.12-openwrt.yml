@@ -115,10 +115,10 @@ jobs:
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          # 检查并替换默认的 Go bootstrap 版本
-          GO_BOOTSTRAP_VERSION="1.22.6"
+          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.1
+          GO_BOOTSTRAP_VERSION="1.24.1"
           GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
-          GO_BOOTSTRAP_HASH="e854ffb0f0ae4f5e3cd0f996ed12d5cc824de92f9ef445d793744368b2c7d903"
+          GO_BOOTSTRAP_HASH="76f2c4a92e293cf2d4df8690a94514e1a6f6f5b784e8216cb683961c76bd437c"
           if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
             echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
             rm -f dl/go1.20.6.linux-amd64.tar.gz
@@ -146,7 +146,7 @@ jobs:
           chmod +x $DIY_P2_SH
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
-          make defconfig  # 添加这一行，确保 .config 被应用
+          make defconfig  # 确保 .config 被应用
 
       # SSH 链接管理（可选）
       - name: SSH链接管理
@@ -176,7 +176,7 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo -e "Compiling with $(nproc) threads"  # 优化为多线程编译
+          echo -e "Compiling with $(nproc) threads"
           make -j$(nproc) V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
           echo "Checking generated firmware:"
           ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
@@ -254,7 +254,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
-          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12 }}-X86-64_${{ env.FILE_DATE }}
+          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12}}-X86-64_${{ env.FILE_DATE }}
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
