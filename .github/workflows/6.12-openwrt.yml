@@ -29,7 +29,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04  # 使用 Ubuntu 22.04
+    runs-on: ubuntu-22.04   # 使用 Ubuntu 22.04
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
