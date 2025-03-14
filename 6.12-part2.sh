@@ -21,7 +21,7 @@
 #ip
 sed -i 's/192.168.1.1/192.168.0.133/g' package/base-files/files/bin/config_generate
 # 编译5.10
-sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=6.6/g' target/linux/x86/Makefile
+sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
 #2. Clear the login password
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/files/zzz-default-settings
 #4.an-theme
