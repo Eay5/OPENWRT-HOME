@@ -1,5 +1,5 @@
-# 工作流名称：优化后的 OpenWrt 6.12 编译流程
-name: Build OpenWrt 6.12 Optimized
+# 工作流名称：优化后的 OpenWrt 6.12 编译流程 (修正 DIY_P2_SH 时机)
+name: Build OpenWrt 6.12 Optimized (Fixed P2 Timing)
 
 on:
   repository_dispatch: # 可通过 API 触发
@@ -20,7 +20,7 @@ env:
   FEEDS_CONF: feeds.conf.default                  # 自定义 Feed 配置文件名 (如果仓库根目录存在此文件)
   CONFIG_FILE: 6.12.config                        # 自定义 .config 配置文件名
   DIY_P1_SH: 6.12-part1.sh                        # 第一个自定义脚本文件名 (通常在 feeds update/install 之前运行)
-  DIY_P2_SH: 6.12-part2.sh                        # 第二个自定义脚本文件名 (通常在 feeds install 之后, make menuconfig 之前运行)
+  DIY_P2_SH: 6.12-part2.sh                        # 第二个自定义脚本文件名 (通常包含配置修改，应在 defconfig 后运行)
   UPLOAD_BIN_DIR: true                            # 是否上传包含 ipk 的 bin 目录整体压缩包
   UPLOAD_FIRMWARE: true                           # 是否上传编译好的固件文件
   # UPLOAD_COWTRANSFER: true                      # 是否上传到 CowTransfer (注意：实际上传代码需要自己添加)
@@ -47,10 +47,9 @@ jobs:
         run: |
           echo "初始磁盘空间:"
           df -hT
-          # 这些清理命令在 GitHub Runner 上是有效的
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt-get autoremove -y --purge # 移除孤立的包并清除配置
-          sudo apt-get clean # 清理 apt 缓存
+          sudo apt-get autoremove -y --purge
+          sudo apt-get clean
           echo "清理后磁盘空间:"
           df -hT
 
@@ -59,9 +58,7 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive # 设置为非交互模式，避免弹窗
         run: |
-          # 使用 Runner 默认的软件源通常更可靠，无需强制修改 sources.list
           sudo apt-get update
-          # 安装必要的编译依赖包 (列表已略作精简，如果缺少请加回)
           sudo apt-get install -y build-essential ccache cmake gettext-base gcc g++ \
             libc6-i386 libncurses5-dev libssl-dev libelf-dev libtool \
             binutils bison flex gawk gcc-multilib g++-multilib gettext git \
@@ -79,9 +76,7 @@ jobs:
       - name: 克隆 OpenWrt 源代码
         working-directory: /workdir # 指定工作目录
         run: |
-          # 使用 --depth 1 只克隆最新提交，加快下载速度
           git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-          # 创建软链接，方便后续引用
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
       # 步骤 5：检查必要的自定义文件是否存在
@@ -93,17 +88,14 @@ jobs:
           [ -f $DIY_P2_SH ] || { echo "❌ 错误: 自定义脚本 $DIY_P2_SH 未找到!"; exit 1; }
           echo "✅ 所有必要的自定义文件均已找到。"
 
-      # 步骤 6：加载自定义 Feed 配置并运行第一个 DIY 脚本
+      # 步骤 6：加载自定义 Feed 配置并运行第一个 DIY 脚本 (P1 通常用于添加 feeds 或早期修改)
       - name: 加载自定义 Feed 配置并运行 DIY 脚本 P1
         working-directory: openwrt # 指定在 openwrt 源码目录下运行
         run: |
-          # 如果仓库根目录存在自定义 Feed 配置文件，则移动到 openwrt 目录下
           if [ -f $GITHUB_WORKSPACE/$FEEDS_CONF ]; then
              mv $GITHUB_WORKSPACE/$FEEDS_CONF ./feeds.conf.default
              echo "已加载自定义 Feed 配置文件: $FEEDS_CONF"
           fi
-          # 赋予第一个 DIY 脚本执行权限并运行
-          # 假设 DIY_P1_SH 中的路径是相对于 openwrt 目录的
           chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
@@ -114,52 +106,36 @@ jobs:
           ./scripts/feeds update -a # 更新所有 Feeds
           ./scripts/feeds install -a # 安装所有 Feeds 中的包定义
 
-      # ========================================================================
-      # 警告: Go 版本覆盖 - 仅在绝对必要时使用!
-      # 此部分代码会覆盖 OpenWrt 构建系统默认的 Go 版本。
-      # 这可能导致编译不稳定或运行时出现问题。
-      # 请确认你的自定义包是否 *严格要求* 此新版 Go。
-      # 如果不需要，请删除或注释掉整个步骤。
-      # 需要在 workflow 文件顶部的 env 部分设置 OVERRIDE_GO_VERSION 和 OVERRIDE_GO_SHA256 才会生效。
-      # ========================================================================
+      # 步骤 7.5 (可选 Go 覆盖): 此步骤保持不变，如果启用，仍在 feeds install 之后
       - name: (可选) 覆盖 Go Bootstrap 版本
-        if: env.OVERRIDE_GO_VERSION != '' # 仅当设置了 OVERRIDE_GO_VERSION 环境变量时运行
-        working-directory: openwrt # 指定在 openwrt 目录下运行
+        if: env.OVERRIDE_GO_VERSION != ''
+        working-directory: openwrt
         run: |
+          # ... (Go 覆盖逻辑代码，同上一个版本) ...
           echo "### 警告：正在覆盖 Go Bootstrap 版本 ###"
-          # 尝试查找构建系统默认使用的 Go 压缩包文件名 (比硬编码 1.20.6 更健壮)
           DEFAULT_GO_TARBALL=$(find dl/ -name 'go1.*.linux-amd64.tar.gz' -print -quit)
           if [ -n "$DEFAULT_GO_TARBALL" ]; then
             DEFAULT_GO_FILENAME=$(basename "$DEFAULT_GO_TARBALL")
             echo "找到默认 Go 压缩包: $DEFAULT_GO_FILENAME"
             echo "将替换为 Go ${OVERRIDE_GO_VERSION}"
-            # 删除可能存在的旧 Go 压缩包或符号链接
-            rm -f "$DEFAULT_GO_TARBALL"
-            # 同时清理可能的旧 Go 源码包下载
-            rm -f dl/go*.src.tar.gz
-            # 清理 Go 相关的 host 构建缓存，以防万一
-            rm -rf build_dir/hostpkg/go-* staging_dir/hostpkg/go-*
-            # 下载并校验要覆盖的 Go 版本
+            rm -f "$DEFAULT_GO_TARBALL"; rm -f dl/go*.src.tar.gz; rm -rf build_dir/hostpkg/go-* staging_dir/hostpkg/go-*
             OVERRIDE_GO_FILENAME="go${OVERRIDE_GO_VERSION}.linux-amd64.tar.gz"
             wget -P dl "https://dl.google.com/go/${OVERRIDE_GO_FILENAME}"
             echo "${OVERRIDE_GO_SHA256}  dl/${OVERRIDE_GO_FILENAME}" | sha256sum -c || { echo "❌ 错误: Go ${OVERRIDE_GO_VERSION} 的 SHA256 校验失败!"; exit 1; }
-            # 创建一个符号链接，文件名使用 *原始* 构建系统期望的文件名，欺骗构建系统
             ln -sf "${OVERRIDE_GO_FILENAME}" "dl/${DEFAULT_GO_FILENAME}"
-            echo "✅ Go bootstrap 版本覆盖完成。构建系统将通过符号链接使用 ${OVERRIDE_GO_VERSION}。"
+            echo "✅ Go bootstrap 版本覆盖完成。"
           else
             echo "⚠️ 警告: 未能在 dl/ 目录中找到默认 Go 压缩包。跳过 Go 版本覆盖。"
-            # 如果覆盖是强制性的，可以在这里失败: exit 1
           fi
         env:
-            # 从 workflow 的 env 部分读取变量
             OVERRIDE_GO_VERSION: ${{ env.OVERRIDE_GO_VERSION }}
             OVERRIDE_GO_SHA256: ${{ env.OVERRIDE_GO_SHA256 }}
 
-      # 步骤 8：加载自定义配置并运行第二个 DIY 脚本
-      - name: 加载自定义配置并运行 DIY 脚本 P2
+      # 步骤 8: 加载自定义配置 .config 和 files 目录 (不运行 P2 脚本)
+      - name: 加载自定义配置 (.config 和 files)
         working-directory: openwrt # 指定在 openwrt 目录下运行
         run: |
-          # 如果仓库根目录存在 'files' 目录 (通常包含自定义文件，如 Wi-Fi 校准数据)，则移动到 openwrt 目录下
+          # 如果仓库根目录存在 'files' 目录，先移动
           if [ -d $GITHUB_WORKSPACE/files ]; then
              mv $GITHUB_WORKSPACE/files ./
              echo "已加载 'files' 目录中的自定义文件。"
@@ -167,204 +143,175 @@ jobs:
           # 将自定义 .config 文件复制到 openwrt 目录下
           mv $GITHUB_WORKSPACE/$CONFIG_FILE ./.config
           echo "已加载自定义 .config 文件: $CONFIG_FILE"
-          # 赋予第二个 DIY 脚本执行权限并运行
-          chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
-          $GITHUB_WORKSPACE/$DIY_P2_SH
 
       # 步骤 9：应用 .config 配置并下载依赖包
       - name: 应用 .config 配置并下载依赖包
         id: package # 给步骤设置 ID，方便后续引用其输出
         working-directory: openwrt # 指定在 openwrt 目录下运行
         run: |
-          make defconfig # 应用 .config 文件，并自动处理依赖关系
+          make defconfig # 应用 .config 文件，并自动处理依赖关系，生成基础文件
           echo "开始下载源码包..."
           make download -j$(nproc) V=s # 使用所有 CPU核心并行下载
-          # 清理下载失败或体积过小的文件 (好习惯)
+          # 清理下载失败或体积过小的文件
           echo "清理下载失败或不完整的文件..."
-          find dl -size -1024c -exec ls -l {} \; # 列出小文件
-          find dl -size -1024c -exec rm -f {} \; # 删除小文件
-          echo "package_status=success" >> $GITHUB_OUTPUT # 使用新的 GitHub Actions 输出语法
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+          echo "package_status=success" >> $GITHUB_OUTPUT
+
+      # 步骤 9.5: **在这里** 运行第二个 DIY 脚本 (P2 通常包含 sed 修改等操作)
+      # **** 这是关键的修改点 ****
+      # 将 P2 脚本的执行移到 `make defconfig` 之后，确保基础配置文件存在
+      - name: 运行 DIY 脚本 P2 (修改配置)
+        working-directory: openwrt # 确保仍在 openwrt 目录
+        run: |
+          echo "执行 DIY 脚本 P2 (在 defconfig 之后)..."
+          chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
+          $GITHUB_WORKSPACE/$DIY_P2_SH # 现在 sed 命令应该能找到文件了
 
       # 步骤 10：(可选预编译) 编译工具和工具链
-      # 注意: 这个步骤不是严格必需的，后续 `make` 命令会自动按需编译它们。
-      # 如果你特别需要分离这部分的日志，或者有其他特定原因，可以保留。否则可以移除以节省时间。
       - name: (可选预编译) 编译工具和工具链
         working-directory: openwrt
         run: |
             echo "开始编译工具..."
-            # 尝试并行编译，如果失败则单线程重试
             make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee -a tools_install.log
             echo "开始编译工具链..."
             make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee -a toolchain_install.log
 
-      # 步骤 11：上传工具链安装日志 (如果保留了步骤 10)
+      # 步骤 11：上传工具链安装日志
       - name: 上传工具链安装日志
-        if: always() # 无论步骤 10 是否成功，总是尝试上传日志
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-install-logs-${{ github.run_id }} # 日志文件名包含运行 ID
-          path: | # 上传路径下的文件
+          name: toolchain-install-logs-${{ github.run_id }}
+          path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
-          retention-days: 7 # 日志保留 7 天
+          retention-days: 7
 
       # 步骤 12：(可选) SSH 连接用于调试
       - name: SSH 连接用于调试
         uses: P3TERX/ssh2actions@v1.0.0
-        # 当手动触发时输入 ssh=true，或者事件包含 ssh 时触发
         if: (github.event.inputs.ssh == 'true') || contains(github.event.action, 'ssh')
         env:
-          # 需要在仓库 Secrets 中设置 TELEGRAM 相关变量才能收到通知
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
       # 步骤 13：编译固件
       - name: 编译固件
-        id: compile # 给步骤设置 ID
+        id: compile
         working-directory: openwrt
         run: |
           echo "开始使用 $(nproc) 个线程编译固件..."
-          # 尝试并行编译，如果失败则单线程重试，并将日志输出到文件和控制台
           make -j$(nproc) V=s 2>&1 | tee build.log || { echo "并行编译失败，尝试单线程重试..."; make -j1 V=s 2>&1 | tee -a build.log; }
-
           echo "检查编译结果..."
-          # 检查是否有目标平台的 EFI 固件生成 (根据你的配置是 x86_64 generic)
-          # 这里假设生成的固件名包含 generic-squashfs-combined-efi.img
           if ls bin/targets/*/*/*-generic-squashfs-combined-efi.img* 1> /dev/null 2>&1; then
               echo "✅ 固件编译成功。"
-              echo "compile_status=success" >> $GITHUB_OUTPUT # 输出状态供后续步骤使用
-              # 从 .config 文件提取设备名称 (通常比依赖目录结构更可靠)
-              # CONFIG_TARGET_xxxx_DEVICE_yyyyy=y
+              echo "compile_status=success" >> $GITHUB_OUTPUT
               DEVICE_NAME=$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' | head -n 1)
-              echo "DEVICE_NAME=_$DEVICE_NAME" >> $GITHUB_ENV # 设置环境变量
-              # 设置包含日期的文件后缀环境变量
+              echo "DEVICE_NAME=_$DEVICE_NAME" >> $GITHUB_ENV
               echo "FILE_DATE=_$(date +"%Y%m%d-%H%M")" >> $GITHUB_ENV
-              # 尝试从 manifest 文件提取内核版本 (更健壮的方式)
               MANIFEST_FILE=$(find bin/targets/*/*/ -maxdepth 1 -name '*manifest' -print -quit)
               if [ -n "$MANIFEST_FILE" ] && [ -f "$MANIFEST_FILE" ]; then
-                 # 提取 kernel = x.y.z-a-b... 中的 x.y.z 部分
                  KERNEL_VERSION=$(grep -o -m 1 '^kernel = .*' "$MANIFEST_FILE" | awk -F' = ' '{print $2}' | awk -F'-' '{print $1}')
-                 echo "KERNEL_VERSION_DETECTED=$KERNEL_VERSION" >> $GITHUB_ENV # 设置内核版本环境变量
+                 echo "KERNEL_VERSION_DETECTED=$KERNEL_VERSION" >> $GITHUB_ENV
                  echo "检测到内核版本: $KERNEL_VERSION"
               else
                  echo "⚠️ 警告: 未找到 manifest 文件，无法自动提取内核版本。"
-                 # 可以设置一个默认值或基于工作流名称的回退值
                  echo "KERNEL_VERSION_DETECTED=6.12-fallback" >> $GITHUB_ENV
               fi
           else
               echo "❌ 错误: 固件编译失败或未找到预期的 EFI 固件文件。"
               echo "compile_status=failure" >> $GITHUB_OUTPUT
-              exit 1 # 明确标记 Job 失败
+              exit 1
           fi
 
       # 步骤 14：上传编译日志
       - name: 上传编译日志
-        if: always() # 无论编译是否成功，总是上传日志
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # 日志文件名包含设备名和日期
-          path: openwrt/build.log # 上传 build.log 文件
-          retention-days: 7 # 日志保留 7 天
+          name: build-log${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/build.log
+          retention-days: 7
 
       # 步骤 15：准备固件目录以上传
       - name: 准备固件目录以上传
-        id: organize # 给步骤设置 ID
-        # 仅当编译成功时运行
+        id: organize
         if: steps.compile.outputs.compile_status == 'success'
         run: |
-          # 动态查找包含固件镜像的目录 (通常是 bin/targets/ARCH/SUBTARGET/ 或 images/ 子目录)
           FIRMWARE_DIR=$(find openwrt/bin/targets -type d -path '*/images' | head -n 1)
-          # 如果没有 'images' 子目录 (某些旧版本或架构可能不同)，尝试直接找 ARCH/SUBTARGET
           if [ -z "$FIRMWARE_DIR" ]; then
             FIRMWARE_DIR=$(find openwrt/bin/targets/*/* -maxdepth 0 -type d | head -n 1)
           fi
-
           if [ -d "$FIRMWARE_DIR" ]; then
             echo "找到固件目录: $FIRMWARE_DIR"
-            # （可选）移除固件目录下的 packages 子目录，如果只想上传固件本身
             rm -rf "$FIRMWARE_DIR/packages"
-            echo "FIRMWARE_PATH=$FIRMWARE_DIR" >> $GITHUB_ENV # 设置固件路径环境变量
+            echo "FIRMWARE_PATH=$FIRMWARE_DIR" >> $GITHUB_ENV
             echo "organize_status=success" >> $GITHUB_OUTPUT
           else
             echo "❌ 错误: 未能找到编译后的固件目录。"
             echo "organize_status=failure" >> $GITHUB_OUTPUT
-            exit 1 # 明确标记 Job 失败
+            exit 1
           fi
 
       # 步骤 16：(可选) 上传包含 IPK 的 BIN 目录整体压缩包
       - name: 上传 BIN 目录整体压缩包
-        # 仅当整理成功且 UPLOAD_BIN_DIR 设置为 true 时运行
         if: steps.organize.outputs.organize_status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # Artifact 名称
-          # 上传 openwrt/bin/targets/ 整个目录
+          name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin/targets/
-          retention-days: 7 # Artifact 保留 7 天
+          retention-days: 7
 
       # 步骤 17：上传固件 Artifact
       - name: 上传固件 Artifact
-        # 仅当整理成功且 UPLOAD_FIRMWARE 设置为 true 时运行
         if: steps.organize.outputs.organize_status == 'success' && env.UPLOAD_FIRMWARE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # Artifact 名称
-          path: ${{ env.FIRMWARE_PATH }} # 上传整理步骤中找到的固件目录
-          retention-days: 30 # 固件 Artifact 保留 30 天
+          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE_PATH }}
+          retention-days: 30
 
       # 步骤 18：生成 Release 标签和内容
       - name: 生成 Release 标签和内容
-        id: tag_release # 给步骤设置 ID
-        # 仅当整理成功且 UPLOAD_RELEASE 设置为 true 时运行
+        id: tag_release
         if: steps.organize.outputs.organize_status == 'success' && env.UPLOAD_RELEASE == 'true'
         run: |
-          # 创建基于日期的 Release 标签
           RELEASE_TAG="v$(date +%Y.%m.%d-%H%M)"
           echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          # 创建 Release 说明文件 (Markdown 格式)
           echo "### OpenWrt 固件编译" > release_body.md
           echo "**源码分支:** ${REPO_BRANCH}" >> release_body.md
           echo "**编译时间:** $(date '+%Y-%m-%d %H:%M:%S %Z')" >> release_body.md
           echo "**内核版本:** ${{ env.KERNEL_VERSION_DETECTED }}" >> release_body.md
           echo "" >> release_body.md
-          # 这里可以添加其他信息，比如 Artifact 的链接 (获取链接比较复杂，暂不添加)
           echo "release_status=success" >> $GITHUB_OUTPUT
 
       # 步骤 19：发布 Release 到 GitHub
       - name: 发布 Release 到 GitHub
-        # 仅当生成 Release 内容成功时运行
         if: steps.tag_release.outputs.release_status == 'success'
         uses: softprops/action-gh-release@v1
         env:
-          # 使用 Personal Access Token (PAT) 来创建 Release，权限需要 repo or public_repo
-          # 不要直接使用 GITHUB_TOKEN，它可能没有创建 Release 的权限
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }} # 使用有权限的 PAT
         with:
-          # Release 的名称
           name: "OpenWrt ${{ env.KERNEL_VERSION_DETECTED }}${{ env.DEVICE_NAME }} ${{ env.FILE_DATE }}"
-          # Release 的标签名 (来自上一步的输出)
           tag_name: ${{ steps.tag_release.outputs.RELEASE_TAG }}
-          # Release 的说明内容 (来自上一步生成的 Markdown 文件)
           body_path: release_body.md
-          # 要附加到 Release 的文件 (上传固件目录下的所有文件)
           files: ${{ env.FIRMWARE_PATH }}/*
 
       # 步骤 20：清理旧的 Workflow 运行记录
       - name: 清理旧的 Workflow 运行记录
         uses: GitRML/delete-workflow-runs@main
-        if: always() # 总是运行此步骤，即使编译失败
+        if: always()
         with:
-          retain_days: 3 # 保留最近 3 天的运行记录
-          keep_minimum_runs: 5 # 至少保留 5 次运行记录
+          retain_days: 3
+          keep_minimum_runs: 5
 
       # 步骤 21：清理旧的 Release
       - name: 清理旧的 Release
         uses: dev-drprasad/delete-older-releases@master
-        # 仅当上传 Release 设置为 true 且整理步骤成功时运行 (表示可能已创建 Release)
         if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.organize_status == 'success'
         env:
-          # 删除 Release 需要有足够权限的 Token (例如上面使用的 RELEASE_TOKEN)
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }} # 使用有权限的 PAT
         with:
-          keep_latest: 15 # 保留最新的 15 个 Release
-          delete_tags: true # 同时删除关联的 Git 标签
+          keep_latest: 15
+          delete_tags: true
