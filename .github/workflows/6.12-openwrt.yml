@@ -1,317 +1,281 @@
-# 工作流名称：优化后的 OpenWrt 6.12 编译流程 (修正 DIY_P2_SH 时机)
-name: Build OpenWrt 6.12 Optimized (Fixed P2 Timing)
+name: Build 6.12-OpenWrt
 
 on:
-  repository_dispatch: # 可通过 API 触发
-  workflow_dispatch:   # 可手动触发
+  repository_dispatch:
+  workflow_dispatch:
     inputs:
       ssh:
-        description: '是否启用 SSH 连接到 Actions (用于调试)'
+        description: "SSH connection to Actions"
         required: false
         default: "false"
   schedule:
-    - cron: '0 19 * * *' # 北京时间每天凌晨 3:00 (UTC 时间 19:00) 自动运行
+    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
   watch:
-    types: [started] # 当有人 Star 仓库时触发 (可选)
+    types: [started]
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede # OpenWrt 源码仓库地址
-  REPO_BRANCH: master                             # OpenWrt 源码分支
-  FEEDS_CONF: feeds.conf.default                  # 自定义 Feed 配置文件名 (如果仓库根目录存在此文件)
-  CONFIG_FILE: 6.12.config                        # 自定义 .config 配置文件名
-  DIY_P1_SH: 6.12-part1.sh                        # 第一个自定义脚本文件名 (通常在 feeds update/install 之前运行)
-  DIY_P2_SH: 6.12-part2.sh                        # 第二个自定义脚本文件名 (通常包含配置修改，应在 defconfig 后运行)
-  UPLOAD_BIN_DIR: true                            # 是否上传包含 ipk 的 bin 目录整体压缩包
-  UPLOAD_FIRMWARE: true                           # 是否上传编译好的固件文件
-  # UPLOAD_COWTRANSFER: true                      # 是否上传到 CowTransfer (注意：实际上传代码需要自己添加)
-  # UPLOAD_WETRANSFER: true                       # 是否上传到 WeTransfer (注意：实际上传代码需要自己添加)
-  UPLOAD_RELEASE: true                            # 是否发布 Release 到 GitHub
-  TZ: Asia/Shanghai                               # 设置时区为亚洲/上海
-
-  # --- Go 版本覆盖环境变量 (仅在绝对必要时取消注释并设置) ---
-  # WARNING: 覆盖 OpenWrt 默认的 Go 版本可能导致编译不稳定或失败！
-  # 仅当你确认某个自定义包必须使用新版 Go 且无法兼容默认版本时才使用。
-  # OVERRIDE_GO_VERSION: "1.24.1"                   # 要覆盖的目标 Go 版本
-  # OVERRIDE_GO_SHA256: "76f2c4a92e293cf2d4df8690a94514e1a6f6f5b784e8216cb683961c76bd437c" # 目标 Go 版本的 SHA256 哈希值
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: 6.12.config
+  DIY_P1_SH: 6.12-part1.sh
+  DIY_P2_SH: 6.12-part2.sh
+  UPLOAD_BIN_DIR: true
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: true
+  UPLOAD_WETRANSFER: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # 使用 Ubuntu 22.04 运行环境
+    runs-on: ubuntu-22.04   # 使用 Ubuntu 22.04
     steps:
-      # 步骤 1：检出仓库代码
-      - name: 检出仓库代码
+      # 检查项目分支并获取代码
+      - name: 检查项目分支
         uses: actions/checkout@v4
 
-      # 步骤 2：释放更多磁盘空间
-      - name: 释放更多磁盘空间
+      # 清理更多空间
+      - name: 清理更多空间
         run: |
-          echo "初始磁盘空间:"
-          df -hT
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt-get autoremove -y --purge
-          sudo apt-get clean
-          echo "清理后磁盘空间:"
           df -hT
 
-      # 步骤 3：安装编译依赖
-      - name: 安装编译依赖
+      # 安装编译环境
+      - name: 安装编译环境
         env:
-          DEBIAN_FRONTEND: noninteractive # 设置为非交互模式，避免弹窗
+          DEBIAN_FRONTEND: noninteractive
         run: |
+          sudo bash -c 'cat > /etc/apt/sources.list << EOF
+          deb http://archive.ubuntu.com/ubuntu jammy main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-updates main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
+          EOF'
           sudo apt-get update
-          sudo apt-get install -y build-essential ccache cmake gettext-base gcc g++ \
-            libc6-i386 libncurses5-dev libssl-dev libelf-dev libtool \
-            binutils bison flex gawk gcc-multilib g++-multilib gettext git \
-            libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
-            libmpfr-dev libncursesw5-dev libpython3-dev libreadline-dev \
+          sudo apt-get install -y libc6-i386 gettext-base gcc g++ make ccache cmake \
+            device-tree-compiler binutils bison flex zlib1g-dev libssl-dev libtool \
+            ack antlr3 asciidoc autoconf automake autopoint bzip2 curl gawk \
+            gcc-multilib g++-multilib gettext git gperf haveged help2man intltool \
+            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
             lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
             python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools \
-            subversion unzip vim wget zlib1g-dev device-tree-compiler \
-            upx-ucl
-          sudo timedatectl set-timezone "$TZ" # 设置系统时区
-          sudo mkdir -p /workdir # 创建工作目录
-          sudo chown $USER:$GROUPS /workdir # 修改工作目录权限
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo apt-get check
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
 
-      # 步骤 4：克隆 OpenWrt 源代码
-      - name: 克隆 OpenWrt 源代码
-        working-directory: /workdir # 指定工作目录
+      # 下载固件源码
+      - name: 下载固件源码
+        working-directory: /workdir
         run: |
-          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+          df -hT $PWD
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-      # 步骤 5：检查必要的自定义文件是否存在
-      - name: 检查自定义文件是否存在
+      # 清理旧的构建目录
+      - name: 清理旧的构建目录
         run: |
-          echo "检查必要的自定义文件..."
-          [ -f $CONFIG_FILE ] || { echo "❌ 错误: 自定义配置文件 $CONFIG_FILE 未找到!"; exit 1; }
-          [ -f $DIY_P1_SH ] || { echo "❌ 错误: 自定义脚本 $DIY_P1_SH 未找到!"; exit 1; }
-          [ -f $DIY_P2_SH ] || { echo "❌ 错误: 自定义脚本 $DIY_P2_SH 未找到!"; exit 1; }
-          echo "✅ 所有必要的自定义文件均已找到。"
+          rm -rf openwrt/staging_dir openwrt/build_dir
 
-      # 步骤 6：加载自定义 Feed 配置并运行第一个 DIY 脚本 (P1 通常用于添加 feeds 或早期修改)
-      - name: 加载自定义 Feed 配置并运行 DIY 脚本 P1
-        working-directory: openwrt # 指定在 openwrt 源码目录下运行
+      # 检查自定义文件是否存在
+      - name: 检查自定义配置文件
         run: |
-          if [ -f $GITHUB_WORKSPACE/$FEEDS_CONF ]; then
-             mv $GITHUB_WORKSPACE/$FEEDS_CONF ./feeds.conf.default
-             echo "已加载自定义 Feed 配置文件: $FEEDS_CONF"
-          fi
-          chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
+          ls -l $GITHUB_WORKSPACE/
+          [ -f $CONFIG_FILE ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
+          [ -f $DIY_P1_SH ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
+          [ -f $DIY_P2_SH ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+
+      # 加载自定义设置
+      - name: 加载自定义设置
+        run: |
+          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x $DIY_P1_SH
+          cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
-      # 步骤 7：更新并安装 Feeds
-      - name: 更新并安装 Feeds
-        working-directory: openwrt # 指定在 openwrt 目录下运行
+      # 下载插件
+      - name: 下载插件
         run: |
-          ./scripts/feeds update -a # 更新所有 Feeds
-          ./scripts/feeds install -a # 安装所有 Feeds 中的包定义
+          cd openwrt
+          ./scripts/feeds update -a
 
-      # 步骤 7.5 (可选 Go 覆盖): 此步骤保持不变，如果启用，仍在 feeds install 之后
-      - name: (可选) 覆盖 Go Bootstrap 版本
-        if: env.OVERRIDE_GO_VERSION != ''
-        working-directory: openwrt
+      # 读取插件
+      - name: 读取插件
         run: |
-          # ... (Go 覆盖逻辑代码，同上一个版本) ...
-          echo "### 警告：正在覆盖 Go Bootstrap 版本 ###"
-          DEFAULT_GO_TARBALL=$(find dl/ -name 'go1.*.linux-amd64.tar.gz' -print -quit)
-          if [ -n "$DEFAULT_GO_TARBALL" ]; then
-            DEFAULT_GO_FILENAME=$(basename "$DEFAULT_GO_TARBALL")
-            echo "找到默认 Go 压缩包: $DEFAULT_GO_FILENAME"
-            echo "将替换为 Go ${OVERRIDE_GO_VERSION}"
-            rm -f "$DEFAULT_GO_TARBALL"; rm -f dl/go*.src.tar.gz; rm -rf build_dir/hostpkg/go-* staging_dir/hostpkg/go-*
-            OVERRIDE_GO_FILENAME="go${OVERRIDE_GO_VERSION}.linux-amd64.tar.gz"
-            wget -P dl "https://dl.google.com/go/${OVERRIDE_GO_FILENAME}"
-            echo "${OVERRIDE_GO_SHA256}  dl/${OVERRIDE_GO_FILENAME}" | sha256sum -c || { echo "❌ 错误: Go ${OVERRIDE_GO_VERSION} 的 SHA256 校验失败!"; exit 1; }
-            ln -sf "${OVERRIDE_GO_FILENAME}" "dl/${DEFAULT_GO_FILENAME}"
-            echo "✅ Go bootstrap 版本覆盖完成。"
-          else
-            echo "⚠️ 警告: 未能在 dl/ 目录中找到默认 Go 压缩包。跳过 Go 版本覆盖。"
+          cd openwrt
+          ./scripts/feeds install -a
+
+      # 清理 Golang host 构建缓存
+      - name: 清理 Golang host 构建缓存
+        run: |
+          cd openwrt
+          rm -rf build_dir/hostpkg/go-1.24.0
+          rm -rf dl/go1.20.6.linux-amd64.tar.gz dl/go1.24.0.src.tar.gz
+
+      # 下载并安装工具链
+      - name: 下载并安装工具链
+        run: |
+          cd openwrt
+          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.1
+          GO_BOOTSTRAP_VERSION="1.24.1"
+          GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
+          GO_BOOTSTRAP_HASH="76f2c4a92e293cf2d4df8690a94514e1a6f6f5b784e8216cb683961c76bd437c"
+          if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
+            echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
+            rm -f dl/go1.20.6.linux-amd64.tar.gz
+            wget -P dl $GO_BOOTSTRAP_URL
+            echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
+            ln -sf go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz dl/go1.20.6.linux-amd64.tar.gz
           fi
-        env:
-            OVERRIDE_GO_VERSION: ${{ env.OVERRIDE_GO_VERSION }}
-            OVERRIDE_GO_SHA256: ${{ env.OVERRIDE_GO_SHA256 }}
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
-      # 步骤 8: 加载自定义配置 .config 和 files 目录 (不运行 P2 脚本)
-      - name: 加载自定义配置 (.config 和 files)
-        working-directory: openwrt # 指定在 openwrt 目录下运行
-        run: |
-          # 如果仓库根目录存在 'files' 目录，先移动
-          if [ -d $GITHUB_WORKSPACE/files ]; then
-             mv $GITHUB_WORKSPACE/files ./
-             echo "已加载 'files' 目录中的自定义文件。"
-          fi
-          # 将自定义 .config 文件复制到 openwrt 目录下
-          mv $GITHUB_WORKSPACE/$CONFIG_FILE ./.config
-          echo "已加载自定义 .config 文件: $CONFIG_FILE"
-
-      # 步骤 9：应用 .config 配置并下载依赖包
-      - name: 应用 .config 配置并下载依赖包
-        id: package # 给步骤设置 ID，方便后续引用其输出
-        working-directory: openwrt # 指定在 openwrt 目录下运行
-        run: |
-          make defconfig # 应用 .config 文件，并自动处理依赖关系，生成基础文件
-          echo "开始下载源码包..."
-          make download -j$(nproc) V=s # 使用所有 CPU核心并行下载
-          # 清理下载失败或体积过小的文件
-          echo "清理下载失败或不完整的文件..."
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
-          echo "package_status=success" >> $GITHUB_OUTPUT
-
-      # 步骤 9.5: **在这里** 运行第二个 DIY 脚本 (P2 通常包含 sed 修改等操作)
-      # **** 这是关键的修改点 ****
-      # 将 P2 脚本的执行移到 `make defconfig` 之后，确保基础配置文件存在
-      - name: 运行 DIY 脚本 P2 (修改配置)
-        working-directory: openwrt # 确保仍在 openwrt 目录
-        run: |
-          echo "执行 DIY 脚本 P2 (在 defconfig 之后)..."
-          chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
-          $GITHUB_WORKSPACE/$DIY_P2_SH # 现在 sed 命令应该能找到文件了
-
-      # 步骤 10：(可选预编译) 编译工具和工具链
-      - name: (可选预编译) 编译工具和工具链
-        working-directory: openwrt
-        run: |
-            echo "开始编译工具..."
-            make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee -a tools_install.log
-            echo "开始编译工具链..."
-            make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee -a toolchain_install.log
-
-      # 步骤 11：上传工具链安装日志
+      # 上传工具链安装日志
       - name: 上传工具链安装日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-install-logs-${{ github.run_id }}
+          name: toolchain-install-logs
           path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
-          retention-days: 7
 
-      # 步骤 12：(可选) SSH 连接用于调试
-      - name: SSH 连接用于调试
+      - name: 更改设置
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          chmod +x $DIY_P2_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+      # SSH 链接管理（可选）
+      - name: SSH链接管理
         uses: P3TERX/ssh2actions@v1.0.0
-        if: (github.event.inputs.ssh == 'true') || contains(github.event.action, 'ssh')
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      # 步骤 13：编译固件
-      - name: 编译固件
-        id: compile
-        working-directory: openwrt
+      # 下载安装包
+      - name: 下载安装包
+        id: package
         run: |
-          echo "开始使用 $(nproc) 个线程编译固件..."
-          make -j$(nproc) V=s 2>&1 | tee build.log || { echo "并行编译失败，尝试单线程重试..."; make -j1 V=s 2>&1 | tee -a build.log; }
-          echo "检查编译结果..."
-          if ls bin/targets/*/*/*-generic-squashfs-combined-efi.img* 1> /dev/null 2>&1; then
-              echo "✅ 固件编译成功。"
-              echo "compile_status=success" >> $GITHUB_OUTPUT
-              DEVICE_NAME=$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' | head -n 1)
-              echo "DEVICE_NAME=_$DEVICE_NAME" >> $GITHUB_ENV
-              echo "FILE_DATE=_$(date +"%Y%m%d-%H%M")" >> $GITHUB_ENV
-              MANIFEST_FILE=$(find bin/targets/*/*/ -maxdepth 1 -name '*manifest' -print -quit)
-              if [ -n "$MANIFEST_FILE" ] && [ -f "$MANIFEST_FILE" ]; then
-                 KERNEL_VERSION=$(grep -o -m 1 '^kernel = .*' "$MANIFEST_FILE" | awk -F' = ' '{print $2}' | awk -F'-' '{print $1}')
-                 echo "KERNEL_VERSION_DETECTED=$KERNEL_VERSION" >> $GITHUB_ENV
-                 echo "检测到内核版本: $KERNEL_VERSION"
-              else
-                 echo "⚠️ 警告: 未找到 manifest 文件，无法自动提取内核版本。"
-                 echo "KERNEL_VERSION_DETECTED=6.12-fallback" >> $GITHUB_ENV
-              fi
-          else
-              echo "❌ 错误: 固件编译失败或未找到预期的 EFI 固件文件。"
-              echo "compile_status=failure" >> $GITHUB_OUTPUT
-              exit 1
-          fi
+          cd openwrt
+          make defconfig
+          make download -j16 V=s 2>&1 | tee download.log
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
 
-      # 步骤 14：上传编译日志
-      - name: 上传编译日志
+      # 检查磁盘空间
+      - name: 检查磁盘空间
+        run: |
+          df -hT
+
+      # 开始编译固件
+      - name: 开始编译固件
+        id: compile
+        run: |
+          cd openwrt
+          echo -e "Compiling with $(nproc) threads"
+          make -j$(nproc) V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
+          echo "Checking generated firmware:"
+          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
+          echo "status=success" >> $GITHUB_ENV
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      # 上传构建日志
+      - name: 上传构建日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: build-log
           path: openwrt/build.log
-          retention-days: 7
 
-      # 步骤 15：准备固件目录以上传
-      - name: 准备固件目录以上传
-        id: organize
-        if: steps.compile.outputs.compile_status == 'success'
+      # 获取内核版本号
+      - name: 获取内核版本号
+        if: env.status == 'success'
         run: |
-          FIRMWARE_DIR=$(find openwrt/bin/targets -type d -path '*/images' | head -n 1)
-          if [ -z "$FIRMWARE_DIR" ]; then
-            FIRMWARE_DIR=$(find openwrt/bin/targets/*/* -maxdepth 0 -type d | head -n 1)
-          fi
-          if [ -d "$FIRMWARE_DIR" ]; then
-            echo "找到固件目录: $FIRMWARE_DIR"
-            rm -rf "$FIRMWARE_DIR/packages"
-            echo "FIRMWARE_PATH=$FIRMWARE_DIR" >> $GITHUB_ENV
-            echo "organize_status=success" >> $GITHUB_OUTPUT
-          else
-            echo "❌ 错误: 未能找到编译后的固件目录。"
-            echo "organize_status=failure" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
+          echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
 
-      # 步骤 16：(可选) 上传包含 IPK 的 BIN 目录整体压缩包
-      - name: 上传 BIN 目录整体压缩包
-        if: steps.organize.outputs.organize_status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      # 查看磁盘使用情况
+      - name: 查看磁盘使用情况
+        if: (!cancelled())
+        run: |
+          df -hT
+
+      # 上传 bin 压缩目录
+      - name: 上传bin压缩目录
         uses: actions/upload-artifact@v4
+        if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         with:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: openwrt/bin/targets/
-          retention-days: 7
+          path: openwrt/bin
 
-      # 步骤 17：上传固件 Artifact
-      - name: 上传固件 Artifact
-        if: steps.organize.outputs.organize_status == 'success' && env.UPLOAD_FIRMWARE == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE_PATH }}
-          retention-days: 30
-
-      # 步骤 18：生成 Release 标签和内容
-      - name: 生成 Release 标签和内容
-        id: tag_release
-        if: steps.organize.outputs.organize_status == 'success' && env.UPLOAD_RELEASE == 'true'
+      # 整理编译好的固件
+      - name: 整理编译好的固件
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
-          RELEASE_TAG="v$(date +%Y.%m.%d-%H%M)"
-          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "### OpenWrt 固件编译" > release_body.md
-          echo "**源码分支:** ${REPO_BRANCH}" >> release_body.md
-          echo "**编译时间:** $(date '+%Y-%m-%d %H:%M:%S %Z')" >> release_body.md
-          echo "**内核版本:** ${{ env.KERNEL_VERSION_DETECTED }}" >> release_body.md
-          echo "" >> release_body.md
-          echo "release_status=success" >> $GITHUB_OUTPUT
+          if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
+            cd openwrt/bin/targets/*/*
+            rm -rf packages
+            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+            echo "status=success" >> $GITHUB_ENV
+          else
+            echo "No firmware found in openwrt/bin/targets/"
+            echo "status=failure" >> $GITHUB_ENV
+          fi
 
-      # 步骤 19：发布 Release 到 GitHub
-      - name: 发布 Release 到 GitHub
-        if: steps.tag_release.outputs.release_status == 'success'
+      # 上传固件到github
+      - name: 上传固件到github
+        uses: actions/upload-artifact@v4
+        if: env.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt-6.12${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      # 创建 Release 标签
+      - name: 创建 Release标签
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        run: |
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          touch release.txt
+          [ "$UPLOAD_COWTRANSFER" = true ] && echo "Cowtransfer enabled" >> release.txt
+          echo "status=success" >> $GITHUB_ENV
+
+      # 发布至 Release
+      - name: 发布至 Release
         uses: softprops/action-gh-release@v1
+        if: env.status == 'success' && !cancelled()
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }} # 使用有权限的 PAT
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
-          name: "OpenWrt ${{ env.KERNEL_VERSION_DETECTED }}${{ env.DEVICE_NAME }} ${{ env.FILE_DATE }}"
-          tag_name: ${{ steps.tag_release.outputs.RELEASE_TAG }}
-          body_path: release_body.md
-          files: ${{ env.FIRMWARE_PATH }}/*
+          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12}}-X86-64_${{ env.FILE_DATE }}
+          tag_name: ${{ env.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
 
-      # 步骤 20：清理旧的 Workflow 运行记录
-      - name: 清理旧的 Workflow 运行记录
+      # 删除工作流运行
+      - name: 删除工作流运行
         uses: GitRML/delete-workflow-runs@main
-        if: always()
         with:
-          retain_days: 3
-          keep_minimum_runs: 5
+          retain_days: 1
+          keep_minimum_runs: 3
 
-      # 步骤 21：清理旧的 Release
-      - name: 清理旧的 Release
+      # 删除旧的Releases
+      - name: 删除旧的Releases
         uses: dev-drprasad/delete-older-releases@master
-        if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.organize_status == 'success'
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }} # 使用有权限的 PAT
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          keep_latest: 15
+          keep_latest: 30
           delete_tags: true
