@@ -130,10 +130,10 @@ jobs:
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.1
-          GO_BOOTSTRAP_VERSION="1.24.1"
+          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.2
+          GO_BOOTSTRAP_VERSION="1.24.2"
           GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
-          GO_BOOTSTRAP_HASH="76f2c4a92e293cf2d4df8690a94514e1a6f6f5b784e8216cb683961c76bd437c"
+          GO_BOOTSTRAP_HASH="68097bd680839cbc9d464a0edce4f7c333975e27a90246890e9f1078c7e702ad" 
           if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
             echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
             rm -f dl/go1.20.6.linux-amd64.tar.gz
