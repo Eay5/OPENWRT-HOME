@@ -130,17 +130,18 @@ jobs:
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.2
-          GO_BOOTSTRAP_VERSION="1.24.2"
+          # 使用最新版 Go 1.24.5
+          GO_BOOTSTRAP_VERSION="1.24.5"
           GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
-          GO_BOOTSTRAP_HASH="68097bd680839cbc9d464a0edce4f7c333975e27a90246890e9f1078c7e702ad"
-          if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
-            echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
-            rm -f dl/go1.20.6.linux-amd64.tar.gz
-            wget -P dl "$GO_BOOTSTRAP_URL"
-            echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
-            ln -sf "go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" dl/go1.20.6.linux-amd64.tar.gz
-          fi
+          GO_BOOTSTRAP_HASH="10ad9e86233e74c0f6590fe5426895de6bf388964210eac34a6d83f38918ecdc"
+          
+          # 清理旧的 Go 文件
+          rm -f dl/go*.tar.gz
+          
+          # 下载新版本 Go
+          wget -P dl "$GO_BOOTSTRAP_URL"
+          echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
+          
           make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
