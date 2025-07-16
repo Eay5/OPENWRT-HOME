@@ -7,7 +7,7 @@ rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
 
 # 添加自定义 Golang 包以解决依赖问题
-git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
+git clone https://github.com/sbwml/packages_lang_golang -b 24.x feeds/packages/lang/golang
 
 # 确保 SSR Plus+ 核心组件可用
 ./scripts/feeds install -a -p small
