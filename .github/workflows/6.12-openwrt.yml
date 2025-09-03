@@ -113,8 +113,9 @@ jobs:
       - name: 清理 Golang host 构建缓存
         run: |
           cd openwrt
-          rm -rf build_dir/hostpkg/go-1.24.0
+          rm -rf build_dir/hostpkg/go-*
           rm -rf dl/go*.tar.gz
+          echo "已清理旧版本Go缓存，支持Go 1.25.0"
 
       # 下载并安装工具链
       - name: 下载并安装工具链
