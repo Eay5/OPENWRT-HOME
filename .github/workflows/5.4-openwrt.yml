@@ -113,13 +113,13 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 清理 Golang host 构建缓存
+      # 清理 Golang host 构建缓存（Passwall优化）
       - name: 清理 Golang host 构建缓存
         run: |
           cd openwrt
           rm -rf build_dir/hostpkg/go-*
           rm -rf dl/go*.tar.gz
-          echo "已清理旧版本Go缓存，支持Go 1.25.0"
+          echo "已清理Go缓存，使用kenzok8/golang仓库版本"
 
       # 下载并安装工具链
       - name: 下载并安装工具链
@@ -196,7 +196,7 @@ jobs:
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3)
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3 2>/dev/null || echo "5.4")
           echo "KERNEL_VERSION_5_4=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况

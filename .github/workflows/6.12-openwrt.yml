@@ -1,3 +1,13 @@
+#
+# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+# Description: Build OpenWrt using GitHub Actions
+#
+
 name: Build 6.12-OpenWrt
 
 on:
@@ -62,11 +72,6 @@ jobs:
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
-      # 安装额外依赖
-      - name: 安装额外依赖
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y zlib1g-dev libz-dev
 
       # 下载固件源码
       - name: 下载固件源码
@@ -85,15 +90,15 @@ jobs:
       - name: 检查自定义配置文件
         run: |
           ls -l $GITHUB_WORKSPACE/
-          [ -f $CONFIG_FILE ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
-          [ -f $DIY_P1_SH ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
-          [ -f $DIY_P2_SH ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
 
       # 加载自定义设置
       - name: 加载自定义设置
         run: |
-          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-          chmod +x $DIY_P1_SH
+          [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+          chmod +x "$DIY_P1_SH"
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
@@ -109,13 +114,13 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 清理 Golang host 构建缓存
+      # 清理 Golang host 构建缓存（Passwall优化）
       - name: 清理 Golang host 构建缓存
         run: |
           cd openwrt
           rm -rf build_dir/hostpkg/go-*
           rm -rf dl/go*.tar.gz
-          echo "已清理旧版本Go缓存，支持Go 1.25.0"
+          echo "已清理Go缓存，使用kenzok8/golang仓库版本"
 
       # 下载并安装工具链
       - name: 下载并安装工具链
@@ -137,8 +142,8 @@ jobs:
       - name: 更改设置
         run: |
           [ -e files ] && mv files openwrt/files
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-          chmod +x $DIY_P2_SH
+          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+          chmod +x "$DIY_P2_SH"
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
@@ -191,7 +196,7 @@ jobs:
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3 2>/dev/null || echo "6.12")
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况
