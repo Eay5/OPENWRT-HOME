@@ -72,7 +72,6 @@ jobs:
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
-
       # 下载固件源码
       - name: 下载固件源码
         working-directory: /workdir
@@ -196,7 +195,7 @@ jobs:
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3 2>/dev/null || echo "6.12")
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6' openwrt/include/kernel-6.* | grep '6\.12' | cut -d' ' -f3 2>/dev/null || echo "6.12")
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况
