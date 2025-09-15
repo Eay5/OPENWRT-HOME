@@ -46,24 +46,16 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo bash -c 'cat > /etc/apt/sources.list << EOF
-          deb http://archive.ubuntu.com/ubuntu jammy main universe multiverse restricted
-          deb http://archive.ubuntu.com/ubuntu jammy-updates main universe multiverse restricted
-          deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
-          EOF'
-          sudo apt-get update
-          sudo apt-get install -y libc6-i386 gettext-base gcc g++ make ccache cmake \
-            device-tree-compiler binutils bison flex zlib1g-dev libssl-dev libtool \
-            ack antlr3 asciidoc autoconf automake autopoint bzip2 curl gawk \
-            gcc-multilib g++-multilib gettext git gperf haveged help2man intltool \
-            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
-            libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
-            lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
-            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools \
-            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          sudo apt-get check
+          docker rmi `docker images -q`
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
+          sudo -E apt-mark hold grub-efi-amd64-signed
+          sudo -E apt update
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
+          sudo -E apt -y full-upgrade
+          sudo -E apt -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E systemctl daemon-reload
+          sudo -E apt -y autoremove --purge
+          sudo -E apt clean
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
@@ -115,24 +107,6 @@ jobs:
           cd openwrt
           rm -rf build_dir/hostpkg/go-1.24.0
           rm -rf dl/go1.20.6.linux-amd64.tar.gz dl/go1.24.0.src.tar.gz
-
-      # 下载并安装工具链
-      - name: 下载并安装工具链
-        run: |
-          cd openwrt
-          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.2
-          GO_BOOTSTRAP_VERSION="1.24.2"
-          GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
-          GO_BOOTSTRAP_HASH="76f2c4a92e293cf2d4df8690a94514e1a6f6f5b784e8216cb683961c76bd437c"
-          if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
-            echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
-            rm -f dl/go1.20.6.linux-amd64.tar.gz
-            wget -P dl $GO_BOOTSTRAP_URL
-            echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
-            ln -sf go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz dl/go1.20.6.linux-amd64.tar.gz
-          fi
-          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
-          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
       # 上传工具链安装日志
       - name: 上传工具链安装日志
