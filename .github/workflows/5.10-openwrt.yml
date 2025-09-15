@@ -56,15 +56,21 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo -E apt-get -qq update
-          sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-            git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+          sudo bash -c 'cat > /etc/apt/sources.list << EOF
+          deb http://archive.ubuntu.com/ubuntu jammy main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-updates main universe multiverse restricted
+          deb http://archive.ubuntu.com/ubuntu jammy-security main universe multiverse restricted
+          EOF'
+          sudo apt-get update
+          sudo apt-get install -y libc6-i386 gettext-base gcc g++ make ccache cmake \
+            device-tree-compiler binutils bison flex zlib1g-dev libssl-dev libtool \
+            ack antlr3 asciidoc autoconf automake autopoint bzip2 curl gawk \
+            gcc-multilib g++-multilib gettext git gperf haveged help2man intltool \
+            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
             lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
             python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools \
-            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd
           sudo apt-get autoremove -y
           sudo apt-get clean
           sudo apt-get check
@@ -113,18 +119,28 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 清理 Golang host 构建缓存（Passwall优化）
+      # 清理 Golang host 构建缓存
       - name: 清理 Golang host 构建缓存
         run: |
           cd openwrt
-          rm -rf build_dir/hostpkg/go-*
-          rm -rf dl/go*.tar.gz
-          echo "已清理Go缓存，使用kenzok8/golang仓库版本"
+          rm -rf build_dir/hostpkg/go-1.24.0
+          rm -rf dl/go1.20.6.linux-amd64.tar.gz dl/go1.24.0.src.tar.gz
 
       # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
           cd openwrt
+          # 检查并替换默认的 Go bootstrap 版本为最新版 1.24.2
+          GO_BOOTSTRAP_VERSION="1.24.2"
+          GO_BOOTSTRAP_URL="https://dl.google.com/go/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz"
+          GO_BOOTSTRAP_HASH="68097bd680839cbc9d464a0edce4f7c333975e27a90246890e9f1078c7e702ad"
+          if [ -f "dl/go1.20.6.linux-amd64.tar.gz" ]; then
+            echo "Replacing Go 1.20.6 with Go ${GO_BOOTSTRAP_VERSION}"
+            rm -f dl/go1.20.6.linux-amd64.tar.gz
+            wget -P dl "$GO_BOOTSTRAP_URL"
+            echo "$GO_BOOTSTRAP_HASH  dl/go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" | sha256sum -c || exit 1
+            ln -sf "go${GO_BOOTSTRAP_VERSION}.linux-amd64.tar.gz" dl/go1.20.6.linux-amd64.tar.gz
+          fi
           make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
@@ -196,7 +212,7 @@ jobs:
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.10' openwrt/include/kernel-5.10 | cut -d' ' -f3 2>/dev/null || echo "5.10")
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.10' openwrt/include/kernel-5.10 | cut -d' ' -f3)
           echo "KERNEL_VERSION_5_10=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况
