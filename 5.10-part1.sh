@@ -9,7 +9,7 @@ rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
 
 # 使用 sbwml 的 golang 仓库（24.x，兼容 xray-core）
-git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
+git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
 
 # 安装所有 feeds
 ./scripts/feeds install -a
