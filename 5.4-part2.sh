@@ -11,5 +11,5 @@ sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/
 #name
 sed -i "/option hostname/s/'LEDE'/'EAY'/" package/base-files/files/etc/config/system
 
-sed "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
+sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 

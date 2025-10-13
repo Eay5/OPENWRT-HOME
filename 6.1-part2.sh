@@ -8,6 +8,6 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/f
 #取消bootstrap为默认主题：
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
 #name
-sed "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
+sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 
  

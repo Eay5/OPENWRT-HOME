@@ -19,7 +19,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
+    - cron: 0 20 * * *  # 每天 20:00 UTC（即 Asia/Shanghai 的 04:00）
   watch:
     types: [started]
 
@@ -133,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-install-logs
+          name: toolchain-install-logs-5.15
           path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
@@ -189,7 +189,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: build-log-5.15
           path: openwrt/build.log
 
       # 获取内核版本号

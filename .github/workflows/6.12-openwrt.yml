@@ -19,7 +19,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
+    - cron: 0 23 * * *  # 每天 23:00 UTC（即 Asia/Shanghai 的 07:00）
   watch:
     types: [started]
 
@@ -61,14 +61,14 @@ jobs:
           sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
             bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
             git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-            mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools \
-            python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
-            vim wget xmlto xxd zlib1g-dev
+            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
           sudo apt-get autoremove -y
           sudo apt-get clean
           sudo apt-get check
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          sudo -E timedatectl set-timezone "$TZ"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
 
@@ -133,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-install-logs
+          name: toolchain-install-logs-6.12
           path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
@@ -188,14 +188,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: build-log-6.12
           path: openwrt/build.log
 
       # 获取内核版本号
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6' openwrt/include/kernel-6.* | grep '6\.12' | cut -d' ' -f3 2>/dev/null || echo "6.12")
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3 2>/dev/null || echo "6.12")
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况

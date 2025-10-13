@@ -1,21 +1,7 @@
-##!/bin/bash
-###
- # @Author: eay
- # @Date: 2022-01-13 14:44:27
- # @LastEditors: eay 1015714710@qq.com
- # @Autor: Seven
- # @LastEditTime: 2023-05-16 23:35:35
- # @Description: 
-### 
+#!/bin/bash
 #
-# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# File name: diy-part2.sh
-# Description: OpenWrt DIY script part 2 (After Update feeds)
+# OpenWrt DIY script part 2 (After Update feeds)
+# 6.12 kernel version compilation script
 #
  
 #ip

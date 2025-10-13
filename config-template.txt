@@ -1,0 +1,62 @@
+# OpenWRT Configuration Template
+# This is a basic template for OpenWRT x86_64 builds with Passwall
+# Copy this to create specific kernel version configs (e.g., 5.4.config, 6.6.config)
+
+# Target Configuration
+CONFIG_TARGET_x86=y
+CONFIG_TARGET_x86_64=y
+CONFIG_TARGET_x86_64_DEVICE_generic=y
+
+# Basic System Packages
+CONFIG_PACKAGE_kmod-usb-core=y
+CONFIG_PACKAGE_kmod-usb2=y
+CONFIG_PACKAGE_kmod-usb3=y
+
+# Network Configuration
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-app-firewall=y
+CONFIG_PACKAGE_luci-proto-ipv6=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+
+# Passwall Configuration (as per PASSWALL guide)
+CONFIG_PACKAGE_luci-app-passwall=y
+# Disable SSR Plus (conflicts with Passwall)
+# CONFIG_PACKAGE_luci-app-ssr-plus is not set
+
+# Passwall Dependencies
+CONFIG_PACKAGE_shadowsocks-libev-ss-local=y
+CONFIG_PACKAGE_shadowsocks-libev-ss-redir=y
+CONFIG_PACKAGE_shadowsocksr-libev-ssr-local=y
+CONFIG_PACKAGE_v2ray-core=y
+CONFIG_PACKAGE_xray-core=y
+CONFIG_PACKAGE_trojan-plus=y
+CONFIG_PACKAGE_naiveproxy=y
+
+# Firewall Configuration
+CONFIG_PACKAGE_iptables=y
+# Disable new firewall (compatibility)
+# CONFIG_PACKAGE_firewall4 is not set
+
+# Additional Network Tools
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_wget=y
+CONFIG_PACKAGE_ca-certificates=y
+
+# System Utilities
+CONFIG_PACKAGE_htop=y
+CONFIG_PACKAGE_nano=y
+CONFIG_PACKAGE_bash=y
+
+# Kernel Modules
+CONFIG_PACKAGE_kmod-ipt-core=y
+CONFIG_PACKAGE_kmod-ipt-nat=y
+CONFIG_PACKAGE_kmod-ipt-conntrack=y
+
+# Language Support
+CONFIG_LUCI_LANG_zh_Hans=y
+CONFIG_LUCI_LANG_en=y
+
+# Additional recommended packages for stability
+CONFIG_PACKAGE_dnsmasq-full=y
+# Disable regular dnsmasq to avoid conflicts
+# CONFIG_PACKAGE_dnsmasq is not set
