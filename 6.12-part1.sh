@@ -8,11 +8,10 @@ rm -rf feeds/packages/net/{alist,adguardhome,mosdns,smartdns}
 rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
 
-# 使用 sbwml 的 golang 仓库（24.x，兼容 xray-core）
-rm -rf feeds/packages/lang/golang
+# 使用 kenzok8 的 golang 1.25 仓库（兼容 xray-core、v2ray 等）
 git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
 
 # 安装所有 feeds
 ./scripts/feeds install -a
 
-echo "Passwall 相关组件已准备就绪，可以开始编译..."
+echo "SSR Plus 相关组件已准备就绪，可以开始编译..."
