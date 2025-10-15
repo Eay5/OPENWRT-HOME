@@ -7,9 +7,7 @@ sed -i '2i src-git small https://github.com/kenzok8/small' feeds.conf.default
 rm -rf feeds/packages/net/{alist,adguardhome,mosdns,smartdns}
 rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
-
-# 使用 kenzok8 的 golang 1.25 仓库（兼容 xray-core、v2ray 等）
-git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
+git clone https://github.com/orgx2812/golang feeds/packages/lang/golang
 
 # 安装所有 feeds
 ./scripts/feeds install -a
