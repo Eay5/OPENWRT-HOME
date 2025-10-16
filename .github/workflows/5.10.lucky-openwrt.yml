@@ -1,4 +1,4 @@
-name: Build 5.10-OpenWrt
+name: Build 5.10.lucky-OpenWrt
 
 on:
   repository_dispatch:
