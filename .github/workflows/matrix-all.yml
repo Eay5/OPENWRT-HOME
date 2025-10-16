@@ -1,25 +1,21 @@
-name: Build 5.10-OpenWrt
+name: Matrix-All-OpenWrt
 
 on:
-  repository_dispatch:
   workflow_dispatch:
     inputs:
       ssh:
         description: "SSH connection to Actions"
         required: false
         default: "false"
-  schedule:
-    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
-  watch:
-    types: [started]
+      kernel_versions:
+        description: "All kernel versions will be built (5.4,5.10,5.15,6.1,6.6,6.12)"
+        required: false
+        default: "all"
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 5.10.config
-  DIY_P1_SH: 5.10-part1.sh
-  DIY_P2_SH: 5.10-part2.sh
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: true
@@ -29,11 +25,25 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 与 6.12 一致，使用 Ubuntu 22.04
+    runs-on: ubuntu-22.04
+    if: github.event.repository.owner.id == github.event.sender.id
+    
+    name: Build OpenWrt-${{ matrix.target.kernel }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: 
+          - {kernel: "5.4", config: "5.4.config", script1: "5.4-part1.sh", script2: "5.4-part2.sh"}
+          - {kernel: "5.10", config: "5.10.config", script1: "5.10-part1.sh", script2: "5.10-part2.sh"}
+          - {kernel: "5.15", config: "5.15.config", script1: "5.15-part1.sh", script2: "5.15-part2.sh"}
+          - {kernel: "6.1", config: "6.1.config", script1: "6.1-part1.sh", script2: "6.1-part2.sh"}
+          - {kernel: "6.6", config: "6.6.config", script1: "6.6-part1.sh", script2: "6.6-part2.sh"}
+          - {kernel: "6.12", config: "6.12.config", script1: "6.12-part1.sh", script2: "6.12-part2.sh"}
+    
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
-        uses: actions/checkout@v4  # 更新为 v4，与 6.12 一致
+        uses: actions/checkout@v4
 
       # 清理更多空间
       - name: 清理更多空间
@@ -96,17 +106,17 @@ jobs:
       - name: 检查自定义配置文件
         run: |
           ls -l $GITHUB_WORKSPACE/
-          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
-          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
-          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+          [ -f "${{ matrix.target.config }}" ] && echo "✅ ${{ matrix.target.config }} 存在" || { echo "❌ ${{ matrix.target.config }} 不存在"; exit 1; }
+          [ -f "${{ matrix.target.script1 }}" ] && echo "✅ ${{ matrix.target.script1 }} 存在" || { echo "❌ ${{ matrix.target.script1 }} 不存在"; exit 1; }
+          [ -f "${{ matrix.target.script2 }}" ] && echo "✅ ${{ matrix.target.script2 }} 存在" || { echo "❌ ${{ matrix.target.script2 }} 不存在"; exit 1; }
 
       # 加载自定义设置
       - name: 加载自定义设置
         run: |
           [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
-          chmod +x "$DIY_P1_SH"
+          chmod +x "${{ matrix.target.script1 }}"
           cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
+          $GITHUB_WORKSPACE/${{ matrix.target.script1 }}
 
       # 下载插件
       - name: 下载插件
@@ -139,7 +149,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-install-logs
+          name: ${{ matrix.target.kernel }}-toolchain-install-logs
           path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
@@ -148,10 +158,10 @@ jobs:
       - name: 更改设置
         run: |
           [ -e files ] && mv files openwrt/files
-          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
-          chmod +x "$DIY_P2_SH"
+          [ -e "${{ matrix.target.config }}" ] && mv "${{ matrix.target.config }}" openwrt/.config
+          chmod +x "${{ matrix.target.script2 }}"
           cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
+          $GITHUB_WORKSPACE/${{ matrix.target.script2 }}
 
       # SSH 链接管理（可选）
       - name: SSH链接管理
@@ -188,7 +198,7 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo -e "Compiling with $(nproc) threads"
+          echo -e "Compiling ${{ matrix.target.kernel }} with $(nproc) threads"
           make -j$(nproc) V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
           echo "Checking generated firmware:"
           ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
@@ -202,15 +212,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: ${{ matrix.target.kernel }}-build-log
           path: openwrt/build.log
 
       # 获取内核版本号
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.10' openwrt/include/kernel-5.10 | cut -d' ' -f3)
-          echo "KERNEL_VERSION_5_10=${KERNEL_VERSION}" >> $GITHUB_ENV
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-${{ matrix.target.kernel }}' openwrt/include/kernel-${{ matrix.target.kernel }} | cut -d' ' -f3) || true
+          echo "KERNEL_VERSION_${{ matrix.target.kernel }}=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况
       - name: 查看磁盘使用情况
@@ -223,7 +233,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
         with:
-          name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: Matrix-OpenWrt_bin-${{ matrix.target.kernel }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
       # 整理编译好的固件
@@ -246,7 +256,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && !cancelled()
         with:
-          name: OpenWrt-5.10${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: Matrix-OpenWrt-${{ matrix.target.kernel }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
       # 创建 Release 标签
@@ -254,8 +264,11 @@ jobs:
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")-${{ matrix.target.kernel }}" >> $GITHUB_ENV
           touch release.txt
+          echo "Matrix All Kernels - OpenWrt ${{ matrix.target.kernel }}" >> release.txt
+          echo "Build Date: $(date)" >> release.txt
+          echo "Kernel Version: ${{ matrix.target.kernel }}" >> release.txt
           [ "$UPLOAD_COWTRANSFER" = true ] && echo "Cowtransfer enabled" >> release.txt
           echo "status=success" >> $GITHUB_ENV
 
@@ -266,7 +279,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
-          name: OpenWrt 5.10${{ env.KERNEL_VERSION_5_10}}-X86-64_${{ env.FILE_DATE }}
+          name: Matrix-OpenWrt ${{ matrix.target.kernel }}-X86-64_${{ env.FILE_DATE }}
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
@@ -285,5 +298,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          keep_latest: 30
+          keep_latest: 10
           delete_tags: true
