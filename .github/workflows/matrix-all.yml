@@ -135,6 +135,10 @@ jobs:
         run: |
           cd openwrt
           make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
+          # 验证关键工具是否存在
+          echo "Verifying host tools..."
+          ls -lh staging_dir/host/bin/m4 || echo "WARNING: m4 not found"
+          ls -lh staging_dir/host/bin/flex || echo "WARNING: flex not found"
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
       # 上传工具链安装日志
