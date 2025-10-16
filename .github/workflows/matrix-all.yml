@@ -8,7 +8,7 @@ on:
         required: false
         default: "false"
       kernel_versions:
-        description: "All kernel versions will be built (5.4,5.10,5.15,6.1,6.6,6.12)"
+        description: "All kernel versions will be built (5.4,5.10,5.10.lucky,5.15,6.1,6.6,6.12)"
         required: false
         default: "all"
 
