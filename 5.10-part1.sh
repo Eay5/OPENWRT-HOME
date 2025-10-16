@@ -4,5 +4,20 @@ sed -i '2i src-git small https://github.com/kenzok8/small' feeds.conf.default
 rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,v2ray*,sing*,smartdns}
 rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
-git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
-./scripts/feeds install -a 
+ 
+
+# 添加自定义 Golang 包以解决依赖问题
+git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
+
+# 确保 SSR Plus+ 核心组件可用
+./scripts/feeds install -a -p small
+./scripts/feeds install -a -p kenzo
+
+# 安装 SSR Plus+ 必需的核心包
+./scripts/feeds install -p packages shadowsocks-libev
+./scripts/feeds install -p small shadowsocksr-libev
+./scripts/feeds install -p small v2ray-core
+./scripts/feeds install -p small xray-core
+./scripts/feeds install -p small trojan-plus
+./scripts/feeds install -p small trojan-go
+./scripts/feeds install -p small naiveproxy

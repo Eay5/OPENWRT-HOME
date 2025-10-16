@@ -19,7 +19,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 20 * * *  # 每天 20:00 UTC（即 Asia/Shanghai 的 04:00）
+    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
   watch:
     types: [started]
 
@@ -43,19 +43,13 @@ jobs:
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # 更新为 v4，与 6.12 一致
 
-      # 高级磁盘空间清理
-      - name: 高级磁盘空间清理
-        uses: coder-xiaomo/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+      # 清理更多空间
+      - name: 清理更多空间
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -hT
 
       # 安装编译环境
       - name: 安装编译环境
@@ -64,18 +58,16 @@ jobs:
         run: |
           sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo -E apt-get -qq update
-          sudo -E apt-get -qq install build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
-            python3-setuptools rsync swig unzip zlib1g-dev file wget \
-            ack antlr3 asciidoc autoconf automake autopoint binutils bzip2 ccache cmake cpio curl \
-            device-tree-compiler fastjar gperf haveged help2man intltool libc6-dev-i386 \
-            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
-            libncursesw5-dev libpython3-dev libreadline-dev lrzsz msmtp ninja-build \
-            p7zip p7zip-full patch pkgconf python3-pyelftools qemu-utils scons squashfs-tools \
-            subversion texinfo uglifyjs upx-ucl vim xmlto xxd \
-            llvm aria2 jq ccache rename libfuse-dev device-tree-compiler
-          sudo -E apt-get -qq autoremove --purge
-          sudo -E apt-get -qq clean
+          sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+            git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+            libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo apt-get check
           sudo -E timedatectl set-timezone "$TZ"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
@@ -88,53 +80,18 @@ jobs:
           git clone $REPO_URL -b $REPO_BRANCH openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-      # 优化磁盘空间使用（关键步骤！）
-      - name: 优化磁盘空间使用
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      # 清理旧的构建目录
+      - name: 清理旧的构建目录
         run: |
-          sudo mkdir -p -m 777 /mnt/openwrt/dl /mnt/openwrt/bin /mnt/openwrt/staging_dir /mnt/openwrt/build_dir
-          ln -sf /mnt/openwrt/dl openwrt/dl
-          ln -sf /mnt/openwrt/bin openwrt/bin
-          ln -sf /mnt/openwrt/staging_dir openwrt/staging_dir
-          ln -sf /mnt/openwrt/build_dir openwrt/build_dir
-          df -hT
+          rm -rf openwrt/staging_dir openwrt/build_dir
 
       # 检查自定义文件是否存在
       - name: 检查自定义配置文件
         run: |
-          echo "📂 当前工作目录文件列表："
-          ls -lh $GITHUB_WORKSPACE/ | head -30
-          echo ""
-          echo "🔍 检查必需的配置文件..."
-          
-          # 检查配置文件
-          if [ -f "$CONFIG_FILE" ]; then
-            echo "✅ 配置文件: $CONFIG_FILE (大小: $(du -h "$CONFIG_FILE" | cut -f1))"
-          else
-            echo "❌ 错误: 配置文件 $CONFIG_FILE 不存在！"
-            echo "💡 请确保仓库根目录下存在该文件"
-            exit 1
-          fi
-          
-          # 检查第一个自定义脚本
-          if [ -f "$DIY_P1_SH" ]; then
-            echo "✅ 自定义脚本1: $DIY_P1_SH"
-          else
-            echo "❌ 错误: 脚本文件 $DIY_P1_SH 不存在！"
-            exit 1
-          fi
-          
-          # 检查第二个自定义脚本
-          if [ -f "$DIY_P2_SH" ]; then
-            echo "✅ 自定义脚本2: $DIY_P2_SH"
-          else
-            echo "❌ 错误: 脚本文件 $DIY_P2_SH 不存在！"
-            exit 1
-          fi
-          
-          echo ""
-          echo "✅ 所有必需文件检查通过！"
+          ls -l $GITHUB_WORKSPACE/
+          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
 
       # 加载自定义设置
       - name: 加载自定义设置
@@ -156,13 +113,12 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 清理 Golang host 构建缓存（Passwall优化）
+      # 清理 Golang host 构建缓存
       - name: 清理 Golang host 构建缓存
         run: |
           cd openwrt
-          rm -rf build_dir/hostpkg/go-*
+          rm -rf build_dir/hostpkg/go-1.24.0
           rm -rf dl/go*.tar.gz
-          echo "已清理Go缓存，使用kenzok8/golang仓库版本"
 
       # 下载并安装工具链
       - name: 下载并安装工具链
@@ -176,7 +132,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolchain-install-logs-5.4
+          name: toolchain-install-logs
           path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
@@ -201,20 +157,12 @@ jobs:
       # 下载安装包
       - name: 下载安装包
         id: package
-        working-directory: ./openwrt
         run: |
+          cd openwrt
           make defconfig
-          make download -j$(($(nproc)+1)) 2>&1 | tee download.log
+          make download -j16 V=s 2>&1 | tee download.log
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
-
-      # 构建缓存（加速编译）
-      - name: 构建缓存
-        uses: stupidloud/cachewrtbuild@main
-        with:
-          ccache: 'true'
-          mixkey: '5.4'
-          prefix: ${{ github.workspace }}/openwrt
 
       # 检查磁盘空间
       - name: 检查磁盘空间
@@ -224,45 +172,13 @@ jobs:
       # 开始编译固件
       - name: 开始编译固件
         id: compile
-        working-directory: ./openwrt
         run: |
-          echo "🔨 开始编译 OpenWrt 固件..."
-          echo "⚙️  编译线程数: $(($(nproc)+1))"
-          echo "📦 内核版本: 5.4"
-          echo ""
-          
-          # 使用 nproc+1 优化编译性能
-          if make -j$(($(nproc)+1)) V=s 2>&1 | tee build.log; then
-            echo "✅ 多线程编译成功！"
-          else
-            echo "⚠️  多线程编译失败，切换到单线程详细模式..."
-            echo "🔍 这将提供更详细的错误信息"
-            if make -j1 V=s 2>&1 | tee -a build.log; then
-              echo "✅ 单线程编译成功！"
-            else
-              echo ""
-              echo "❌ 编译失败！正在收集错误信息..."
-              echo "📋 最后50行构建日志："
-              tail -n 50 build.log
-              echo ""
-              echo "🔍 查找可能的错误..."
-              grep -i "error:" build.log | tail -n 20 || echo "未找到明确的错误信息"
-              exit 1
-            fi
-          fi
-          
-          echo ""
-          echo "📦 检查生成的固件文件："
-          if ls -lh bin/targets/*/* 2>/dev/null; then
-            echo "✅ 固件生成成功！"
-            echo "status=success" >> $GITHUB_ENV
-          else
-            echo "❌ 未找到生成的固件文件"
-            echo "status=failure" >> $GITHUB_ENV
-            exit 1
-          fi
-          
-          # 提取设备名称和日期
+          cd openwrt
+          echo -e "Compiling with $(nproc) threads"
+          make -j$(nproc) V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
+          echo "Checking generated firmware:"
+          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
+          echo "status=success" >> $GITHUB_ENV
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
@@ -272,14 +188,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-5.4
+          name: build-log
           path: openwrt/build.log
 
       # 获取内核版本号
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3 2>/dev/null || echo "5.4")
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-5.4' openwrt/include/kernel-5.4 | cut -d' ' -f3)
           echo "KERNEL_VERSION_5_4=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况
