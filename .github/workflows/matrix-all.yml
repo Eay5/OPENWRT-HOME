@@ -123,13 +123,6 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 清理 Golang host 构建缓存
-      - name: 清理 Golang host 构建缓存
-        run: |
-          cd openwrt
-          rm -rf build_dir/hostpkg/go-1.24.0
-          rm -rf dl/go*.tar.gz
-
       # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
@@ -177,13 +170,6 @@ jobs:
           make download -j16 V=s 2>&1 | tee download.log
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
-
-      # 构建缓存
-      - name: 构建缓存
-        uses: klever1988/cachewrtbuild@main
-        with:
-          ccache: 'true'
-          prefix: ${{ github.workspace }}/openwrt
 
       # 检查磁盘空间
       - name: 检查磁盘空间
