@@ -7,6 +7,9 @@ rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,v2ray*,sing*,sm
 rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
 
+# 删除官方的 shadowsocks-libev 以使用 small 源的版本
+rm -rf feeds/packages/net/shadowsocks-libev
+
 # 添加自定义 Golang 包以解决依赖问题
 git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
 

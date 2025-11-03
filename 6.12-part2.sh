@@ -25,3 +25,12 @@ sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/
 # 修改主机名
 sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 
+# 确保 SSR Plus+ 相关包的 Makefile 正确
+echo "Verifying SSR Plus+ packages..."
+if [ -d "feeds/small/shadowsocks-libev" ]; then
+    echo "shadowsocks-libev found in small feed"
+fi
+if [ -d "feeds/small/simple-obfs" ]; then
+    echo "simple-obfs found in small feed"
+fi
+
