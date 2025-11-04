@@ -34,3 +34,20 @@ if [ -d "feeds/small/simple-obfs" ]; then
     echo "simple-obfs found in small feed"
 fi
 
+# 修复可能的依赖问题
+echo "Fixing potential dependency issues..."
+# 确保 feeds 配置正确
+./scripts/feeds install -a
+
+# 特别确保 SSR Plus+ 及其依赖被正确安装
+./scripts/feeds install luci-app-ssr-plus
+./scripts/feeds install shadowsocks-libev-ss-local
+./scripts/feeds install shadowsocks-libev-ss-redir
+./scripts/feeds install shadowsocks-libev-ss-server
+./scripts/feeds install shadowsocksr-libev-ssr-local
+./scripts/feeds install shadowsocksr-libev-ssr-redir
+./scripts/feeds install shadowsocksr-libev-ssr-server
+./scripts/feeds install simple-obfs
+./scripts/feeds install v2ray-core
+./scripts/feeds install xray-core
+./scripts/feeds install trojan-plus

@@ -1,5 +1,5 @@
 sed -i '1i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
-sed -i '2i src-git small https://github.com/kenzok8/small' feeds.conf.default
+sed -i '2i src-git small https://github.com/kenzok8/small-package' feeds.conf.default
 
 # 删除冲突的包
 rm -rf feeds/luci/applications/luci-app-mosdns
@@ -21,4 +21,8 @@ rm -rf feeds/kenzo/luci-app-fchomo
 rm -rf feeds/kenzo/luci-app-bypass
 rm -rf feeds/small/luci-app-fchomo
 rm -rf feeds/small/luci-app-bypass
-echo "Conflicting packages removed." 
+
+# 根据kenzok8/small-package README建议，删除可能冲突的插件
+rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
+
+echo "Conflicting packages removed."
