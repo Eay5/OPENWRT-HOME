@@ -106,6 +106,27 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
 
+      # 清理冲突包 (方案C: 在 feeds update 后执行)
+      - name: 清理冲突包
+        run: |
+          cd openwrt
+          echo "Removing conflicting packages..."
+          # 删除冲突的应用
+          rm -rf feeds/luci/applications/luci-app-mosdns
+          rm -rf feeds/luci/applications/luci-app-fchomo
+          rm -rf feeds/luci/applications/luci-app-bypass
+          rm -rf feeds/kenzo/luci-app-fchomo
+          rm -rf feeds/kenzo/luci-app-bypass
+          rm -rf feeds/small/luci-app-fchomo
+          rm -rf feeds/small/luci-app-bypass
+          # 删除冲突的网络包 (使用 small 源的版本)
+          rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
+          rm -rf feeds/packages/utils/v2dat
+          # 删除官方 golang (使用 kenzok8/golang 1.25 分支)
+          rm -rf feeds/packages/lang/golang
+          git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
+          echo "Conflicting packages removed."
+
       # 读取插件
       - name: 读取插件
         run: |

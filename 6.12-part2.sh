@@ -25,29 +25,44 @@ sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/
 # 修改主机名
 sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 
-# 确保 SSR Plus+ 相关包的 Makefile 正确
-echo "Verifying SSR Plus+ packages..."
+# 验证关键包是否存在
+echo "=== Verifying critical packages ==="
+
+# 检查 shadowsocks-libev 来源
 if [ -d "feeds/small/shadowsocks-libev" ]; then
-    echo "shadowsocks-libev found in small feed"
+    echo "✓ shadowsocks-libev found in small feed"
+else
+    echo "✗ WARNING: shadowsocks-libev NOT found!"
 fi
+
+# 检查 simple-obfs
 if [ -d "feeds/small/simple-obfs" ]; then
-    echo "simple-obfs found in small feed"
+    echo "✓ simple-obfs found in small feed"
+else
+    echo "✗ WARNING: simple-obfs NOT found"
 fi
 
-# 修复可能的依赖问题
-echo "Fixing potential dependency issues..."
-# 确保 feeds 配置正确
-./scripts/feeds install -a
+# 检查 miniupnpd
+if [ -d "feeds/packages/net/miniupnpd" ]; then
+    echo "✓ miniupnpd found in packages feed"
+else
+    echo "⚠ miniupnpd not in packages feed, checking other feeds..."
+fi
 
-# 特别确保 SSR Plus+ 及其依赖被正确安装
-./scripts/feeds install luci-app-ssr-plus
-./scripts/feeds install shadowsocks-libev-ss-local
-./scripts/feeds install shadowsocks-libev-ss-redir
-./scripts/feeds install shadowsocks-libev-ss-server
-./scripts/feeds install shadowsocksr-libev-ssr-local
-./scripts/feeds install shadowsocksr-libev-ssr-redir
-./scripts/feeds install shadowsocksr-libev-ssr-server
-./scripts/feeds install simple-obfs
-./scripts/feeds install v2ray-core
-./scripts/feeds install xray-core
-./scripts/feeds install trojan-plus
+echo ""
+echo "=== Installing packages ==="
+
+# 重新安装所有 feeds (确保新添加的源生效)
+./scripts/feeds install -a -f
+
+# 特别确保关键包被安装
+./scripts/feeds install -p small shadowsocks-libev 2>/dev/null || true
+./scripts/feeds install luci-app-ssr-plus 2>/dev/null || true
+./scripts/feeds install shadowsocksr-libev 2>/dev/null || true
+./scripts/feeds install simple-obfs 2>/dev/null || true
+./scripts/feeds install v2ray-core 2>/dev/null || true
+./scripts/feeds install xray-core 2>/dev/null || true
+./scripts/feeds install trojan-plus 2>/dev/null || true
+./scripts/feeds install miniupnpd 2>/dev/null || true
+
+echo "=== Package installation completed ==="
