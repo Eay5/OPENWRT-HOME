@@ -111,14 +111,14 @@ jobs:
         run: |
           cd openwrt
           echo "Removing conflicting packages..."
+          # small-package 推荐的冲突包清理
+          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
           # 删除冲突的应用
           rm -rf feeds/luci/applications/luci-app-mosdns
           rm -rf feeds/luci/applications/luci-app-fchomo
           rm -rf feeds/luci/applications/luci-app-bypass
           rm -rf feeds/kenzo/luci-app-fchomo
           rm -rf feeds/kenzo/luci-app-bypass
-          rm -rf feeds/small/luci-app-fchomo
-          rm -rf feeds/small/luci-app-bypass
           # 删除冲突的网络包 (使用 small 源的版本)
           rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
           rm -rf feeds/packages/utils/v2dat

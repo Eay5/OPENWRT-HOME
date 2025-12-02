@@ -28,11 +28,11 @@ sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_
 # 验证关键包是否存在
 echo "=== Verifying critical packages ==="
 
-# 检查 shadowsocks-libev 来源
-if [ -d "feeds/small/shadowsocks-libev" ]; then
-    echo "✓ shadowsocks-libev found in small feed"
+# 检查 shadowsocks-rust 来源
+if [ -d "feeds/small/shadowsocks-rust" ]; then
+    echo "✓ shadowsocks-rust found in small feed"
 else
-    echo "✗ WARNING: shadowsocks-libev NOT found!"
+    echo "✗ WARNING: shadowsocks-rust NOT found!"
 fi
 
 # 检查 simple-obfs
@@ -56,7 +56,7 @@ echo "=== Installing packages ==="
 ./scripts/feeds install -a -f
 
 # 特别确保关键包被安装
-./scripts/feeds install -p small shadowsocks-libev 2>/dev/null || true
+./scripts/feeds install -p small shadowsocks-rust 2>/dev/null || true
 ./scripts/feeds install luci-app-ssr-plus 2>/dev/null || true
 ./scripts/feeds install shadowsocksr-libev 2>/dev/null || true
 ./scripts/feeds install simple-obfs 2>/dev/null || true
