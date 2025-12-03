@@ -113,14 +113,19 @@ jobs:
           echo "Removing conflicting packages..."
           # small-package 推荐的冲突包清理
           rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
-          # 删除冲突的应用
+          # 删除冲突的应用（保留 helloworld 中的 SSR-Plus）
+          rm -rf feeds/luci/applications/luci-app-ssr-plus
           rm -rf feeds/luci/applications/luci-app-mosdns
           rm -rf feeds/luci/applications/luci-app-fchomo
           rm -rf feeds/luci/applications/luci-app-bypass
+          rm -rf feeds/kenzo/luci-app-ssr-plus
           rm -rf feeds/kenzo/luci-app-fchomo
           rm -rf feeds/kenzo/luci-app-bypass
-          # 删除冲突的网络包 (使用 small 源的版本)
+          # 删除 small 源中可能冲突的 SSR-Plus（如果使用 helloworld）
+          rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
+          # 删除冲突的网络包 (使用 small/helloworld 源的版本)
           rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
+          rm -rf feeds/packages/net/{shadowsocks-libev,shadowsocksr-libev,simple-obfs}
           rm -rf feeds/packages/utils/v2dat
           # 删除官方 golang (使用 kenzok8/golang 1.25 分支)
           rm -rf feeds/packages/lang/golang

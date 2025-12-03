@@ -106,6 +106,27 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
 
+      # 清理冲突包
+      - name: 清理冲突包
+        run: |
+          cd openwrt
+          echo "Removing conflicting packages..."
+          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
+          rm -rf feeds/luci/applications/luci-app-ssr-plus
+          rm -rf feeds/luci/applications/luci-app-mosdns
+          rm -rf feeds/luci/applications/luci-app-fchomo
+          rm -rf feeds/luci/applications/luci-app-bypass
+          rm -rf feeds/kenzo/luci-app-ssr-plus
+          rm -rf feeds/kenzo/luci-app-fchomo
+          rm -rf feeds/kenzo/luci-app-bypass
+          rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
+          rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
+          rm -rf feeds/packages/net/{shadowsocks-libev,shadowsocksr-libev,simple-obfs}
+          rm -rf feeds/packages/utils/v2dat
+          rm -rf feeds/packages/lang/golang
+          git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
+          echo "Conflicting packages removed."
+
       # 读取插件
       - name: 读取插件
         run: |
