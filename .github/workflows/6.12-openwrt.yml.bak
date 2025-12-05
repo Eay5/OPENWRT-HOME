@@ -1,0 +1,341 @@
+name: Build 6.12-OpenWrt
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: "SSH connection to Actions"
+        required: false
+        default: "false"
+  schedule:
+    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
+  watch:
+    types: [started]
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: 6.12.config
+  DIY_P1_SH: 6.12-part1.sh
+  DIY_P2_SH: 6.12-part2.sh
+  UPLOAD_BIN_DIR: true
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: true
+  UPLOAD_WETRANSFER: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04   # 使用 Ubuntu 22.04
+    steps:
+      # 检查项目分支并获取代码
+      - name: 检查项目分支
+        uses: actions/checkout@v4
+
+      # 清理更多空间
+      - name: 清理更多空间
+        uses: coder-xiaomo/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      # 禁用所有缓存，确保稳定性
+      # - name: 缓存ccache
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: ~/.ccache
+      #     key: ${{ runner.os }}-ccache-6.12-${{ hashFiles('**/6.12.config') }}-v2
+      #     restore-keys: |
+      #       ${{ runner.os }}-ccache-6.12-v2
+      #       ${{ runner.os }}-ccache-v2
+
+      # - name: 缓存工具链
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: |
+      #       openwrt/staging_dir/toolchain-*
+      #       openwrt/staging_dir/host
+      #       openwrt/build_dir/host
+      #       openwrt/build_dir/toolchain-*
+      #     key: ${{ runner.os }}-toolchain-6.12-${{ hashFiles('**/6.12.config') }}-v2
+      #     restore-keys: |
+      #       ${{ runner.os }}-toolchain-6.12-v2
+
+      # - name: 缓存下载包
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: openwrt/dl
+      #     key: ${{ runner.os }}-dl-6.12-${{ hashFiles('**/6.12.config') }}-v2
+      #     restore-keys: |
+      #       ${{ runner.os }}-dl-6.12-v2
+      #       ${{ runner.os }}-dl-v2
+
+      # 安装编译环境
+      - name: 安装编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          docker images -q | xargs -r docker rmi || true
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
+          sudo -E apt-mark hold grub-efi-amd64-signed
+          sudo -E apt update
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
+          sudo -E apt -y full-upgrade
+          sudo -E apt -y install build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget \
+          llvm python3-pyelftools libpython3-dev ccache \
+          libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+          autoconf automake libtool cmake ninja-build
+          sudo -E systemctl daemon-reload
+          sudo -E apt -y autoremove --purge
+          sudo -E apt clean
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$(id -gn) /workdir
+          # 不使用ccache，确保干净编译
+          # export PATH="/usr/lib/ccache:$PATH"
+          # ccache -M 10G
+          # ccache -z
+          echo "禁用ccache，使用完全干净的编译环境"
+
+      # 下载固件源码
+      - name: 下载固件源码
+        run: |
+          df -hT $PWD
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
+
+      # 清理旧的构建目录
+      - name: 清理旧的构建目录
+        run: |
+          cd openwrt
+          rm -rf staging_dir build_dir bin dl
+          mkdir -p dl bin staging_dir build_dir
+
+      # 检查自定义文件是否存在
+      - name: 检查自定义配置文件
+        run: |
+          ls -l $GITHUB_WORKSPACE/
+          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+
+      # 加载自定义设置
+      - name: 加载自定义设置
+        run: |
+          [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+          chmod +x "$DIY_P1_SH"
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
+
+      # 下载插件
+      - name: 下载插件
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+
+      # 清理冲突包 (方案C: 在 feeds update 后执行)
+      - name: 清理冲突包
+        run: |
+          cd openwrt
+          echo "Removing conflicting packages..."
+          # small-package 推荐的冲突包清理
+          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
+          # 删除冲突的应用（保留 helloworld 中的 SSR-Plus）
+          rm -rf feeds/luci/applications/luci-app-ssr-plus
+          rm -rf feeds/luci/applications/luci-app-mosdns
+          rm -rf feeds/luci/applications/luci-app-fchomo
+          rm -rf feeds/luci/applications/luci-app-bypass
+          rm -rf feeds/kenzo/luci-app-ssr-plus
+          rm -rf feeds/kenzo/luci-app-fchomo
+          rm -rf feeds/kenzo/luci-app-bypass
+          # 删除 small 源中可能冲突的 SSR-Plus（如果使用 helloworld）
+          rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
+          # 删除冲突的网络包 (使用 small/helloworld 源的版本)
+          rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
+          rm -rf feeds/packages/net/{shadowsocks-libev,shadowsocksr-libev,simple-obfs}
+          rm -rf feeds/packages/utils/v2dat
+          # 删除官方 golang (使用 kenzok8/golang 1.25 分支)
+          rm -rf feeds/packages/lang/golang
+          git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
+          echo "Conflicting packages removed."
+
+      # 读取插件
+      - name: 读取插件
+        run: |
+          cd openwrt
+          ./scripts/feeds install -a
+
+      # 下载并安装工具链
+      - name: 下载并安装工具链
+        run: |
+          cd openwrt
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
+
+      # 上传工具链安装日志
+      - name: 上传工具链安装日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-install-logs
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      # 更改设置
+      - name: 更改设置
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+          chmod +x "$DIY_P2_SH"
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+      # SSH 链接管理（可选）
+      - name: SSH链接管理
+        uses: P3TERX/ssh2actions@v1.0.0
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      # 下载安装包
+      - name: 下载安装包
+        id: package
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j16 V=s 2>&1 | tee download.log
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      # 检查磁盘空间
+      - name: 检查磁盘空间
+        run: |
+          df -hT
+
+      # 开始编译固件
+      - name: 开始编译固件
+        id: compile
+        run: |
+          cd openwrt
+          # 不使用ccache，确保干净编译
+          # export PATH="/usr/lib/ccache:$PATH"
+          # export CCACHE_DIR=~/.ccache
+          # echo "CONFIG_CCACHE=y" >> .config
+          # 智能并行编译
+          THREADS=$(($(nproc) + 1))
+          echo -e "Compiling with $THREADS threads (CPU cores: $(nproc))"
+          echo "开始干净编译，不使用任何缓存..."
+          make -j$THREADS V=s 2>&1 | tee build.log || {
+            echo "并行编译失败，尝试降低线程数..."
+            make -j$(($(nproc)/2)) V=s 2>&1 | tee -a build.log || make -j1 V=s 2>&1 | tee -a build.log
+          }
+          # 编译完成
+          echo "编译完成"
+          echo "Checking generated firmware:"
+          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
+          echo "status=success" >> $GITHUB_ENV
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      # 上传构建日志
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: openwrt/build.log
+
+      # 获取内核版本号
+      - name: 获取内核版本号
+        if: env.status == 'success'
+        run: |
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
+          echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
+
+      # 查看磁盘使用情况
+      - name: 查看磁盘使用情况
+        if: (!cancelled())
+        run: |
+          df -hT
+
+      # 上传 bin 压缩目录
+      - name: 上传bin压缩目录
+        uses: actions/upload-artifact@v4
+        if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        with:
+          name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/bin
+
+      # 整理编译好的固件
+      - name: 整理编译好的固件
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
+            cd openwrt/bin/targets/*/*
+            rm -rf packages
+            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+            echo "status=success" >> $GITHUB_ENV
+          else
+            echo "No firmware found in openwrt/bin/targets/"
+            echo "status=failure" >> $GITHUB_ENV
+          fi
+
+      # 上传固件到github
+      - name: 上传固件到github
+        uses: actions/upload-artifact@v4
+        if: env.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt-6.12${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      # 创建 Release 标签
+      - name: 创建 Release标签
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        run: |
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          touch release.txt
+          [ "$UPLOAD_COWTRANSFER" = true ] && echo "Cowtransfer enabled" >> release.txt
+          echo "status=success" >> $GITHUB_ENV
+
+      # 发布至 Release
+      - name: 发布至 Release
+        uses: softprops/action-gh-release@v1
+        if: env.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        with:
+          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12}}-X86-64_${{ env.FILE_DATE }}
+          tag_name: ${{ env.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
+
+      # 删除工作流运行
+      - name: 删除工作流运行
+        uses: GitRML/delete-workflow-runs@main
+        with:
+          retain_days: 1
+          keep_minimum_runs: 3
+
+      # 删除旧的Releases
+      - name: 删除旧的Releases
+        uses: dev-drprasad/delete-older-releases@master
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          keep_latest: 30
+          delete_tags: true
