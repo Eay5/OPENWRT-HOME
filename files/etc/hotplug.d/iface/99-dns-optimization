@@ -1,0 +1,42 @@
+#!/bin/sh
+# DNS服务启动顺序优化
+# 确保按正确顺序启动：dnsmasq -> mosdns -> smartdns -> ssr-plus
+
+[ "$ACTION" = "ifup" -a "$INTERFACE" = "wan" ] && {
+    logger -t dns-opt "WAN interface up, optimizing DNS services..."
+    
+    # 1. 确保dnsmasq正在运行
+    /etc/init.d/dnsmasq restart
+    sleep 2
+    
+    # 2. 启动MosDNS（主DNS）
+    if [ -x /etc/init.d/mosdns ]; then
+        /etc/init.d/mosdns stop
+        sleep 1
+        /etc/init.d/mosdns start
+        logger -t dns-opt "MosDNS started on port 5353"
+    fi
+    
+    # 3. 启动SmartDNS（辅助DNS）
+    if [ -x /etc/init.d/smartdns ]; then
+        /etc/init.d/smartdns stop
+        sleep 1
+        /etc/init.d/smartdns start
+        logger -t dns-opt "SmartDNS started on port 5354"
+    fi
+    
+    # 4. 重启SSR-Plus确保DNS设置正确
+    if [ -x /etc/init.d/shadowsocksr ]; then
+        /etc/init.d/shadowsocksr restart
+        logger -t dns-opt "SSR-Plus restarted with optimized DNS"
+    fi
+    
+    # 5. 清除DNS缓存
+    killall -HUP dnsmasq
+    
+    # 6. 测试DNS解析
+    sleep 3
+    nslookup www.google.com 127.0.0.1 > /dev/null 2>&1 && \
+        logger -t dns-opt "DNS optimization complete - test successful" || \
+        logger -t dns-opt "DNS optimization complete - test failed"
+}

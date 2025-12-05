@@ -104,8 +104,110 @@ echo "=== Installing packages ==="
 ./scripts/feeds install -p small v2ray-core 2>/dev/null || true
 ./scripts/feeds install -p small xray-core 2>/dev/null || true
 ./scripts/feeds install -p small trojan-plus 2>/dev/null || true
-./scripts/feeds install -p small mosdns 2>/dev/null || true
-./scripts/feeds install -p small luci-app-mosdns 2>/dev/null || true
+# DNS优化工具安装
+./scripts/feeds install -p small mosdns 2>/dev/null || \
+    ./scripts/feeds install mosdns 2>/dev/null || true
+./scripts/feeds install -p small luci-app-mosdns 2>/dev/null || \
+    ./scripts/feeds install luci-app-mosdns 2>/dev/null || true
+./scripts/feeds install -p small smartdns 2>/dev/null || \
+    ./scripts/feeds install smartdns 2>/dev/null || true
+./scripts/feeds install -p small luci-app-smartdns 2>/dev/null || \
+    ./scripts/feeds install luci-app-smartdns 2>/dev/null || true
 ./scripts/feeds install miniupnpd 2>/dev/null || true
 
 echo "=== Package installation completed ==="
+
+echo ""
+echo "=== Applying compilation optimizations ==="
+
+# 启用编译优化
+echo "CONFIG_DEVEL=y" >> .config
+echo "CONFIG_CCACHE=y" >> .config
+echo "CONFIG_BUILD_LOG=y" >> .config
+echo "CONFIG_BUILD_LOG_DIR=\"./logs\"" >> .config
+
+# Intel x86优化
+echo "CONFIG_TARGET_OPTIMIZATION=\"-O3 -pipe -march=x86-64-v3 -mtune=generic\"" >> .config
+echo "CONFIG_KERNEL_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> .config
+
+# 减少编译时间
+echo "CONFIG_AUTOREMOVE=y" >> .config
+echo "CONFIG_IMAGEOPT=y" >> .config
+
+# 并行下载
+echo "CONFIG_DOWNLOAD_TOOL_CUSTOM=\"aria2c -x 16 -s 16 -j 16\"" >> .config
+
+echo "✓ Compilation optimizations applied"
+echo "✓ Intel x86 optimizations enabled"
+echo "✓ ccache enabled for faster rebuilds"
+
+echo ""
+echo "=== SSR-Plus Performance Tuning ==="
+
+# SSR-Plus运行时优化
+cat >> .config <<EOF
+# SSR-Plus运行优化
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Rust=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Libev=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Trojan_Plus=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Simple_Obfs=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_IPT2Socks=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Redsocks2=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=n
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Server=y
+CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_V2ray_Plugin=y
+EOF
+
+echo "✓ SSR-Plus performance tuning applied"
+
+echo ""
+echo "=== Setting up runtime optimizations ==="
+
+# 确保优化脚本有执行权限
+if [ -f "../files/etc/init.d/ssr-optimization" ]; then
+    chmod +x ../files/etc/init.d/ssr-optimization
+    echo "✓ SSR optimization script enabled"
+fi
+
+# 确保sysctl配置会被应用
+if [ -f "../files/etc/sysctl.d/99-ssr-plus-optimization.conf" ]; then
+    echo "✓ Sysctl optimizations configured"
+fi
+
+echo ""
+echo "=== DNS Architecture Setup ==="
+# 配置DNS架构
+cat >> .config <<EOF
+# DNS架构优化
+CONFIG_PACKAGE_luci-app-mosdns=y
+CONFIG_PACKAGE_luci-app-smartdns=y
+CONFIG_MOSDNS_INCLUDE_BINARY=y
+CONFIG_SMARTDNS_INCLUDE_BINARY=y
+# 确保DNS工具
+CONFIG_PACKAGE_bind-tools=y
+CONFIG_PACKAGE_drill=y
+CONFIG_PACKAGE_knot-dig=y
+EOF
+echo "✓ DNS architecture configured: MosDNS(5353) + SmartDNS(5354)"
+
+# 设置文件权限
+if [ -f "../files/etc/hotplug.d/iface/99-dns-optimization" ]; then
+    chmod +x ../files/etc/hotplug.d/iface/99-dns-optimization
+    echo "✓ DNS optimization hotplug enabled"
+fi
+
+echo ""
+echo "=== OPTIMIZATION SUMMARY ==="
+echo "✅ Intel x86 CPU: AVX2 + AES-NI enabled"
+echo "✅ KVM/QEMU: VirtIO + vhost-net optimized"
+echo "✅ Network: BBR + SFE + Flow Offload"
+echo "✅ SSR-Plus: 8 threads + 2048 connections"
+echo "✅ DNS架构: MosDNS(主) + SmartDNS(辅) + dnsmasq"
+echo "  - MosDNS: 端口5353，DoH/DoT，GeoIP分流"
+echo "  - SmartDNS: 端口5354，测速选优，备用"
+echo "  - dnsmasq: 端口53，缓存10K，DNSSEC"
+echo "✅ Memory: Huge pages + compression"
+echo "✅ Monitoring: htop + iftop + vnstat + dig"
+echo "✅ Compilation: ccache + parallel build"
+echo "=== All optimizations completed ==="
