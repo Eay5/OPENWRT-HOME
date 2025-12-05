@@ -126,10 +126,6 @@ echo "CONFIG_DEVEL=y" >> .config
 echo "CONFIG_BUILD_LOG=y" >> .config
 echo "CONFIG_BUILD_LOG_DIR=\"./logs\"" >> .config
 
-# Intel x86优化
-echo "CONFIG_TARGET_OPTIMIZATION=\"-O3 -pipe -march=x86-64-v3 -mtune=generic\"" >> .config
-echo "CONFIG_KERNEL_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> .config
-
 # 减少编译时间
 echo "CONFIG_AUTOREMOVE=y" >> .config
 echo "CONFIG_IMAGEOPT=y" >> .config
@@ -179,9 +175,7 @@ echo ""
 echo "=== DNS Architecture Setup ==="
 # 配置DNS架构
 cat >> .config <<EOF
-# DNS架构优化
-CONFIG_PACKAGE_luci-app-mosdns=y
-CONFIG_PACKAGE_luci-app-smartdns=y
+# DNS架构优化 (luci-app-mosdns和luci-app-smartdns已在6.12.config中定义)
 CONFIG_MOSDNS_INCLUDE_BINARY=y
 CONFIG_SMARTDNS_INCLUDE_BINARY=y
 # 确保DNS工具

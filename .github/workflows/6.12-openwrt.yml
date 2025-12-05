@@ -117,11 +117,8 @@ jobs:
       - name: 清理旧的构建目录
         run: |
           cd openwrt
-          # 清理所有旧的构建文件，确保干净编译
-          rm -rf staging_dir build_dir bin tmp logs
-          # 清理损坏的下载缓存
-          rm -rf dl
-          mkdir -p dl bin staging_dir build_dir tmp logs
+          rm -rf staging_dir build_dir bin dl
+          mkdir -p dl bin staging_dir build_dir
 
       # 检查自定义文件是否存在
       - name: 检查自定义配置文件
@@ -163,8 +160,7 @@ jobs:
           # 删除 small 源中可能冲突的 SSR-Plus（如果使用 helloworld）
           rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
           # 删除冲突的网络包 (使用 small/helloworld 源的版本)
-          rm -rf feeds/packages/net/{alist,adguardhome,xray*,v2ray*,sing*}
-          # 保留 smartdns 和 mosdns
+          rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
           rm -rf feeds/packages/net/{shadowsocks-libev,shadowsocksr-libev,simple-obfs}
           rm -rf feeds/packages/utils/v2dat
           # 删除官方 golang (使用 kenzok8/golang 1.25 分支)
@@ -178,29 +174,11 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 修复 libdeflate 包问题
-      - name: 修复 libdeflate 包问题
-        run: |
-          cd openwrt
-          # 更新工具链源码
-          rm -rf tools/libdeflate
-          git pull origin master
-          # 清理可能损坏的下载缓存
-          rm -f dl/libdeflate*.tar.gz
-          # 预先下载 libdeflate 的正确版本
-          make tools/libdeflate/download V=s || true
-
       # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          # 先编译基础工具，解决依赖问题
-          make tools/install -j1 V=s 2>&1 | tee tools_install.log || {
-            echo "工具链编译失败，尝试修复..."
-            make tools/libdeflate/clean
-            make tools/libdeflate/compile V=s
-            make tools/install -j$(nproc) V=s 2>&1 | tee -a tools_install.log
-          }
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
       # 上传工具链安装日志
@@ -235,19 +213,8 @@ jobs:
         id: package
         run: |
           cd openwrt
-          # 生成完整的配置
           make defconfig
-          make oldconfig
-          # 使用aria2c加速下载，带重试机制
-          make download -j16 V=s 2>&1 | tee download.log || {
-            echo "下载失败，清理损坏文件并重试..."
-            # 清理所有小于1KB的损坏文件
-            find dl -size -1024c -exec rm -f {} \;
-            # 重试下载
-            make download -j8 V=s 2>&1 | tee -a download.log
-          }
-          # 最终检查并清理损坏文件
-          echo "检查下载文件完整性..."
+          make download -j16 V=s 2>&1 | tee download.log
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
