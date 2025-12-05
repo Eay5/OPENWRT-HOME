@@ -120,9 +120,9 @@ echo "=== Package installation completed ==="
 echo ""
 echo "=== Applying compilation optimizations ==="
 
-# 启用编译优化
+# 启用编译优化（禁用ccache以确保稳定性）
 echo "CONFIG_DEVEL=y" >> .config
-echo "CONFIG_CCACHE=y" >> .config
+# echo "CONFIG_CCACHE=y" >> .config  # 禁用ccache，确保干净编译
 echo "CONFIG_BUILD_LOG=y" >> .config
 echo "CONFIG_BUILD_LOG_DIR=\"./logs\"" >> .config
 
@@ -139,7 +139,7 @@ echo "CONFIG_DOWNLOAD_TOOL_CUSTOM=\"aria2c -x 16 -s 16 -j 16\"" >> .config
 
 echo "✓ Compilation optimizations applied"
 echo "✓ Intel x86 optimizations enabled"
-echo "✓ ccache enabled for faster rebuilds"
+echo "✓ Clean build without cache for stability"
 
 echo ""
 echo "=== SSR-Plus Performance Tuning ==="
@@ -209,5 +209,5 @@ echo "  - SmartDNS: 端口5354，测速选优，备用"
 echo "  - dnsmasq: 端口53，缓存10K，DNSSEC"
 echo "✅ Memory: Huge pages + compression"
 echo "✅ Monitoring: htop + iftop + vnstat + dig"
-echo "✅ Compilation: ccache + parallel build"
+echo "✅ Compilation: Clean build + parallel threads (no cache)"
 echo "=== All optimizations completed ==="

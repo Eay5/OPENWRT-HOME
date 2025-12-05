@@ -47,38 +47,36 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # 缓存ccache编译缓存
-      - name: 缓存ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-ccache-6.12-${{ hashFiles('**/6.12.config') }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-6.12-
-            ${{ runner.os }}-ccache-
+      # 禁用所有缓存，确保稳定性
+      # - name: 缓存ccache
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: ~/.ccache
+      #     key: ${{ runner.os }}-ccache-6.12-${{ hashFiles('**/6.12.config') }}-v2
+      #     restore-keys: |
+      #       ${{ runner.os }}-ccache-6.12-v2
+      #       ${{ runner.os }}-ccache-v2
 
-      # 缓存工具链
-      - name: 缓存工具链
-        uses: actions/cache@v4
-        with:
-          path: |
-            openwrt/staging_dir/toolchain-*
-            openwrt/staging_dir/host
-            openwrt/build_dir/host
-            openwrt/build_dir/toolchain-*
-          key: ${{ runner.os }}-toolchain-6.12-${{ hashFiles('**/6.12.config') }}
-          restore-keys: |
-            ${{ runner.os }}-toolchain-6.12-
+      # - name: 缓存工具链
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: |
+      #       openwrt/staging_dir/toolchain-*
+      #       openwrt/staging_dir/host
+      #       openwrt/build_dir/host
+      #       openwrt/build_dir/toolchain-*
+      #     key: ${{ runner.os }}-toolchain-6.12-${{ hashFiles('**/6.12.config') }}-v2
+      #     restore-keys: |
+      #       ${{ runner.os }}-toolchain-6.12-v2
 
-      # 缓存下载包
-      - name: 缓存下载包
-        uses: actions/cache@v4
-        with:
-          path: openwrt/dl
-          key: ${{ runner.os }}-dl-6.12-${{ hashFiles('**/6.12.config') }}
-          restore-keys: |
-            ${{ runner.os }}-dl-6.12-
-            ${{ runner.os }}-dl-
+      # - name: 缓存下载包
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: openwrt/dl
+      #     key: ${{ runner.os }}-dl-6.12-${{ hashFiles('**/6.12.config') }}-v2
+      #     restore-keys: |
+      #       ${{ runner.os }}-dl-6.12-v2
+      #       ${{ runner.os }}-dl-v2
 
       # 安装编译环境
       - name: 安装编译环境
@@ -103,11 +101,11 @@ jobs:
           sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo mkdir -p /workdir
           sudo chown $USER:$(id -gn) /workdir
-          # 配置ccache
-          export PATH="/usr/lib/ccache:$PATH"
-          ccache -M 10G
-          ccache -z
-          echo "ccache配置完成，最大缓存：10GB"
+          # 不使用ccache，确保干净编译
+          # export PATH="/usr/lib/ccache:$PATH"
+          # ccache -M 10G
+          # ccache -z
+          echo "禁用ccache，使用完全干净的编译环境"
 
       # 下载固件源码
       - name: 下载固件源码
@@ -119,8 +117,11 @@ jobs:
       - name: 清理旧的构建目录
         run: |
           cd openwrt
-          rm -rf staging_dir build_dir bin dl
-          mkdir -p dl bin staging_dir build_dir
+          # 清理所有旧的构建文件，确保干净编译
+          rm -rf staging_dir build_dir bin tmp logs
+          # 清理损坏的下载缓存
+          rm -rf dl
+          mkdir -p dl bin staging_dir build_dir tmp logs
 
       # 检查自定义文件是否存在
       - name: 检查自定义配置文件
@@ -177,11 +178,29 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
+      # 修复 libdeflate 包问题
+      - name: 修复 libdeflate 包问题
+        run: |
+          cd openwrt
+          # 更新工具链源码
+          rm -rf tools/libdeflate
+          git pull origin master
+          # 清理可能损坏的下载缓存
+          rm -f dl/libdeflate*.tar.gz
+          # 预先下载 libdeflate 的正确版本
+          make tools/libdeflate/download V=s || true
+
       # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
+          # 先编译基础工具，解决依赖问题
+          make tools/install -j1 V=s 2>&1 | tee tools_install.log || {
+            echo "工具链编译失败，尝试修复..."
+            make tools/libdeflate/clean
+            make tools/libdeflate/compile V=s
+            make tools/install -j$(nproc) V=s 2>&1 | tee -a tools_install.log
+          }
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
 
       # 上传工具链安装日志
@@ -216,8 +235,19 @@ jobs:
         id: package
         run: |
           cd openwrt
+          # 生成完整的配置
           make defconfig
-          make download -j16 V=s 2>&1 | tee download.log
+          make oldconfig
+          # 使用aria2c加速下载，带重试机制
+          make download -j16 V=s 2>&1 | tee download.log || {
+            echo "下载失败，清理损坏文件并重试..."
+            # 清理所有小于1KB的损坏文件
+            find dl -size -1024c -exec rm -f {} \;
+            # 重试下载
+            make download -j8 V=s 2>&1 | tee -a download.log
+          }
+          # 最终检查并清理损坏文件
+          echo "检查下载文件完整性..."
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
@@ -231,20 +261,20 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          # 启用ccache
-          export PATH="/usr/lib/ccache:$PATH"
-          export CCACHE_DIR=~/.ccache
-          echo "CONFIG_CCACHE=y" >> .config
+          # 不使用ccache，确保干净编译
+          # export PATH="/usr/lib/ccache:$PATH"
+          # export CCACHE_DIR=~/.ccache
+          # echo "CONFIG_CCACHE=y" >> .config
           # 智能并行编译
           THREADS=$(($(nproc) + 1))
           echo -e "Compiling with $THREADS threads (CPU cores: $(nproc))"
-          echo "开始编译，使用ccache加速..."
+          echo "开始干净编译，不使用任何缓存..."
           make -j$THREADS V=s 2>&1 | tee build.log || {
             echo "并行编译失败，尝试降低线程数..."
             make -j$(($(nproc)/2)) V=s 2>&1 | tee -a build.log || make -j1 V=s 2>&1 | tee -a build.log
           }
-          # 显示ccache统计
-          ccache -s
+          # 编译完成
+          echo "编译完成"
           echo "Checking generated firmware:"
           ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
           echo "status=success" >> $GITHUB_ENV

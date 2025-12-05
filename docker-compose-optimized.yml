@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: unless-stopped
+    
+    # 网络优化
+    network_mode: host  # 使用host网络，避免NAT开销
+    
+    # 如果不能用host网络，使用以下配置
+    # ports:
+    #   - "53:53/tcp"
+    #   - "53:53/udp"
+    #   - "3000:3000/tcp"  # Web界面
+    #   - "853:853/tcp"    # DoT (可选)
+    #   - "784:784/udp"    # DoQ (可选)
+    
+    # 资源限制和优化
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'      # 最多使用2个CPU核心
+          memory: 1G        # 最大1GB内存
+        reservations:
+          cpus: '0.5'      # 保证至少0.5个CPU
+          memory: 256M     # 保证至少256MB内存
+    
+    # 性能优化参数
+    environment:
+      - TZ=Asia/Shanghai
+      # Go运行时优化
+      - GOGC=100                    # 垃圾回收阈值
+      - GOMEMLIMIT=800MiB          # Go内存限制
+      - GOMAXPROCS=4               # 最大并发数
+      
+    # 容器内核参数优化
+    sysctls:
+      # 网络优化
+      - net.core.somaxconn=65535
+      - net.ipv4.tcp_tw_reuse=1
+      - net.ipv4.tcp_fin_timeout=30
+      - net.ipv4.tcp_keepalive_time=1200
+      - net.ipv4.tcp_max_syn_backlog=8192
+      - net.ipv4.tcp_max_tw_buckets=5000
+      - net.ipv4.tcp_fastopen=3
+      - net.ipv4.tcp_mtu_probing=1
+      - net.ipv4.tcp_congestion_control=bbr
+      # UDP优化
+      - net.core.netdev_max_backlog=5000
+      - net.ipv4.udp_mem=102400 204800 409600
+      - net.core.rmem_max=134217728
+      - net.core.wmem_max=134217728
+      # 文件描述符
+      - fs.file-max=65535
+      - fs.nr_open=65535
+    
+    # 提升权限（需要修改内核参数）
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - NET_BIND_SERVICE
+      - NET_RAW
+    
+    # 安全选项
+    security_opt:
+      - no-new-privileges:true
+    
+    # 卷挂载优化
+    volumes:
+      # 工作目录 - 使用delegated提升性能
+      - ./adguard-work:/opt/adguardhome/work:delegated
+      # 配置目录
+      - ./adguard-conf:/opt/adguardhome/conf:delegated
+      # 使用tmpfs加速日志写入
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 100M
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    
+    # 日志优化
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    
+    # DNS配置
+    dns:
+      - 127.0.0.1  # 使用自己作为DNS
+      - 223.5.5.5  # 备用DNS
+
+# 如果不使用host网络，定义独立网络
+# networks:
+#   adguard_net:
+#     driver: bridge
+#     ipam:
+#       config:
+#         - subnet: 172.20.0.0/16
+#           gateway: 172.20.0.1
