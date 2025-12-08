@@ -1,12 +1,13 @@
 #!/bin/bash
 # 6.12-part1.sh - 在 feeds update 之前执行
-# 只修改 feeds.conf.default，添加第三方源
+# 配置第三方源并处理依赖
 
 echo "Adding custom feeds..."
 
-# 添加必要的第三方源 (精简版)
-sed -i '1i src-git helloworld https://github.com/fw876/helloworld' feeds.conf.default
-sed -i '2i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+# 添加第三方源
+sed -i '1i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+sed -i '2i src-git small https://github.com/kenzok8/small-package' feeds.conf.default
+sed -i '3i src-git helloworld https://github.com/fw876/helloworld' feeds.conf.default
 
 echo "Custom feeds added to feeds.conf.default"
 cat feeds.conf.default

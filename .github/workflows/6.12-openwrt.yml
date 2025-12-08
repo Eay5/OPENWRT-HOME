@@ -64,9 +64,26 @@ jobs:
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
+
+      - name: Clean Old Build
+        run: |
           cd openwrt
-          echo "src-git helloworld https://github.com/fw876/helloworld" >> feeds.conf.default
-          echo "src-git kenzo https://github.com/kenzok8/openwrt-packages" >> feeds.conf.default
+          rm -rf staging_dir build_dir bin dl
+          mkdir -p dl bin staging_dir build_dir
+
+      - name: Check Custom Files
+        run: |
+          ls -l $GITHUB_WORKSPACE/
+          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE exists" || { echo "❌ $CONFIG_FILE not found"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH exists" || { echo "❌ $DIY_P1_SH not found"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH exists" || { echo "❌ $DIY_P2_SH not found"; exit 1; }
+
+      - name: Load Custom Feeds
+        run: |
+          [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+          chmod +x "$DIY_P1_SH"
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
 
       - name: Update Feeds
         run: |
@@ -76,25 +93,48 @@ jobs:
       - name: Clean Conflicting Packages
         run: |
           cd openwrt
-          # 删除冲突的包
+          echo "Removing conflicting packages..."
+          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
           rm -rf feeds/luci/applications/luci-app-ssr-plus
+          rm -rf feeds/luci/applications/luci-app-mosdns
+          rm -rf feeds/luci/applications/luci-app-fchomo
+          rm -rf feeds/luci/applications/luci-app-bypass
+          rm -rf feeds/kenzo/luci-app-ssr-plus
+          rm -rf feeds/kenzo/luci-app-fchomo
+          rm -rf feeds/kenzo/luci-app-bypass
+          rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
           rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
           rm -rf feeds/packages/net/{shadowsocks-libev,shadowsocksr-libev,simple-obfs}
-          # 删除可能有问题的 golang
+          rm -rf feeds/packages/utils/v2dat
           rm -rf feeds/packages/lang/golang
           git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
+          echo "Conflicting packages removed."
 
       - name: Install Feeds
         run: |
           cd openwrt
           ./scripts/feeds install -a
 
+      - name: Download and Install Toolchain
+        run: |
+          cd openwrt
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
+
+      - name: Upload Toolchain Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-install-logs
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
       - name: Load Custom Configuration
         run: |
-          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-          chmod +x $DIY_P1_SH
-          chmod +x $DIY_P2_SH
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          [ -e files ] && mv files openwrt/files
+          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+          chmod +x "$DIY_P2_SH"
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
