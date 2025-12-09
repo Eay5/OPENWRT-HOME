@@ -41,6 +41,32 @@ else
 fi
 
 echo ""
+echo "=== Installing packages ==="
+
+./scripts/feeds install -p helloworld luci-app-ssr-plus 2>/dev/null || \
+    ./scripts/feeds install -p small luci-app-ssr-plus 2>/dev/null || true
+./scripts/feeds install -p helloworld shadowsocks-libev 2>/dev/null || \
+    ./scripts/feeds install -p small shadowsocks-libev 2>/dev/null || true
+./scripts/feeds install -p helloworld shadowsocks-libev-ss-server 2>/dev/null || \
+    ./scripts/feeds install -p small shadowsocks-libev-ss-server 2>/dev/null || true
+./scripts/feeds install -p helloworld shadowsocks-libev-ss-redir 2>/dev/null || \
+    ./scripts/feeds install -p small shadowsocks-libev-ss-redir 2>/dev/null || true
+./scripts/feeds install -p helloworld shadowsocks-libev-ss-local 2>/dev/null || \
+    ./scripts/feeds install -p small shadowsocks-libev-ss-local 2>/dev/null || true
+./scripts/feeds install -p small shadowsocks-rust 2>/dev/null || true
+./scripts/feeds install -p small shadowsocksr-libev 2>/dev/null || true
+./scripts/feeds install -p small simple-obfs 2>/dev/null || true
+./scripts/feeds install -p small v2ray-core 2>/dev/null || true
+./scripts/feeds install -p small xray-core 2>/dev/null || true
+./scripts/feeds install -p small trojan-plus 2>/dev/null || true
+./scripts/feeds install -p small mosdns 2>/dev/null || true
+./scripts/feeds install -p small luci-app-mosdns 2>/dev/null || true
+./scripts/feeds install -p small luci-app-smartdns 2>/dev/null || true
+./scripts/feeds install -p small smartdns 2>/dev/null || true
+
+echo "=== Package installation completed ==="
+
+echo ""
 echo "======================================"
 echo "OpenWrt 6.1 配置完成！"
 echo "======================================"
@@ -48,23 +74,6 @@ echo "配置信息："
 echo "  - 内核: 6.1"
 echo "  - 默认IP: 192.168.0.133"
 echo "  - 主机名: EAY"
-echo ""
-echo "代理优化："
-echo "  - SSR-Plus: Shadowsocks-Rust 高性能版"
-echo "  - 支持: SS/SSR/V2ray/Xray/Trojan"
-echo "  - 透明代理: redsocks2 + chinadns-ng"
-echo ""
-echo "DNS 优化："
-echo "  - 主DNS: MosDNS (端口 5353)"
-echo "    * GeoIP/GeoSite 分流"
-echo "    * DoH/DoT 加密查询"
-echo "  - 辅DNS: SmartDNS (端口 5354)"
-echo "    * 多线路测速"
-echo "    * 智能缓存"
-echo "  - 工具: dig, drill, knot-dig"
-echo ""
-echo "网络优化："
-echo "  - TCP: BBR + Hybla 拥塞控制"
-echo "  - 加速: Shortcut-FE + Fast-Classifier"
-echo "  - 监控: htop, iftop, iperf3, vnstat"
+echo "  - 主题: Argon"
+echo "  - 代理: SSR-Plus + MosDNS + SmartDNS"
 echo "======================================"

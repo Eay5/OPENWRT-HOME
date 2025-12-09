@@ -1,4 +1,4 @@
-name: Build 6.12-OpenWrt
+name: Build 6.12-OpenWrt-Optimized
 
 on:
   repository_dispatch:
@@ -17,9 +17,9 @@ env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 6.12.config
+  CONFIG_FILE: 6.12-optimized.config  # 使用优化配置
   DIY_P1_SH: 6.12-part1.sh
-  DIY_P2_SH: 6.12-part2.sh
+  DIY_P2_SH: 6.12-part2-optimized.sh  # 使用优化脚本
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: true
@@ -29,17 +29,17 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04   # 使用 Ubuntu 22.04
+    runs-on: ubuntu-22.04
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
         uses: actions/checkout@v4
 
-      # 清理更多空间
-      - name: 清理更多空间
+      # 清理磁盘空间 (深度清理)
+      - name: 深度清理磁盘空间
         uses: coder-xiaomo/free-disk-space@main
         with:
-          tool-cache: false
+          tool-cache: true
           android: true
           dotnet: true
           haskell: true
@@ -47,47 +47,25 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # 禁用所有缓存，确保稳定性
-      # - name: 缓存ccache
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: ~/.ccache
-      #     key: ${{ runner.os }}-ccache-6.12-${{ hashFiles('**/6.12.config') }}-v2
-      #     restore-keys: |
-      #       ${{ runner.os }}-ccache-6.12-v2
-      #       ${{ runner.os }}-ccache-v2
-
-      # - name: 缓存工具链
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: |
-      #       openwrt/staging_dir/toolchain-*
-      #       openwrt/staging_dir/host
-      #       openwrt/build_dir/host
-      #       openwrt/build_dir/toolchain-*
-      #     key: ${{ runner.os }}-toolchain-6.12-${{ hashFiles('**/6.12.config') }}-v2
-      #     restore-keys: |
-      #       ${{ runner.os }}-toolchain-6.12-v2
-
-      # - name: 缓存下载包
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: openwrt/dl
-      #     key: ${{ runner.os }}-dl-6.12-${{ hashFiles('**/6.12.config') }}-v2
-      #     restore-keys: |
-      #       ${{ runner.os }}-dl-6.12-v2
-      #       ${{ runner.os }}-dl-v2
+      # 额外清理
+      - name: 额外磁盘清理
+        run: |
+          docker images -q | xargs -r docker rmi || true
+          docker system prune -af || true
+          sudo -E apt-get -qq remove --purge azure-cli* docker* ghc* zulu* llvm* firefox google* powershell* openjdk* || true
+          sudo -E apt-get -qq autoremove --purge || true
+          sudo -E apt-get clean || true
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          echo "可用磁盘空间:"
+          df -hT
 
       # 安装编译环境
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          docker images -q | xargs -r docker rmi || true
-          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt update
-          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
           sudo -E apt -y full-upgrade
           sudo -E apt -y install build-essential clang flex bison g++ gawk \
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
@@ -112,7 +90,7 @@ jobs:
       - name: 清理旧的构建目录
         run: |
           cd openwrt
-          rm -rf staging_dir build_dir bin dl
+          rm -rf staging_dir build_dir bin dl tmp logs
           mkdir -p dl bin staging_dir build_dir
 
       # 检查自定义文件是否存在
@@ -137,7 +115,7 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
 
-      # 清理冲突包 (方案C: 在 feeds update 后执行)
+      # 清理冲突包
       - name: 清理冲突包
         run: |
           cd openwrt
@@ -173,8 +151,8 @@ jobs:
       - name: 下载并安装工具链
         run: |
           cd openwrt
-          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
-          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
 
       # 上传工具链安装日志
       - name: 上传工具链安装日志
@@ -203,42 +181,45 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      # 下载安装包
+      # 同步配置
+      - name: 同步配置
+        run: |
+          cd openwrt
+          make oldconfig
+
+      # 下载安装包 (智能重试)
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
           make defconfig
-          make download -j16 V=s 2>&1 | tee download.log
+          echo "开始下载包..."
+          make download -j16 V=s 2>&1 | tee download.log || {
+            echo "首次下载失败，降低并发重试..."
+            make download -j8 V=s 2>&1 | tee -a download.log
+          }
+          # 清理损坏的下载文件
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
       # 检查磁盘空间
       - name: 检查磁盘空间
         run: |
+          echo "编译前磁盘使用情况："
           df -hT
 
-      # 开始编译固件
+      # 开始编译固件 (智能并行)
       - name: 开始编译固件
         id: compile
         run: |
           cd openwrt
-          # 不使用ccache，确保干净编译
-          # export PATH="/usr/lib/ccache:$PATH"
-          # export CCACHE_DIR=~/.ccache
-          # echo "CONFIG_CCACHE=y" >> .config
-          # 智能并行编译
-          THREADS=$(($(nproc) + 1))
-          echo -e "Compiling with $THREADS threads (CPU cores: $(nproc))"
-          echo "开始干净编译，不使用任何缓存..."
-          make -j$THREADS V=s 2>&1 | tee build.log || {
-            echo "并行编译失败，尝试降低线程数..."
-            make -j$(($(nproc)/2)) V=s 2>&1 | tee -a build.log || make -j1 V=s 2>&1 | tee -a build.log
+          echo -e "开始编译，使用 $(nproc) 线程"
+          make -j$(nproc) V=s 2>&1 | tee build.log || {
+            echo "多线程编译失败，使用单线程重试..."
+            make -j1 V=s 2>&1 | tee -a build.log
           }
-          # 编译完成
-          echo "编译完成"
-          echo "Checking generated firmware:"
-          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
+          echo "检查生成的固件："
+          ls -la bin/targets/*/* || echo "未在 bin/targets 生成固件"
           echo "status=success" >> $GITHUB_ENV
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -250,19 +231,22 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: openwrt/build.log
+          path: |
+            openwrt/build.log
+            openwrt/download.log
 
       # 获取内核版本号
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3 || echo "6.12")
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       # 查看磁盘使用情况
       - name: 查看磁盘使用情况
         if: (!cancelled())
         run: |
+          echo "编译后磁盘使用情况："
           df -hT
 
       # 上传 bin 压缩目录
@@ -284,7 +268,7 @@ jobs:
             echo "FIRMWARE=$PWD" >> $GITHUB_ENV
             echo "status=success" >> $GITHUB_ENV
           else
-            echo "No firmware found in openwrt/bin/targets/"
+            echo "未找到固件文件 openwrt/bin/targets/"
             echo "status=failure" >> $GITHUB_ENV
           fi
 
@@ -293,7 +277,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && !cancelled()
         with:
-          name: OpenWrt-6.12${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: OpenWrt-6.12-Optimized${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
       # 创建 Release 标签
@@ -301,9 +285,14 @@ jobs:
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")-optimized" >> $GITHUB_ENV
           touch release.txt
-          [ "$UPLOAD_COWTRANSFER" = true ] && echo "Cowtransfer enabled" >> release.txt
+          echo "## OpenWrt 6.12 虚拟机优化版" >> release.txt
+          echo "- 内核版本: 6.12" >> release.txt
+          echo "- 优化目标: Linux虚拟机 (KVM/QEMU/Proxmox)" >> release.txt
+          echo "- 主要功能: SSR-Plus + MosDNS + SmartDNS" >> release.txt
+          echo "- 默认地址: 192.168.0.133" >> release.txt
+          echo "- 性能优化: VirtIO驱动 + TCP BBR + 透明大页" >> release.txt
           echo "status=success" >> $GITHUB_ENV
 
       # 发布至 Release
@@ -313,7 +302,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
-          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12}}-X86-64_${{ env.FILE_DATE }}
+          name: OpenWrt 6.12-Optimized${{ env.KERNEL_VERSION_6_12}}-X86-64-VM_${{ env.FILE_DATE }}
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
@@ -332,5 +321,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          keep_latest: 30
+          keep_latest: 10
           delete_tags: true
