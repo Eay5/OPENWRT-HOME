@@ -193,18 +193,6 @@ jobs:
         run: |
           cd openwrt
           make defconfig
-          
-          # 强制禁用 ksmbd 相关包 (defconfig 可能会重新启用它们)
-          echo ">>> 强制禁用 ksmbd 相关包..."
-          sed -i '/CONFIG_PACKAGE_kmod-fs-ksmbd/d' .config
-          sed -i '/CONFIG_PACKAGE_ksmbd-server/d' .config
-          sed -i '/CONFIG_PACKAGE_luci-app-ksmbd/d' .config
-          sed -i '/CONFIG_PACKAGE_luci-i18n-ksmbd/d' .config
-          echo "# CONFIG_PACKAGE_kmod-fs-ksmbd is not set" >> .config
-          echo "# CONFIG_PACKAGE_ksmbd-server is not set" >> .config
-          echo "# CONFIG_PACKAGE_luci-app-ksmbd is not set" >> .config
-          echo "# CONFIG_PACKAGE_luci-i18n-ksmbd-zh-cn is not set" >> .config
-          
           echo "开始下载包..."
           make download -j16 V=s 2>&1 | tee download.log || {
             echo "首次下载失败，降低并发重试..."

@@ -15,33 +15,6 @@ echo ">>> Applying basic settings..."
 # 修改默认IP
 sed -i 's/192\.168\.1\.1/192.168.0.133/g' package/base-files/files/bin/config_generate
 
-# 自定义开机 Banner (EAY + 笑脸)
-cat > package/base-files/files/etc/banner <<'EOF'
-  _____ ___   __     __
- | ____/ _ \  \ \   / /   (^_^)
- |  _|/ /_\ \  \ \_/ / 
- | |__/  _  \   \   /  
- |___/_/   \_\   |_|   
- 
- -----------------------------------------------------
- %D %V, %C
- -----------------------------------------------------
-  Kernel: 6.12 Optimized  |  Target: x86_64 KVM
-  Theme: Argon            |  Author: EAY
- -----------------------------------------------------
-EOF
-
-# 添加动态显示 IP 的登录脚本
-mkdir -p package/base-files/files/etc/profile.d
-cat > package/base-files/files/etc/profile.d/99-banner-ip.sh <<'EOF'
-#!/bin/sh
-# 登录时动态显示 LAN 口 IP
-ip_addr=$(ip addr show br-lan | grep "inet\b" | awk '{print $2}' | cut -d/ -f1)
-[ -z "$ip_addr" ] && ip_addr="Not Connected"
-echo "  LAN IP: $ip_addr"
-echo " -----------------------------------------------------"
-EOF
-
 # 编译6.12内核
 sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
 
@@ -68,6 +41,8 @@ echo ">>> Applying VM network optimizations..."
 mkdir -p files/etc/sysctl.d
 cat > files/etc/sysctl.d/99-vm-optimize.conf <<'EOF'
 # ===== TCP/IP 核心优化 =====
+# BBR 拥塞控制 (弱网环境提升明显)
+net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = fq
 
 # TCP Fast Open (减少握手延迟)
@@ -107,36 +82,6 @@ vm.vfs_cache_pressure = 50
 vm.dirty_background_ratio = 5
 vm.dirty_ratio = 15
 EOF
-
-# 创建智能 BBR 选择脚本 (开机自动检测 BBR3)
-mkdir -p files/etc/uci-defaults
-cat > files/etc/uci-defaults/99-init-bbr-settings <<'EOF'
-#!/bin/sh
-# 智能选择最佳拥塞控制算法 (Priority: BBR3 > BBR > CUBIC)
-
-# 等待内核模块加载
-sleep 5
-
-# 检测可用算法
-current_cc=$(sysctl -n net.ipv4.tcp_congestion_control)
-available_cc=$(sysctl -n net.ipv4.tcp_available_congestion_control)
-
-echo "Current CC: $current_cc" > /tmp/bbr_init_log
-echo "Available CC: $available_cc" >> /tmp/bbr_init_log
-
-if echo "$available_cc" | grep -q "bbr3"; then
-    echo "BBR3 detected! Enabling..." >> /tmp/bbr_init_log
-    sysctl -w net.ipv4.tcp_congestion_control=bbr3
-    echo "net.ipv4.tcp_congestion_control=bbr3" >> /etc/sysctl.conf
-elif echo "$available_cc" | grep -q "bbr"; then
-    echo "BBR detected! Enabling..." >> /tmp/bbr_init_log
-    sysctl -w net.ipv4.tcp_congestion_control=bbr
-    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-else
-    echo "No BBR found. Using default." >> /tmp/bbr_init_log
-fi
-EOF
-chmod +x files/etc/uci-defaults/99-init-bbr-settings
 
 echo "Network optimizations applied."
 
@@ -234,13 +179,6 @@ CONFIG_CCACHE=n
 CONFIG_BUILD_PATENTED=y
 CONFIG_LINUX_6_12=y
 CONFIG_TESTING_KERNEL=y
-
-# 强制禁用 ksmbd 相关包 (防止被依赖自动启用)
-# CONFIG_PACKAGE_kmod-fs-ksmbd is not set
-# CONFIG_PACKAGE_ksmbd-server is not set
-# CONFIG_PACKAGE_luci-app-ksmbd is not set
-# CONFIG_PACKAGE_luci-i18n-ksmbd-zh-cn is not set
-# CONFIG_PACKAGE_kmod-nls-utf8 is not set
 EOF
 
 # 创建版本信息文件
