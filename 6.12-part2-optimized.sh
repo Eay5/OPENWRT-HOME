@@ -179,6 +179,13 @@ CONFIG_CCACHE=n
 CONFIG_BUILD_PATENTED=y
 CONFIG_LINUX_6_12=y
 CONFIG_TESTING_KERNEL=y
+
+# 强制禁用 ksmbd 相关包 (防止被依赖自动启用)
+# CONFIG_PACKAGE_kmod-fs-ksmbd is not set
+# CONFIG_PACKAGE_ksmbd-server is not set
+# CONFIG_PACKAGE_luci-app-ksmbd is not set
+# CONFIG_PACKAGE_luci-i18n-ksmbd-zh-cn is not set
+# CONFIG_PACKAGE_kmod-nls-utf8 is not set
 EOF
 
 # 创建版本信息文件
