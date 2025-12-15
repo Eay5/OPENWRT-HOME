@@ -33,22 +33,6 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/f
 echo "Basic settings applied."
 
 # ┌─────────────────────────────────────────────┐
-# │           强制移除 KSMBd                      │
-# └─────────────────────────────────────────────┘
-echo ">>> Forcefully removing KSMBd packages..."
-
-# 从所有 feeds 中删除 ksmbd 相关包
-rm -rf feeds/*/luci-app-ksmbd 2>/dev/null || true
-rm -rf feeds/*/ksmbd-server 2>/dev/null || true
-rm -rf feeds/*/ksmbd-utils 2>/dev/null || true
-rm -rf feeds/luci/applications/luci-app-ksmbd 2>/dev/null || true
-rm -rf feeds/packages/net/ksmbd-tools 2>/dev/null || true
-rm -rf package/feeds/*/luci-app-ksmbd 2>/dev/null || true
-rm -rf package/feeds/*/ksmbd* 2>/dev/null || true
-
-echo "KSMBd packages removed from feeds."
-
-# ┌─────────────────────────────────────────────┐
 # │           虚拟机网络优化                      │
 # └─────────────────────────────────────────────┘
 echo ">>> Applying VM network optimizations..."

@@ -139,18 +139,6 @@ jobs:
           # 删除官方 golang (使用 kenzok8/golang 1.25 分支)
           rm -rf feeds/packages/lang/golang
           git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
-          
-          # ===== 强制删除 KSMBd 相关包（防止自动安装）=====
-          echo "Forcefully removing KSMBd packages from all feeds..."
-          rm -rf feeds/*/luci-app-ksmbd 2>/dev/null || true
-          rm -rf feeds/*/ksmbd-server 2>/dev/null || true
-          rm -rf feeds/*/ksmbd-tools 2>/dev/null || true
-          rm -rf feeds/*/ksmbd-utils 2>/dev/null || true
-          rm -rf feeds/luci/applications/luci-app-ksmbd 2>/dev/null || true
-          rm -rf feeds/packages/net/ksmbd-tools 2>/dev/null || true
-          rm -rf feeds/packages/kernel/kmod-fs-ksmbd 2>/dev/null || true
-          echo "KSMBd packages removed."
-          
           echo "Conflicting packages removed."
 
       # 读取插件
@@ -198,21 +186,6 @@ jobs:
         run: |
           cd openwrt
           make oldconfig
-          
-          # 再次确认禁用 KSMBd（防止 make oldconfig 重新启用）
-          echo "Double-checking KSMBd is disabled..."
-          sed -i 's/CONFIG_PACKAGE_ksmbd-server=.*/CONFIG_PACKAGE_ksmbd-server=n/g' .config
-          sed -i 's/CONFIG_PACKAGE_ksmbd-utils=.*/CONFIG_PACKAGE_ksmbd-utils=n/g' .config
-          sed -i 's/CONFIG_PACKAGE_luci-app-ksmbd=.*/CONFIG_PACKAGE_luci-app-ksmbd=n/g' .config
-          sed -i 's/CONFIG_PACKAGE_kmod-fs-ksmbd=.*/CONFIG_PACKAGE_kmod-fs-ksmbd=n/g' .config
-          
-          # 如果不存在则添加禁用项
-          grep -q "CONFIG_PACKAGE_ksmbd-server" .config || echo "CONFIG_PACKAGE_ksmbd-server=n" >> .config
-          grep -q "CONFIG_PACKAGE_ksmbd-utils" .config || echo "CONFIG_PACKAGE_ksmbd-utils=n" >> .config
-          grep -q "CONFIG_PACKAGE_luci-app-ksmbd" .config || echo "CONFIG_PACKAGE_luci-app-ksmbd=n" >> .config
-          grep -q "CONFIG_PACKAGE_kmod-fs-ksmbd" .config || echo "CONFIG_PACKAGE_kmod-fs-ksmbd=n" >> .config
-          
-          echo "KSMBd configuration verified."
 
       # 下载安装包 (智能重试)
       - name: 下载安装包
