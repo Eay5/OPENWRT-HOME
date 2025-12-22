@@ -147,6 +147,28 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
+      # 设置内核版本为 6.12（必须在工具链编译之前！）
+      - name: 设置内核版本 6.12
+        run: |
+          cd openwrt
+          echo ">>> 设置内核版本为 6.12..."
+          
+          # 修改 x86 平台的内核版本
+          sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+          sed -i 's/KERNEL_TESTING_PATCHVER:=.*/KERNEL_TESTING_PATCHVER:=6.12/g' target/linux/x86/Makefile 2>/dev/null || true
+          
+          # 验证修改
+          echo ">>> 验证内核版本设置："
+          grep -E "KERNEL.*PATCHVER" target/linux/x86/Makefile
+          
+          # 检查内核配置文件是否存在
+          if [ -f "include/kernel-6.12" ]; then
+            echo "✅ 内核 6.12 配置文件存在"
+          else
+            echo "⚠️ 内核 6.12 配置文件不存在，可能需要更新源码"
+            ls -la include/kernel-* | head -10
+          fi
+
       # 下载并安装工具链
       - name: 下载并安装工具链
         run: |
@@ -186,6 +208,22 @@ jobs:
         run: |
           cd openwrt
           make oldconfig
+          
+          # 验证内核版本配置
+          echo ">>> 验证 .config 中的内核版本："
+          grep -E "CONFIG_LINUX_[0-9]" .config | head -10
+          
+          # 确保 6.12 被选中
+          if grep -q "CONFIG_LINUX_6_12=y" .config; then
+            echo "✅ 内核 6.12 已正确配置"
+          else
+            echo "⚠️ 内核 6.12 未被选中，尝试强制设置..."
+            sed -i 's/CONFIG_LINUX_6_6=y/CONFIG_LINUX_6_6=n/g' .config
+            sed -i 's/CONFIG_LINUX_6_1=y/CONFIG_LINUX_6_1=n/g' .config
+            sed -i 's/CONFIG_LINUX_5_15=y/CONFIG_LINUX_5_15=n/g' .config
+            echo "CONFIG_LINUX_6_12=y" >> .config
+            make oldconfig
+          fi
 
       # 下载安装包 (智能重试)
       - name: 下载安装包

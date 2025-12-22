@@ -15,8 +15,15 @@ echo ">>> Applying basic settings..."
 # 修改默认IP
 sed -i 's/192\.168\.1\.1/192.168.0.133/g' package/base-files/files/bin/config_generate
 
-# 编译6.12内核
-sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+# 编译6.12内核 (修复正则表达式)
+sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+
+# 同时修改 KERNEL_TESTING_PATCHVER（如果存在）
+sed -i 's/KERNEL_TESTING_PATCHVER:=.*/KERNEL_TESTING_PATCHVER:=6.12/g' target/linux/x86/Makefile 2>/dev/null || true
+
+# 验证内核版本修改
+echo ">>> 验证内核版本设置："
+grep "KERNEL_PATCHVER" target/linux/x86/Makefile || echo "未找到 KERNEL_PATCHVER"
 
 # 修改主机名
 sed -i "s/hostname='OpenWrt'/hostname='VM-EAY'/g" package/base-files/files/bin/config_generate
