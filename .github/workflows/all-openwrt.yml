@@ -1,0 +1,79 @@
+name: Build All OpenWrt Versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: "SSH connection to Actions"
+        required: false
+        default: "false"
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  trigger-all-builds:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 检查项目分支
+        uses: actions/checkout@v4
+
+      - name: 触发 6.12-optimized 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 6.12-openwrt-optimized.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 触发 6.12 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 6.12-openwrt.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 触发 6.6 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 6.6-openwrt.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 触发 6.1 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 6.1-openwrt.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 触发 5.15 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 5.15-openwrt.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 触发 5.10 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 5.10-openwrt.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 触发 5.4 编译
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: 5.4-openwrt.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 编译状态总结
+        run: |
+          echo "======================================"
+          echo "   已触发所有 OpenWrt 版本编译"
+          echo "======================================"
+          echo ""
+          echo "触发的编译任务："
+          echo "  ✅ 6.12-openwrt-optimized (虚拟机优化版)"
+          echo "  ✅ 6.12-openwrt"
+          echo "  ✅ 6.6-openwrt"
+          echo "  ✅ 6.1-openwrt"
+          echo "  ✅ 5.15-openwrt"
+          echo "  ✅ 5.10-openwrt"
+          echo "  ✅ 5.4-openwrt"
+          echo ""
+          echo "请前往 Actions 页面查看各个编译任务的进度"
+          echo "======================================"
