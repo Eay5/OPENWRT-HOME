@@ -161,7 +161,7 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 设置内核版本为 6.12（必须在工具链编译之前！）
+      # 设置内核版本为 6.12
       - name: 设置内核版本 6.12
         run: |
           cd openwrt
@@ -183,24 +183,7 @@ jobs:
             ls -la include/kernel-* | head -10
           fi
 
-      # 下载并安装工具链
-      - name: 下载并安装工具链
-        run: |
-          cd openwrt
-          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
-          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
-
-      # 上传工具链安装日志
-      - name: 上传工具链安装日志
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: toolchain-install-logs
-          path: |
-            openwrt/tools_install.log
-            openwrt/toolchain_install.log
-
-      # 更改设置
+      # 更改设置（必须在工具链编译之前！）
       - name: 更改设置
         run: |
           [ -e files ] && mv files openwrt/files
@@ -217,10 +200,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      # 同步配置
+      # 同步配置（生成完整 .config）
       - name: 同步配置
         run: |
           cd openwrt
+          make defconfig
           make oldconfig
           
           # 验证内核版本配置
@@ -254,18 +238,42 @@ jobs:
           
           echo "KSMBd configuration verified."
 
-      # 下载安装包 (智能重试)
+      # 下载并安装工具链（必须在 .config 配置完成后！）
+      - name: 下载并安装工具链
+        run: |
+          cd openwrt
+          echo "开始编译 tools..."
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          echo "开始编译 toolchain..."
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
+
+      # 上传工具链安装日志
+      - name: 上传工具链安装日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-install-logs
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      # 下载安装包 (增强重试机制)
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
-          make defconfig
           echo "开始下载包..."
-          make download -j16 V=s 2>&1 | tee download.log || {
-            echo "首次下载失败，降低并发重试..."
-            make download -j8 V=s 2>&1 | tee -a download.log
-          }
-          # 清理损坏的下载文件
+          
+          # 多次重试下载，处理网络不稳定
+          for i in 1 2 3 4 5; do
+            echo "=== 下载尝试 $i/5 ==="
+            make download -j8 V=s 2>&1 | tee -a download.log && break
+            echo "下载失败，清理损坏文件后重试..."
+            find dl -size -1024c -exec rm -f {} \;
+            sleep 10
+          done
+          
+          # 最终检查并清理
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
@@ -275,16 +283,25 @@ jobs:
           echo "编译前磁盘使用情况："
           df -hT
 
-      # 开始编译固件 (智能并行)
+      # 开始编译固件 (智能并行+重试)
       - name: 开始编译固件
         id: compile
         run: |
           cd openwrt
           echo -e "开始编译，使用 $(nproc) 线程"
-          make -j$(nproc) V=s 2>&1 | tee build.log || {
-            echo "多线程编译失败，使用单线程重试..."
+          
+          # 首次尝试多线程编译
+          if make -j$(nproc) V=s 2>&1 | tee build.log; then
+            echo "编译成功！"
+          else
+            echo "多线程编译失败，清理后单线程重试..."
+            # 清理可能损坏的下载文件
+            find dl -size -1024c -exec rm -f {} \;
+            # 重新下载缺失文件
+            make download -j4 V=s 2>&1 | tee -a download.log || true
+            # 单线程重试编译
             make -j1 V=s 2>&1 | tee -a build.log
-          }
+          fi
           echo "检查生成的固件："
           ls -la bin/targets/*/* || echo "未在 bin/targets 生成固件"
           echo "status=success" >> $GITHUB_ENV
