@@ -9,7 +9,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *  # 每天 19:00 UTC（即 Asia/Shanghai 的 03:00）
+    - cron: 0 19 * * *
   watch:
     types: [started]
 
@@ -17,9 +17,9 @@ env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 6.12-optimized.config  # 使用优化配置
+  CONFIG_FILE: 6.12-optimized.config
   DIY_P1_SH: 6.12-part1.sh
-  DIY_P2_SH: 6.12-part2-optimized.sh  # 使用优化脚本
+  DIY_P2_SH: 6.12-part2-optimized.sh
   UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: true
@@ -31,15 +31,13 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 检查项目分支并获取代码
       - name: 检查项目分支
         uses: actions/checkout@v4
 
-      # 清理磁盘空间 (深度清理)
-      - name: 深度清理磁盘空间
+      - name: 清理更多空间
         uses: coder-xiaomo/free-disk-space@main
         with:
-          tool-cache: true
+          tool-cache: false
           android: true
           dotnet: true
           haskell: true
@@ -47,25 +45,15 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      # 额外清理
-      - name: 额外磁盘清理
-        run: |
-          docker images -q | xargs -r docker rmi || true
-          docker system prune -af || true
-          sudo -E apt-get -qq remove --purge azure-cli* docker* ghc* zulu* llvm* firefox google* powershell* openjdk* || true
-          sudo -E apt-get -qq autoremove --purge || true
-          sudo -E apt-get clean || true
-          sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
-          echo "可用磁盘空间:"
-          df -hT
-
-      # 安装编译环境
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          docker images -q | xargs -r docker rmi || true
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt update
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
           sudo -E apt -y full-upgrade
           sudo -E apt -y install build-essential clang flex bison g++ gawk \
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
@@ -80,20 +68,17 @@ jobs:
           sudo mkdir -p /workdir
           sudo chown $USER:$(id -gn) /workdir
 
-      # 下载固件源码
       - name: 下载固件源码
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
 
-      # 清理旧的构建目录
       - name: 清理旧的构建目录
         run: |
           cd openwrt
-          rm -rf staging_dir build_dir bin dl tmp logs
+          rm -rf staging_dir build_dir bin dl
           mkdir -p dl bin staging_dir build_dir
 
-      # 检查自定义文件是否存在
       - name: 检查自定义配置文件
         run: |
           ls -l $GITHUB_WORKSPACE/
@@ -101,7 +86,6 @@ jobs:
           [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
           [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
 
-      # 加载自定义设置
       - name: 加载自定义设置
         run: |
           [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
@@ -109,20 +93,16 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
-      # 下载插件
       - name: 下载插件
         run: |
           cd openwrt
           ./scripts/feeds update -a
 
-      # 清理冲突包
       - name: 清理冲突包
         run: |
           cd openwrt
           echo "Removing conflicting packages..."
-          # small-package 推荐的冲突包清理
           rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
-          # 删除冲突的应用（保留 helloworld 中的 SSR-Plus）
           rm -rf feeds/luci/applications/luci-app-ssr-plus
           rm -rf feeds/luci/applications/luci-app-mosdns
           rm -rf feeds/luci/applications/luci-app-fchomo
@@ -130,17 +110,16 @@ jobs:
           rm -rf feeds/kenzo/luci-app-ssr-plus
           rm -rf feeds/kenzo/luci-app-fchomo
           rm -rf feeds/kenzo/luci-app-bypass
-          # 删除 small 源中可能冲突的 SSR-Plus（如果使用 helloworld）
           rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
-          # 删除冲突的网络包 (使用 small/helloworld 源的版本)
           rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns}
           rm -rf feeds/packages/net/{shadowsocks-libev,shadowsocksr-libev,simple-obfs}
           rm -rf feeds/packages/utils/v2dat
-          # 删除官方 golang (使用 kenzok8/golang 1.25 分支)
-          rm -rf feeds/packages/lang/golang
-          git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
           
-          # ===== 强制删除 KSMBd 相关包（防止自动安装）=====
+          # 替换 golang (使用 kenzok8 的版本)
+          rm -rf feeds/packages/lang/golang
+          git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
+          
+          # 强制删除 KSMBd 相关包
           echo "Forcefully removing KSMBd packages from all feeds..."
           rm -rf feeds/*/luci-app-ksmbd 2>/dev/null || true
           rm -rf feeds/*/ksmbd-server 2>/dev/null || true
@@ -155,35 +134,11 @@ jobs:
           
           echo "Conflicting packages removed."
 
-      # 读取插件
       - name: 读取插件
         run: |
           cd openwrt
           ./scripts/feeds install -a
 
-      # 设置内核版本为 6.12
-      - name: 设置内核版本 6.12
-        run: |
-          cd openwrt
-          echo ">>> 设置内核版本为 6.12..."
-          
-          # 修改 x86 平台的内核版本
-          sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
-          sed -i 's/KERNEL_TESTING_PATCHVER:=.*/KERNEL_TESTING_PATCHVER:=6.12/g' target/linux/x86/Makefile 2>/dev/null || true
-          
-          # 验证修改
-          echo ">>> 验证内核版本设置："
-          grep -E "KERNEL.*PATCHVER" target/linux/x86/Makefile
-          
-          # 检查内核配置文件是否存在
-          if [ -f "include/kernel-6.12" ]; then
-            echo "✅ 内核 6.12 配置文件存在"
-          else
-            echo "⚠️ 内核 6.12 配置文件不存在，可能需要更新源码"
-            ls -la include/kernel-* | head -10
-          fi
-
-      # 更改设置（必须在工具链编译之前！）
       - name: 更改设置
         run: |
           [ -e files ] && mv files openwrt/files
@@ -192,7 +147,6 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
-      # SSH 链接管理（可选）
       - name: SSH链接管理
         uses: P3TERX/ssh2actions@v1.0.0
         if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
@@ -200,37 +154,23 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      # 同步配置（生成完整 .config）
       - name: 同步配置
         run: |
           cd openwrt
           make defconfig
           make oldconfig
           
-          # 验证内核版本配置
-          echo ">>> 验证 .config 中的内核版本："
-          grep -E "CONFIG_LINUX_[0-9]" .config | head -10
+          # 验证内核版本
+          echo ">>> 验证内核版本配置："
+          grep "KERNEL_PATCHVER" target/linux/x86/Makefile
           
-          # 确保 6.12 被选中
-          if grep -q "CONFIG_LINUX_6_12=y" .config; then
-            echo "✅ 内核 6.12 已正确配置"
-          else
-            echo "⚠️ 内核 6.12 未被选中，尝试强制设置..."
-            sed -i 's/CONFIG_LINUX_6_6=y/CONFIG_LINUX_6_6=n/g' .config
-            sed -i 's/CONFIG_LINUX_6_1=y/CONFIG_LINUX_6_1=n/g' .config
-            sed -i 's/CONFIG_LINUX_5_15=y/CONFIG_LINUX_5_15=n/g' .config
-            echo "CONFIG_LINUX_6_12=y" >> .config
-            make oldconfig
-          fi
-          
-          # ===== 再次确认禁用 KSMBd（防止 make oldconfig 重新启用）=====
+          # 再次确认禁用 KSMBd
           echo "Double-checking KSMBd is disabled..."
           sed -i 's/CONFIG_PACKAGE_ksmbd-server=.*/CONFIG_PACKAGE_ksmbd-server=n/g' .config
           sed -i 's/CONFIG_PACKAGE_ksmbd-utils=.*/CONFIG_PACKAGE_ksmbd-utils=n/g' .config
           sed -i 's/CONFIG_PACKAGE_luci-app-ksmbd=.*/CONFIG_PACKAGE_luci-app-ksmbd=n/g' .config
           sed -i 's/CONFIG_PACKAGE_kmod-fs-ksmbd=.*/CONFIG_PACKAGE_kmod-fs-ksmbd=n/g' .config
           
-          # 如果不存在则添加禁用项
           grep -q "CONFIG_PACKAGE_ksmbd-server" .config || echo "CONFIG_PACKAGE_ksmbd-server=n" >> .config
           grep -q "CONFIG_PACKAGE_ksmbd-utils" .config || echo "CONFIG_PACKAGE_ksmbd-utils=n" >> .config
           grep -q "CONFIG_PACKAGE_luci-app-ksmbd" .config || echo "CONFIG_PACKAGE_luci-app-ksmbd=n" >> .config
@@ -238,7 +178,6 @@ jobs:
           
           echo "KSMBd configuration verified."
 
-      # 下载并安装工具链（必须在 .config 配置完成后！）
       - name: 下载并安装工具链
         run: |
           cd openwrt
@@ -247,7 +186,6 @@ jobs:
           echo "开始编译 toolchain..."
           make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
 
-      # 上传工具链安装日志
       - name: 上传工具链安装日志
         if: always()
         uses: actions/upload-artifact@v4
@@ -257,14 +195,11 @@ jobs:
             openwrt/tools_install.log
             openwrt/toolchain_install.log
 
-      # 下载安装包 (增强重试机制)
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
           echo "开始下载包..."
-          
-          # 多次重试下载，处理网络不稳定
           for i in 1 2 3 4 5; do
             echo "=== 下载尝试 $i/5 ==="
             make download -j8 V=s 2>&1 | tee -a download.log && break
@@ -272,44 +207,33 @@ jobs:
             find dl -size -1024c -exec rm -f {} \;
             sleep 10
           done
-          
-          # 最终检查并清理
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # 检查磁盘空间
       - name: 检查磁盘空间
         run: |
-          echo "编译前磁盘使用情况："
           df -hT
 
-      # 开始编译固件 (智能并行+重试)
       - name: 开始编译固件
         id: compile
         run: |
           cd openwrt
           echo -e "开始编译，使用 $(nproc) 线程"
-          
-          # 首次尝试多线程编译
           if make -j$(nproc) V=s 2>&1 | tee build.log; then
             echo "编译成功！"
           else
             echo "多线程编译失败，清理后单线程重试..."
-            # 清理可能损坏的下载文件
             find dl -size -1024c -exec rm -f {} \;
-            # 重新下载缺失文件
             make download -j4 V=s 2>&1 | tee -a download.log || true
-            # 单线程重试编译
             make -j1 V=s 2>&1 | tee -a build.log
           fi
-          echo "检查生成的固件："
-          ls -la bin/targets/*/* || echo "未在 bin/targets 生成固件"
+          echo "Checking generated firmware:"
+          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
           echo "status=success" >> $GITHUB_ENV
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-      # 上传构建日志
       - name: 上传构建日志
         if: always()
         uses: actions/upload-artifact@v4
@@ -319,21 +243,17 @@ jobs:
             openwrt/build.log
             openwrt/download.log
 
-      # 获取内核版本号
       - name: 获取内核版本号
         if: env.status == 'success'
         run: |
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3 || echo "6.12")
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3 2>/dev/null || echo "6.12")
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> $GITHUB_ENV
 
-      # 查看磁盘使用情况
       - name: 查看磁盘使用情况
         if: (!cancelled())
         run: |
-          echo "编译后磁盘使用情况："
           df -hT
 
-      # 上传 bin 压缩目录
       - name: 上传bin压缩目录
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
@@ -341,7 +261,6 @@ jobs:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
-      # 整理编译好的固件
       - name: 整理编译好的固件
         id: organize
         if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
@@ -352,58 +271,52 @@ jobs:
             echo "FIRMWARE=$PWD" >> $GITHUB_ENV
             echo "status=success" >> $GITHUB_ENV
           else
-            echo "未找到固件文件 openwrt/bin/targets/"
+            echo "No firmware found in openwrt/bin/targets/"
             echo "status=failure" >> $GITHUB_ENV
           fi
 
-      # 上传固件到github
       - name: 上传固件到github
         uses: actions/upload-artifact@v4
         if: env.status == 'success' && !cancelled()
         with:
-          name: OpenWrt-6.12-Optimized${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: OpenWrt-6.12${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      # 创建 Release 标签
       - name: 创建 Release标签
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")-optimized" >> $GITHUB_ENV
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")-6.12" >> $GITHUB_ENV
           touch release.txt
           echo "## OpenWrt 6.12 虚拟机优化版" >> release.txt
           echo "- 内核版本: 6.12" >> release.txt
           echo "- 优化目标: Linux虚拟机 (KVM/QEMU/Proxmox)" >> release.txt
           echo "- 主要功能: SSR-Plus + MosDNS + SmartDNS" >> release.txt
           echo "- 默认地址: 192.168.0.133" >> release.txt
-          echo "- 性能优化: VirtIO驱动 + TCP BBR + 透明大页" >> release.txt
           echo "status=success" >> $GITHUB_ENV
 
-      # 发布至 Release
       - name: 发布至 Release
         uses: softprops/action-gh-release@v1
         if: env.status == 'success' && !cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
-          name: OpenWrt 6.12-Optimized${{ env.KERNEL_VERSION_6_12}}-X86-64-VM_${{ env.FILE_DATE }}
+          name: OpenWrt 6.12${{ env.KERNEL_VERSION_6_12}}-X86-64-VM_${{ env.FILE_DATE }}
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
-      # 删除工作流运行
       - name: 删除工作流运行
         uses: GitRML/delete-workflow-runs@main
         with:
           retain_days: 1
           keep_minimum_runs: 3
 
-      # 删除旧的Releases
       - name: 删除旧的Releases
         uses: dev-drprasad/delete-older-releases@master
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          keep_latest: 10
+          keep_latest: 30
           delete_tags: true

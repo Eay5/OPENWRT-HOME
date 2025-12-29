@@ -147,24 +147,7 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 下载并安装工具链
-      - name: 下载并安装工具链
-        run: |
-          cd openwrt
-          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log
-          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log
-
-      # 上传工具链安装日志
-      - name: 上传工具链安装日志
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: toolchain-install-logs
-          path: |
-            openwrt/tools_install.log
-            openwrt/toolchain_install.log
-
-      # 更改设置
+      # 更改设置（必须在工具链编译之前！）
       - name: 更改设置
         run: |
           [ -e files ] && mv files openwrt/files
@@ -181,10 +164,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      # 同步配置
+      # 同步配置（生成完整 .config）
       - name: 同步配置
         run: |
           cd openwrt
+          make defconfig
           make oldconfig
           
           # ===== 再次确认禁用 KSMBd（防止 make oldconfig 重新启用）=====
@@ -200,14 +184,39 @@ jobs:
           grep -q "CONFIG_PACKAGE_kmod-fs-ksmbd" .config || echo "CONFIG_PACKAGE_kmod-fs-ksmbd=n" >> .config
           
           echo "KSMBd configuration verified."
-      
-      # 下载安装包
+
+      # 下载并安装工具链（必须在 .config 配置完成后！）
+      - name: 下载并安装工具链
+        run: |
+          cd openwrt
+          echo "开始编译 tools..."
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          echo "开始编译 toolchain..."
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
+
+      # 上传工具链安装日志
+      - name: 上传工具链安装日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-install-logs
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      # 下载安装包 (增强重试机制)
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
-          make defconfig
-          make download -j16 V=s 2>&1 | tee download.log
+          echo "开始下载包..."
+          for i in 1 2 3 4 5; do
+            echo "=== 下载尝试 $i/5 ==="
+            make download -j8 V=s 2>&1 | tee -a download.log && break
+            echo "下载失败，清理损坏文件后重试..."
+            find dl -size -1024c -exec rm -f {} \;
+            sleep 10
+          done
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
@@ -216,13 +225,20 @@ jobs:
         run: |
           df -hT
 
-      # 开始编译固件
+      # 开始编译固件 (智能并行+重试)
       - name: 开始编译固件
         id: compile
         run: |
           cd openwrt
-          echo -e "Compiling with $(nproc) threads"
-          make -j$(nproc) V=s 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee -a build.log
+          echo -e "开始编译，使用 $(nproc) 线程"
+          if make -j$(nproc) V=s 2>&1 | tee build.log; then
+            echo "编译成功！"
+          else
+            echo "多线程编译失败，清理后单线程重试..."
+            find dl -size -1024c -exec rm -f {} \;
+            make download -j4 V=s 2>&1 | tee -a download.log || true
+            make -j1 V=s 2>&1 | tee -a build.log
+          fi
           echo "Checking generated firmware:"
           ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
           echo "status=success" >> $GITHUB_ENV
