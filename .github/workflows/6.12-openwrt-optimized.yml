@@ -147,7 +147,41 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a
 
-      # 下载并安装工具链
+      # 设置内核版本（必须在工具链编译之前！）
+      - name: 设置内核版本 6.12
+        run: |
+          cd openwrt
+          echo ">>> 强制设置内核版本为 6.12..."
+          sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+          sed -i 's/KERNEL_TESTING_PATCHVER:=.*/KERNEL_TESTING_PATCHVER:=6.12/g' target/linux/x86/Makefile 2>/dev/null || true
+          echo ">>> 验证内核版本："
+          grep "KERNEL_PATCHVER" target/linux/x86/Makefile
+          echo ">>> 检查内核配置文件："
+          ls -la include/kernel-6.* 2>/dev/null || echo "未找到内核配置"
+
+      # 更改设置
+      - name: 更改设置
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+          chmod +x "$DIY_P2_SH"
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+      # 同步配置（生成完整 .config）
+      - name: 同步配置
+        run: |
+          cd openwrt
+          make defconfig
+          
+          # 再次强制设置内核版本（防止 defconfig 覆盖）
+          sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+          
+          # 验证最终内核版本
+          echo ">>> 最终内核版本配置："
+          grep "KERNEL_PATCHVER" target/linux/x86/Makefile
+
+      # 下载并安装工具链（必须在内核版本设置之后！）
       - name: 下载并安装工具链
         run: |
           cd openwrt
@@ -181,18 +215,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      # 同步配置
-      - name: 同步配置
-        run: |
-          cd openwrt
-          make oldconfig
-
       # 下载安装包 (智能重试)
       - name: 下载安装包
         id: package
         run: |
           cd openwrt
-          make defconfig
           echo "开始下载包..."
           make download -j16 V=s 2>&1 | tee download.log || {
             echo "首次下载失败，降低并发重试..."
