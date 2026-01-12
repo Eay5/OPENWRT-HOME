@@ -314,12 +314,28 @@ jobs:
         run: |
           echo "release_tag=$(date +"%Y.%m.%d-%H%M")-optimized" >> $GITHUB_ENV
           touch release.txt
-          echo "## OpenWrt 6.12 虚拟机优化版" >> release.txt
+          echo "## OpenWrt 6.12 Linux虚拟机深度优化版" >> release.txt
+          echo "" >> release.txt
+          echo "### 系统信息" >> release.txt
           echo "- 内核版本: 6.12" >> release.txt
-          echo "- 优化目标: Linux虚拟机 (KVM/QEMU/Proxmox)" >> release.txt
-          echo "- 主要功能: SSR-Plus + MosDNS + SmartDNS" >> release.txt
+          echo "- 目标平台: x86_64 虚拟机" >> release.txt
           echo "- 默认地址: 192.168.0.133" >> release.txt
-          echo "- 性能优化: VirtIO驱动 + TCP BBR + 透明大页" >> release.txt
+          echo "- 默认主题: Argon" >> release.txt
+          echo "" >> release.txt
+          echo "### 核心功能" >> release.txt
+          echo "- 代理: SSR-Plus + Shadowsocks-Rust + Xray + Trojan" >> release.txt
+          echo "- DNS: MosDNS + SmartDNS + dnsmasq-full" >> release.txt
+          echo "" >> release.txt
+          echo "### 性能优化" >> release.txt
+          echo "- VirtIO 全套驱动 (net/blk/scsi/balloon)" >> release.txt
+          echo "- TCP BBR 拥塞控制 + Fast Open" >> release.txt
+          echo "- Shortcut-FE 流量加速" >> release.txt
+          echo "- 透明大页 + ZRAM 内存优化" >> release.txt
+          echo "" >> release.txt
+          echo "### 精简内容" >> release.txt
+          echo "- 移除: 无线驱动、USB驱动、物理网卡驱动" >> release.txt
+          echo "- 移除: Samba、NFS、Docker 等臃肿组件" >> release.txt
+          echo "- 移除: nload (源码下载失败)" >> release.txt
           echo "status=success" >> $GITHUB_ENV
 
       # 发布至 Release
