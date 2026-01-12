@@ -84,12 +84,22 @@ jobs:
       - name: 清理冲突包
         run: |
           cd openwrt
-          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
+          # 清理基础冲突包
+          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,miniupnpd-iptables,wireless-regdb}
+          
+          # 清理有依赖问题的包（vsftpd、dogcom、webd 等）
+          rm -rf feeds/small/{vsftpd*,luci-app-vsftpd,dogcom,luci-app-dogcom,webd,luci-app-webd}
+          rm -rf feeds/small/{luci-app-tencentcloud-cos,transmission,luci-app-transmission}
+          rm -rf feeds/small/{natflow,nginx,luci-app-nginx*}
+          
+          # 清理代理相关冲突
           rm -rf feeds/luci/applications/{luci-app-ssr-plus,luci-app-mosdns,luci-app-fchomo,luci-app-bypass}
           rm -rf feeds/kenzo/{luci-app-ssr-plus,luci-app-fchomo,luci-app-bypass}
           rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
           rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns,shadowsocks-libev,shadowsocksr-libev,simple-obfs}
           rm -rf feeds/packages/utils/v2dat feeds/packages/lang/golang
+          
+          # 更新 golang
           git clone --depth 1 https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
 
       - name: 安装 feeds
