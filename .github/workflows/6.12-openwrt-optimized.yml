@@ -27,24 +27,34 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - name: 检查项目分支
         uses: actions/checkout@v4
 
-      - name: 清理磁盘空间
+      - name: 检查自定义配置文件
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          sudo apt-get -qq purge azure-cli* ghc* zulu* llvm* firefox google* powershell* openjdk* mongodb* moby* || true
-          sudo apt-get -qq autoremove --purge
-          sudo apt-get -qq clean
-          df -hT
+          ls -la $GITHUB_WORKSPACE/
+          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+
+      - name: 清理磁盘空间
+        uses: coder-xiaomo/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: 安装编译环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt-get -qq update
           sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
             bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
@@ -56,14 +66,14 @@ jobs:
             wget xmlto xxd zlib1g-dev zstd
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
-          sudo timedatectl set-timezone "$TZ"
+          sudo -E timedatectl set-timezone "$TZ"
 
       - name: 配置 ccache 加速
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: openwrt-6.12-${{ github.sha }}
+          key: openwrt-6.12-optimized-${{ github.sha }}
           restore-keys: |
-            openwrt-6.12-
+            openwrt-6.12-optimized-
           max-size: 2G
 
       - name: 下载源码
@@ -84,23 +94,36 @@ jobs:
       - name: 清理冲突包
         run: |
           cd openwrt
-          # 清理基础冲突包
+          echo ">>> 清理基础冲突包..."
           rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,miniupnpd-iptables,wireless-regdb}
           
-          # 清理有依赖问题的包（vsftpd、dogcom、webd 等）
+          echo ">>> 清理有依赖问题的包..."
           rm -rf feeds/small/{vsftpd*,luci-app-vsftpd,dogcom,luci-app-dogcom,webd,luci-app-webd}
           rm -rf feeds/small/{luci-app-tencentcloud-cos,transmission,luci-app-transmission}
           rm -rf feeds/small/{natflow,nginx,luci-app-nginx*}
           
-          # 清理代理相关冲突
+          echo ">>> 清理代理相关冲突..."
           rm -rf feeds/luci/applications/{luci-app-ssr-plus,luci-app-mosdns,luci-app-fchomo,luci-app-bypass}
           rm -rf feeds/kenzo/{luci-app-ssr-plus,luci-app-fchomo,luci-app-bypass}
           rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
           rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns,shadowsocks-libev,shadowsocksr-libev,simple-obfs}
           rm -rf feeds/packages/utils/v2dat feeds/packages/lang/golang
           
-          # 更新 golang
+          echo ">>> 清理 KSMBd 相关包..."
+          rm -rf feeds/*/luci-app-ksmbd 2>/dev/null || true
+          rm -rf feeds/*/ksmbd-server 2>/dev/null || true
+          rm -rf feeds/*/ksmbd-tools 2>/dev/null || true
+          rm -rf feeds/*/ksmbd-utils 2>/dev/null || true
+          rm -rf feeds/luci/applications/luci-app-ksmbd 2>/dev/null || true
+          rm -rf feeds/packages/net/ksmbd-tools 2>/dev/null || true
+          rm -rf feeds/packages/kernel/kmod-fs-ksmbd 2>/dev/null || true
+          rm -rf package/feeds/*/luci-app-ksmbd 2>/dev/null || true
+          rm -rf package/feeds/*/ksmbd* 2>/dev/null || true
+          
+          echo ">>> 更新 golang..."
           git clone --depth 1 https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
+          
+          echo "冲突包清理完成"
 
       - name: 安装 feeds
         run: cd openwrt && ./scripts/feeds install -a
@@ -122,7 +145,21 @@ jobs:
         run: |
           cd openwrt
           make defconfig
+          make oldconfig
+          
+          # 确保内核版本
           sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+          
+          # 确保禁用 KSMBd
+          sed -i 's/CONFIG_PACKAGE_ksmbd-server=.*/CONFIG_PACKAGE_ksmbd-server=n/g' .config
+          sed -i 's/CONFIG_PACKAGE_ksmbd-utils=.*/CONFIG_PACKAGE_ksmbd-utils=n/g' .config
+          sed -i 's/CONFIG_PACKAGE_luci-app-ksmbd=.*/CONFIG_PACKAGE_luci-app-ksmbd=n/g' .config
+          sed -i 's/CONFIG_PACKAGE_kmod-fs-ksmbd=.*/CONFIG_PACKAGE_kmod-fs-ksmbd=n/g' .config
+          
+          grep -q "CONFIG_PACKAGE_ksmbd-server" .config || echo "CONFIG_PACKAGE_ksmbd-server=n" >> .config
+          grep -q "CONFIG_PACKAGE_ksmbd-utils" .config || echo "CONFIG_PACKAGE_ksmbd-utils=n" >> .config
+          grep -q "CONFIG_PACKAGE_luci-app-ksmbd" .config || echo "CONFIG_PACKAGE_luci-app-ksmbd=n" >> .config
+          grep -q "CONFIG_PACKAGE_kmod-fs-ksmbd" .config || echo "CONFIG_PACKAGE_kmod-fs-ksmbd=n" >> .config
 
       - name: SSH 调试
         uses: P3TERX/ssh2actions@v1.0.0
@@ -134,21 +171,38 @@ jobs:
       - name: 下载软件包
         run: |
           cd openwrt
-          make download -j$(nproc) || make download -j1 V=s
-          find dl -size -1024c -delete
+          for i in 1 2 3 4 5; do
+            echo "=== 下载尝试 $i/5 ==="
+            make download -j$(nproc) V=s && break
+            echo "下载失败，清理损坏文件后重试..."
+            find dl -size -1024c -exec rm -f {} \;
+            sleep 10
+          done
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: 检查磁盘空间
+        run: df -hT
 
       - name: 编译工具链
         run: |
           cd openwrt
           echo "编译线程数: $(nproc)"
-          make tools/install -j$(nproc) || make tools/install -j1 V=s
-          make toolchain/install -j$(nproc) || make toolchain/install -j1 V=s
+          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
 
       - name: 编译固件
         id: compile
         run: |
           cd openwrt
-          make -j$(nproc) || make -j1 V=s
+          echo -e "开始编译，使用 $(nproc) 线程"
+          if make -j$(nproc) V=s 2>&1 | tee build.log; then
+            echo "编译成功！"
+          else
+            echo "多线程编译失败，清理后单线程重试..."
+            find dl -size -1024c -exec rm -f {} \;
+            make download -j4 V=s || true
+            make -j1 V=s 2>&1 | tee -a build.log
+          fi
           echo "status=success" >> $GITHUB_OUTPUT
           echo "DEVICE_NAME=x86-64" >> $GITHUB_ENV
           echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
@@ -159,12 +213,20 @@ jobs:
 
       - name: 上传构建日志
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: build-logs
+          name: build-logs-${{ github.run_id }}
           path: |
             openwrt/.config
-            openwrt/logs/
+            openwrt/build.log
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      - name: 获取内核版本号
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 2>/dev/null | cut -d' ' -f3 || echo "6.12")
+          echo "KERNEL_VERSION=${KERNEL_VERSION}" >> $GITHUB_ENV
 
       - name: 整理固件
         id: organize
@@ -173,12 +235,13 @@ jobs:
           cd openwrt/bin/targets/*/*
           rm -rf packages *.buildinfo *.manifest sha256sums
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 上传固件
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success'
         with:
-          name: OpenWrt-6.12-Bypass_${{ env.FILE_DATE }}
+          name: OpenWrt-6.12-Optimized_${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
       - name: 生成 Release 信息
@@ -187,7 +250,7 @@ jobs:
         run: |
           echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
           cat > release.txt << 'EOF'
-          ## OpenWrt 6.12 旁路由专用版
+          ## OpenWrt 6.12 旁路由专用优化版
           
           ### 系统信息
           - 内核: 6.12 | 平台: x86_64
@@ -198,6 +261,9 @@ jobs:
           - SSR-Plus + Xray + Shadowsocks-Rust
           - MosDNS + SmartDNS
           - TCP BBR + SFE 加速
+          
+          ### 已禁用功能
+          - 上网时间控制、宽带监控、网络唤醒、网络共享
           
           ### 使用说明
           1. 导入虚拟机，设置静态 IP
@@ -212,7 +278,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.release_tag }}
-          name: OpenWrt-6.12-Bypass_${{ env.FILE_DATE }}
+          name: OpenWrt-6.12-Optimized-${{ env.KERNEL_VERSION }}_${{ env.FILE_DATE }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
