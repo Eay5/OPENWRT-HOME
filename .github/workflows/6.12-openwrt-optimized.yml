@@ -195,15 +195,37 @@ jobs:
         run: |
           cd openwrt
           echo -e "开始编译，使用 $(nproc) 线程"
+          
+          # 第一次尝试多线程编译
           if make -j$(nproc) V=s 2>&1 | tee build.log; then
-            echo "编译成功！"
+            echo "多线程编译完成"
           else
             echo "多线程编译失败，清理后单线程重试..."
             find dl -size -1024c -exec rm -f {} \;
             make download -j4 V=s || true
             make -j1 V=s 2>&1 | tee -a build.log
           fi
-          echo "status=success" >> $GITHUB_OUTPUT
+          
+          # 检查固件是否真正生成
+          echo ">>> 检查编译结果..."
+          echo "bin/targets 目录结构:"
+          find bin/targets -type f -name "*.img*" -o -name "*.vmdk" -o -name "*.qcow2" 2>/dev/null || true
+          ls -la bin/targets/*/* 2>/dev/null || echo "targets 目录为空"
+          
+          # 检查是否有固件文件
+          if ls bin/targets/x86/64/*combined*.img* 1>/dev/null 2>&1 || \
+             ls bin/targets/x86/64/*squashfs*.img* 1>/dev/null 2>&1 || \
+             ls bin/targets/x86/64/*.vmdk 1>/dev/null 2>&1; then
+            echo "✅ 固件生成成功！"
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 未找到固件文件！"
+            echo "查看 bin 目录完整结构:"
+            find bin -type f 2>/dev/null | head -50
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
           echo "DEVICE_NAME=x86-64" >> $GITHUB_ENV
           echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
@@ -232,21 +254,50 @@ jobs:
         id: organize
         if: steps.compile.outputs.status == 'success'
         run: |
-          cd openwrt/bin/targets/*/*
-          rm -rf packages *.buildinfo *.manifest sha256sums
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-          echo "status=success" >> $GITHUB_OUTPUT
+          echo ">>> 查找固件目录..."
+          
+          # 查找实际的 targets 目录
+          TARGETS_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d 2>/dev/null | head -1)
+          
+          if [ -z "$TARGETS_DIR" ]; then
+            echo "❌ 未找到 targets 目录"
+            find openwrt/bin -type d 2>/dev/null
+            exit 1
+          fi
+          
+          echo "找到目录: $TARGETS_DIR"
+          cd "$TARGETS_DIR"
+          
+          # 列出所有文件
+          echo ">>> 目录内容:"
+          ls -la
+          
+          # 清理不需要的文件
+          rm -rf packages *.buildinfo *.manifest sha256sums *.json
+          
+          # 检查是否有固件
+          if ls *.img* *.vmdk *.qcow2 1>/dev/null 2>&1; then
+            echo "✅ 固件文件:"
+            ls -lh *.img* *.vmdk *.qcow2 2>/dev/null || true
+            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 没有找到固件文件"
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
 
       - name: 上传固件
         uses: actions/upload-artifact@v4
-        if: steps.compile.outputs.status == 'success'
+        if: steps.organize.outputs.status == 'success'
         with:
           name: OpenWrt-6.12-Optimized_${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
+          if-no-files-found: error
 
       - name: 生成 Release 信息
         id: tag
-        if: env.UPLOAD_RELEASE == 'true' && steps.compile.outputs.status == 'success'
+        if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.status == 'success'
         run: |
           echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
           cat > release.txt << 'EOF'
@@ -273,7 +324,7 @@ jobs:
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
