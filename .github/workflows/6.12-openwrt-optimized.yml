@@ -9,7 +9,7 @@ on:
         required: false
         default: "false"
   schedule:
-    - cron: 0 19 * * *
+    - cron: "0 19 * * *"
   watch:
     types: [started]
 
@@ -20,7 +20,6 @@ env:
   CONFIG_FILE: 6.12-optimized.config
   DIY_P1_SH: 6.12-part1.sh
   DIY_P2_SH: 6.12-part2-optimized.sh
-  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
@@ -29,17 +28,18 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: 检查项目分支
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 检查自定义配置文件
+      - name: Verify local files
         run: |
-          ls -la $GITHUB_WORKSPACE/
-          [ -f "$CONFIG_FILE" ] && echo "✅ $CONFIG_FILE 存在" || { echo "❌ $CONFIG_FILE 不存在"; exit 1; }
-          [ -f "$DIY_P1_SH" ] && echo "✅ $DIY_P1_SH 存在" || { echo "❌ $DIY_P1_SH 不存在"; exit 1; }
-          [ -f "$DIY_P2_SH" ] && echo "✅ $DIY_P2_SH 存在" || { echo "❌ $DIY_P2_SH 不存在"; exit 1; }
+          set -euo pipefail
+          ls -la "$GITHUB_WORKSPACE"
+          [ -f "$CONFIG_FILE" ] && echo "Found $CONFIG_FILE" || { echo "Missing $CONFIG_FILE"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "Found $DIY_P1_SH" || { echo "Missing $DIY_P1_SH"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "Found $DIY_P2_SH" || { echo "Missing $DIY_P2_SH"; exit 1; }
 
-      - name: 清理磁盘空间
+      - name: Free disk space
         uses: coder-xiaomo/free-disk-space@main
         with:
           tool-cache: false
@@ -50,10 +50,11 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: 安装编译环境
+      - name: Install build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          set -euo pipefail
           sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt-get -qq update
           sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
@@ -68,7 +69,7 @@ jobs:
           sudo -E apt-get -qq clean
           sudo -E timedatectl set-timezone "$TZ"
 
-      - name: 配置 ccache 加速
+      - name: Configure ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: openwrt-6.12-optimized-${{ github.sha }}
@@ -76,164 +77,136 @@ jobs:
             openwrt-6.12-optimized-
           max-size: 2G
 
-      - name: 下载源码
+      - name: Clone OpenWrt source
         run: |
-          df -hT $PWD
-          git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+          set -euo pipefail
+          df -hT "$PWD"
+          git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" openwrt
 
-      - name: 加载自定义 feeds
+      - name: Apply feed customizations
         run: |
+          set -euo pipefail
           [ -e "$FEEDS_CONF" ] && cp "$FEEDS_CONF" openwrt/feeds.conf.default
           chmod +x "$DIY_P1_SH"
           cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
+          "$GITHUB_WORKSPACE/$DIY_P1_SH"
 
-      - name: 更新 feeds
-        run: cd openwrt && ./scripts/feeds update -a
-
-      - name: 清理冲突包
+      - name: Install feeds
         run: |
+          set -euo pipefail
           cd openwrt
-          echo ">>> 清理基础冲突包..."
-          rm -rf feeds/small/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,miniupnpd-iptables,wireless-regdb}
-          
-          echo ">>> 清理有依赖问题的包..."
-          rm -rf feeds/small/{vsftpd*,luci-app-vsftpd,dogcom,luci-app-dogcom,webd,luci-app-webd}
-          rm -rf feeds/small/{luci-app-tencentcloud-cos,transmission,luci-app-transmission}
-          rm -rf feeds/small/{natflow,nginx,luci-app-nginx*}
-          
-          echo ">>> 清理代理相关冲突..."
-          rm -rf feeds/luci/applications/{luci-app-ssr-plus,luci-app-mosdns,luci-app-fchomo,luci-app-bypass}
-          rm -rf feeds/kenzo/{luci-app-ssr-plus,luci-app-fchomo,luci-app-bypass}
-          rm -rf feeds/small/luci-app-ssr-plus 2>/dev/null || true
-          rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,sing*,smartdns,shadowsocks-libev,shadowsocksr-libev,simple-obfs}
-          rm -rf feeds/packages/utils/v2dat feeds/packages/lang/golang
-          
-          echo ">>> 清理 KSMBd 相关包..."
-          rm -rf feeds/*/luci-app-ksmbd 2>/dev/null || true
-          rm -rf feeds/*/ksmbd-server 2>/dev/null || true
-          rm -rf feeds/*/ksmbd-tools 2>/dev/null || true
-          rm -rf feeds/*/ksmbd-utils 2>/dev/null || true
-          rm -rf feeds/luci/applications/luci-app-ksmbd 2>/dev/null || true
-          rm -rf feeds/packages/net/ksmbd-tools 2>/dev/null || true
-          rm -rf feeds/packages/kernel/kmod-fs-ksmbd 2>/dev/null || true
-          rm -rf package/feeds/*/luci-app-ksmbd 2>/dev/null || true
-          rm -rf package/feeds/*/ksmbd* 2>/dev/null || true
-          
-          echo ">>> 更新 golang..."
-          git clone --depth 1 https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
-          
-          echo "冲突包清理完成"
+          ./scripts/feeds install -a
 
-      - name: 安装 feeds
-        run: cd openwrt && ./scripts/feeds install -a
-
-      - name: 设置内核版本
+      - name: Apply build configuration
         run: |
-          cd openwrt
-          sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
-
-      - name: 加载配置
-        run: |
-          [ -e files ] && cp -r files openwrt/files
+          set -euo pipefail
+          if [ -d files ]; then
+            mkdir -p openwrt/files
+            cp -r files/. openwrt/files/
+          fi
           cp "$CONFIG_FILE" openwrt/.config
           chmod +x "$DIY_P2_SH"
           cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
+          "$GITHUB_WORKSPACE/$DIY_P2_SH"
 
-      - name: 生成配置
+      - name: Finalize .config
         run: |
+          set -euo pipefail
           cd openwrt
           make defconfig
-          make oldconfig
-          
-          # 确保内核版本
+          yes "" | make oldconfig
           sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
-          
-          # 确保禁用 KSMBd
-          sed -i 's/CONFIG_PACKAGE_ksmbd-server=.*/CONFIG_PACKAGE_ksmbd-server=n/g' .config
-          sed -i 's/CONFIG_PACKAGE_ksmbd-utils=.*/CONFIG_PACKAGE_ksmbd-utils=n/g' .config
-          sed -i 's/CONFIG_PACKAGE_luci-app-ksmbd=.*/CONFIG_PACKAGE_luci-app-ksmbd=n/g' .config
-          sed -i 's/CONFIG_PACKAGE_kmod-fs-ksmbd=.*/CONFIG_PACKAGE_kmod-fs-ksmbd=n/g' .config
-          
-          grep -q "CONFIG_PACKAGE_ksmbd-server" .config || echo "CONFIG_PACKAGE_ksmbd-server=n" >> .config
-          grep -q "CONFIG_PACKAGE_ksmbd-utils" .config || echo "CONFIG_PACKAGE_ksmbd-utils=n" >> .config
-          grep -q "CONFIG_PACKAGE_luci-app-ksmbd" .config || echo "CONFIG_PACKAGE_luci-app-ksmbd=n" >> .config
-          grep -q "CONFIG_PACKAGE_kmod-fs-ksmbd" .config || echo "CONFIG_PACKAGE_kmod-fs-ksmbd=n" >> .config
 
-      - name: SSH 调试
+          ensure_config() {
+            local key="$1"
+            local value="$2"
+
+            if grep -q "^${key}=" .config; then
+              sed -i "s/^${key}=.*/${key}=${value}/" .config
+            else
+              echo "${key}=${value}" >> .config
+            fi
+          }
+
+          echo "Reapplying optimized package toggles after oldconfig..."
+          ensure_config CONFIG_BUILD_PATENTED y
+          ensure_config CONFIG_LINUX_6_12 y
+          ensure_config CONFIG_PACKAGE_ksmbd-server n
+          ensure_config CONFIG_PACKAGE_ksmbd-utils n
+          ensure_config CONFIG_PACKAGE_luci-app-ksmbd n
+          ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
+          ensure_config CONFIG_PACKAGE_autosamba n
+          ensure_config CONFIG_PACKAGE_miniupnpd n
+          ensure_config CONFIG_PACKAGE_luci-app-upnp n
+          ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn n
+          ensure_config CONFIG_KERNEL_SWAP y
+
+      - name: SSH debug
         uses: P3TERX/ssh2actions@v1.0.0
         if: github.event.inputs.ssh == 'true'
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      - name: 下载软件包
+      - name: Download packages
         run: |
+          set -euo pipefail
           cd openwrt
           for i in 1 2 3 4 5; do
-            echo "=== 下载尝试 $i/5 ==="
-            make download -j$(nproc) V=s && break
-            echo "下载失败，清理损坏文件后重试..."
+            echo "Attempt $i/5"
+            make download -j"$(nproc)" V=s && break
+            echo "Download failed, removing incomplete files before retry..."
             find dl -size -1024c -exec rm -f {} \;
             sleep 10
           done
-          find dl -size -1024c -exec rm -f {} \;
+          find dl -size -1024c -exec rm -f {} \; || true
 
-      - name: 检查磁盘空间
+      - name: Show disk usage
         run: df -hT
 
-      - name: 编译工具链
+      - name: Build tools and toolchain
         run: |
+          set -euo pipefail
           cd openwrt
-          echo "编译线程数: $(nproc)"
-          make tools/install -j$(nproc) V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
-          make toolchain/install -j$(nproc) V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
+          echo "Building with $(nproc) jobs"
+          make tools/install -j"$(nproc)" V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          make toolchain/install -j"$(nproc)" V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
 
-      - name: 编译固件
+      - name: Build firmware
         id: compile
         run: |
+          set -euo pipefail
           cd openwrt
-          echo -e "开始编译，使用 $(nproc) 线程"
-          
-          # 第一次尝试多线程编译
-          if make -j$(nproc) V=s 2>&1 | tee build.log; then
-            echo "多线程编译完成"
+          echo "Starting build with $(nproc) jobs"
+
+          if make -j"$(nproc)" V=s 2>&1 | tee build.log; then
+            echo "Parallel build completed successfully."
           else
-            echo "多线程编译失败，清理后单线程重试..."
+            echo "Parallel build failed, retrying with -j1..."
             find dl -size -1024c -exec rm -f {} \;
             make download -j4 V=s || true
             make -j1 V=s 2>&1 | tee -a build.log
           fi
-          
-          # 检查固件是否真正生成
-          echo ">>> 检查编译结果..."
-          echo "bin/targets 目录结构:"
-          find bin/targets -type f -name "*.img*" -o -name "*.vmdk" -o -name "*.qcow2" 2>/dev/null || true
-          ls -la bin/targets/*/* 2>/dev/null || echo "targets 目录为空"
-          
-          # 检查是否有固件文件
+
+          echo "Checking generated firmware files..."
+          find bin/targets -type f \( -name "*.img*" -o -name "*.vmdk" -o -name "*.qcow2" \) 2>/dev/null || true
+
           if ls bin/targets/x86/64/*combined*.img* 1>/dev/null 2>&1 || \
              ls bin/targets/x86/64/*squashfs*.img* 1>/dev/null 2>&1 || \
              ls bin/targets/x86/64/*.vmdk 1>/dev/null 2>&1; then
-            echo "✅ 固件生成成功！"
-            echo "status=success" >> $GITHUB_OUTPUT
+            echo "Firmware images were generated successfully."
+            echo "status=success" >> "$GITHUB_OUTPUT"
           else
-            echo "❌ 未找到固件文件！"
-            echo "查看 bin 目录完整结构:"
-            find bin -type f 2>/dev/null | head -50
-            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "No firmware images were generated."
+            find bin -type f 2>/dev/null | head -50 || true
+            echo "status=failure" >> "$GITHUB_OUTPUT"
             exit 1
           fi
-          
-          echo "DEVICE_NAME=x86-64" >> $GITHUB_ENV
-          echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-      - name: 检查磁盘
-        if: always()
-        run: df -hT
+          echo "DEVICE_NAME=x86-64" >> "$GITHUB_ENV"
+          echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
 
-      - name: 上传构建日志
+      - name: Upload build logs
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -244,50 +217,42 @@ jobs:
             openwrt/tools_install.log
             openwrt/toolchain_install.log
 
-      - name: 获取内核版本号
+      - name: Detect kernel version
         if: steps.compile.outputs.status == 'success'
         run: |
+          set -euo pipefail
           KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 2>/dev/null | cut -d' ' -f3 || echo "6.12")
-          echo "KERNEL_VERSION=${KERNEL_VERSION}" >> $GITHUB_ENV
+          echo "KERNEL_VERSION=${KERNEL_VERSION}" >> "$GITHUB_ENV"
 
-      - name: 整理固件
+      - name: Organize firmware
         id: organize
         if: steps.compile.outputs.status == 'success'
         run: |
-          echo ">>> 查找固件目录..."
-          
-          # 查找实际的 targets 目录
+          set -euo pipefail
           TARGETS_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d 2>/dev/null | head -1)
-          
+
           if [ -z "$TARGETS_DIR" ]; then
-            echo "❌ 未找到 targets 目录"
-            find openwrt/bin -type d 2>/dev/null
-            exit 1
-          fi
-          
-          echo "找到目录: $TARGETS_DIR"
-          cd "$TARGETS_DIR"
-          
-          # 列出所有文件
-          echo ">>> 目录内容:"
-          ls -la
-          
-          # 清理不需要的文件
-          rm -rf packages *.buildinfo *.manifest sha256sums *.json
-          
-          # 检查是否有固件
-          if ls *.img* *.vmdk *.qcow2 1>/dev/null 2>&1; then
-            echo "✅ 固件文件:"
-            ls -lh *.img* *.vmdk *.qcow2 2>/dev/null || true
-            echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "❌ 没有找到固件文件"
-            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "No firmware target directory found."
+            find openwrt/bin -type d 2>/dev/null || true
             exit 1
           fi
 
-      - name: 上传固件
+          echo "Using target directory: $TARGETS_DIR"
+          cd "$TARGETS_DIR"
+          ls -la
+          rm -rf packages *.buildinfo *.manifest sha256sums *.json
+
+          if ls *.img* *.vmdk *.qcow2 1>/dev/null 2>&1; then
+            ls -lh *.img* *.vmdk *.qcow2 2>/dev/null || true
+            echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "No firmware artifacts remained after cleanup."
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         if: steps.organize.outputs.status == 'success'
         with:
@@ -295,36 +260,25 @@ jobs:
           path: ${{ env.FIRMWARE }}
           if-no-files-found: error
 
-      - name: 生成 Release 信息
+      - name: Prepare release notes
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.status == 'success'
         run: |
-          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
-          cat > release.txt << 'EOF'
-          ## OpenWrt 6.12 旁路由专用优化版
-          
-          ### 系统信息
-          - 内核: 6.12 | 平台: x86_64
-          - 默认 IP: 192.168.0.133
-          - 用途: 旁路由（透明代理 + DNS 分流）
-          
-          ### 核心功能
-          - SSR-Plus + Xray + Shadowsocks-Rust
-          - MosDNS + SmartDNS
-          - TCP BBR + SFE 加速
-          
-          ### 已禁用功能
-          - 上网时间控制、宽带监控、网络唤醒、网络共享
-          
-          ### 使用说明
-          1. 导入虚拟机，设置静态 IP
-          2. 关闭 DHCP，网关指向主路由
-          3. 客户端网关/DNS 指向此旁路由
+          set -euo pipefail
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
+          cat > release.txt <<EOF
+          OpenWrt 6.12 optimized build
+
+          - Kernel: ${KERNEL_VERSION:-6.12}
+          - Platform: x86_64
+          - Default IP: 192.168.0.133
+          - Intended role: bypass router
+          - Packages: SSR-Plus, Xray, Shadowsocks-Rust, MosDNS, SmartDNS
           EOF
 
-      - name: 发布 Release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+        if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.status == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -333,7 +287,7 @@ jobs:
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
-      - name: 清理旧 Releases
+      - name: Delete old releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
         if: env.UPLOAD_RELEASE == 'true'
         with:
@@ -342,7 +296,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 清理旧工作流
+      - name: Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
           retain_days: 1
