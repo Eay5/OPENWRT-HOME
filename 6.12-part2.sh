@@ -50,11 +50,11 @@ install_from_feed small \
     mosdns \
     luci-app-mosdns
 
+install_from_feed packages smartdns
+
 install_from_feed kenzo \
     luci-app-smartdns \
     luci-theme-argon
-
-install_from_feed packages smartdns
 
 force_config CONFIG_PACKAGE_autosamba n
 

@@ -128,7 +128,7 @@ jobs:
           set -euo pipefail
           cd openwrt
           make defconfig
-          yes "" | make oldconfig
+          { yes "" || test $? -eq 141; } | make oldconfig
 
           ensure_config() {
             local key="$1"
@@ -221,7 +221,7 @@ jobs:
         if: steps.compile.outputs.status == 'success'
         run: |
           set -euo pipefail
-          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | cut -d' ' -f3)
+          KERNEL_VERSION=$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 2>/dev/null | cut -d' ' -f3 || echo "6.12")
           echo "KERNEL_VERSION_6_12=${KERNEL_VERSION}" >> "$GITHUB_ENV"
 
       - name: Upload bin directory

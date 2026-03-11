@@ -114,7 +114,7 @@ jobs:
           set -euo pipefail
           cd openwrt
           make defconfig
-          yes "" | make oldconfig
+          { yes "" || test $? -eq 141; } | make oldconfig
           sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
 
           ensure_config() {

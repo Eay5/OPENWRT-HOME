@@ -157,11 +157,11 @@ install_from_feed small \
     dns2socks \
     ipt2socks
 
+install_from_feed packages smartdns
+
 install_from_feed kenzo \
     luci-app-smartdns \
     luci-theme-argon
-
-install_from_feed packages smartdns
 
 force_config CONFIG_BUILD_PATENTED y
 force_config CONFIG_LINUX_6_12 y
