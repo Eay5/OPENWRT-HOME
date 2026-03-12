@@ -1,46 +1,55 @@
-#ip
-sed -i 's/192\.168\.1\.1/192.168.0.133/g' package/base-files/files/bin/config_generate
-# 编译5.15
-sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.15/g' target/linux/x86/Makefile
-#2. Clear the login password
-sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/files/zzz-default-settings
-#4.an-theme
-#取消bootstrap为默认主题：
-sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/Makefile
-#name
-sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
+#!/bin/bash
+# 5.15-part2.sh - OpenWrt 5.15 内核编译配置
+# 在 feeds install 之后执行
 
-# 验证关键包是否存在
+echo "Applying basic settings..."
+
+# 修改默认IP
+sed -i 's/192\.168\.1\.1/192.168.0.133/g' package/base-files/files/bin/config_generate
+
+# 编译5.15内核
+sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=5.15/g' target/linux/x86/Makefile
+
+# 清空登录密码
+sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/files/zzz-default-settings 2>/dev/null || true
+
+# 取消bootstrap为默认主题，改为argone
+sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
+
+# 修改主机名
+sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
+sed -i "s/hostname='OpenWrt'/hostname='EAY'/g" package/base-files/files/bin/config_generate
+
+echo "Basic settings applied."
+
+# 验证关键包
+echo ""
 echo "=== Verifying critical packages ==="
 
-if [ -d "feeds/helloworld/luci-app-ssr-plus" ]; then
-    echo "✓ luci-app-ssr-plus found in helloworld feed"
-elif [ -d "feeds/small/luci-app-ssr-plus" ]; then
-    echo "✓ luci-app-ssr-plus found in small feed"
+if [ -d "feeds/kenzo/luci-app-ssr-plus" ] || [ -d "feeds/small/luci-app-ssr-plus" ]; then
+    echo "✓ luci-app-ssr-plus found"
 else
     echo "✗ WARNING: luci-app-ssr-plus NOT found!"
 fi
 
+if [ -d "feeds/kenzo/luci-app-mosdns" ] || [ -d "feeds/small/mosdns" ]; then
+    echo "✓ MosDNS found"
+else
+    echo "✗ MosDNS not found"
+fi
+
+if [ -d "feeds/kenzo/luci-app-smartdns" ] || [ -d "feeds/small/smartdns" ]; then
+    echo "✓ SmartDNS found"
+else
+    echo "✗ SmartDNS not found"
+fi
+
 echo ""
-echo "=== Installing packages ==="
-
-./scripts/feeds install -p helloworld luci-app-ssr-plus 2>/dev/null || \
-    ./scripts/feeds install -p small luci-app-ssr-plus 2>/dev/null || true
-./scripts/feeds install -p helloworld shadowsocks-libev 2>/dev/null || \
-    ./scripts/feeds install -p small shadowsocks-libev 2>/dev/null || true
-./scripts/feeds install -p helloworld shadowsocks-libev-ss-server 2>/dev/null || \
-    ./scripts/feeds install -p small shadowsocks-libev-ss-server 2>/dev/null || true
-./scripts/feeds install -p helloworld shadowsocks-libev-ss-redir 2>/dev/null || \
-    ./scripts/feeds install -p small shadowsocks-libev-ss-redir 2>/dev/null || true
-./scripts/feeds install -p helloworld shadowsocks-libev-ss-local 2>/dev/null || \
-    ./scripts/feeds install -p small shadowsocks-libev-ss-local 2>/dev/null || true
-./scripts/feeds install -p small shadowsocks-rust 2>/dev/null || true
-./scripts/feeds install -p small shadowsocksr-libev 2>/dev/null || true
-./scripts/feeds install -p small simple-obfs 2>/dev/null || true
-./scripts/feeds install -p small v2ray-core 2>/dev/null || true
-./scripts/feeds install -p small xray-core 2>/dev/null || true
-./scripts/feeds install -p small trojan-plus 2>/dev/null || true
-./scripts/feeds install -p small mosdns 2>/dev/null || true
-./scripts/feeds install -p small luci-app-mosdns 2>/dev/null || true
-
-echo "=== Package installation completed ==="
+echo "======================================"
+echo "OpenWrt 5.15 配置完成！"
+echo "======================================"
+echo "  - 内核: 5.15"
+echo "  - 默认IP: 192.168.0.133"
+echo "  - 主机名: EAY"
+echo "  - 主题: Argon"
+echo "======================================"

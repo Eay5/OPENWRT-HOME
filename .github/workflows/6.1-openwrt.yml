@@ -29,11 +29,11 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 与 6.12 一致，使用 Ubuntu 22.04
+    runs-on: ubuntu-22.04
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
-        uses: actions/checkout@v4  # 更新为 v4，与 6.12 一致
+        uses: actions/checkout@v4
 
       # 清理更多空间
       - name: 清理更多空间

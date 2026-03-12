@@ -29,11 +29,11 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 与 6.12 一致，使用 Ubuntu 22.04
+    runs-on: ubuntu-22.04
     steps:
       # 检查项目分支并获取代码
       - name: 检查项目分支
-        uses: actions/checkout@v4  # 更新为 v4，与 6.12 一致
+        uses: actions/checkout@v4
 
       # 清理更多空间
       - name: 清理更多空间
@@ -56,7 +56,7 @@ jobs:
           sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
           sudo -E apt-mark hold grub-efi-amd64-signed
           sudo -E apt update
-          sudo -E apt -y purge 'azure-cli*' 'docker*' 'ghc*' 'zulu*' 'llvm*' firefox 'google*' 'dotnet*' 'powershell*' 'openjdk*' 'mysql*' 'php*' 'mongodb*' 'snap*'
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* dotnet* snap*
           sudo -E apt -y full-upgrade
           sudo -E apt -y install build-essential clang flex bison g++ gawk \
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \

@@ -34,9 +34,9 @@ rm -rf package/feeds/luci/luci-app-alist
 rm -rf feeds/packages/net/alist
 rm -rf package/feeds/packages/alist
 
-# Keep the official smartdns backend and use the third-party LuCI package only.
-rm -rf feeds/kenzo/smartdns
-rm -rf package/feeds/kenzo/smartdns
+# Match the 5.10/5.15 layout: keep the kenzo SmartDNS stack together.
+rm -rf feeds/packages/net/smartdns
+rm -rf package/feeds/packages/smartdns
 
 # Replace Golang with the sbwml 25.x tree.
 rm -rf feeds/packages/lang/golang

@@ -1,68 +1,55 @@
 #!/bin/bash
-set -euo pipefail
+# 6.12-part2.sh - OpenWrt 6.12 内核编译配置
+# 在 feeds install 之后执行
 
-install_from_feed() {
-    local feed="$1"
-    shift
-    local pkg
+echo "Applying basic settings..."
 
-    for pkg in "$@"; do
-        echo "Installing ${pkg} from ${feed}..."
-        ./scripts/feeds install -p "${feed}" "${pkg}"
-    done
-}
-
-force_config() {
-    local symbol="$1"
-    local value="$2"
-
-    touch .config
-    sed -i "/^${symbol}=.*/d" .config
-    sed -i "/^# ${symbol} is not set$/d" .config
-    echo "${symbol}=${value}" >> .config
-}
-
-echo "Applying base settings..."
+# 修改默认IP
 sed -i 's/192\.168\.1\.1/192.168.0.133/g' package/base-files/files/bin/config_generate
-sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+
+# 编译6.12内核
+sed -i 's/KERNEL_PATCHVER:=*.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
+
+# 清空登录密码
+sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/files/zzz-default-settings 2>/dev/null || true
+
+# 取消bootstrap为默认主题，改为argone
+sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
+
+# 修改主机名
+sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 sed -i "s/hostname='OpenWrt'/hostname='EAY'/g" package/base-files/files/bin/config_generate
-sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
 
-echo "Installing pinned feed packages..."
-install_from_feed small \
-    luci-app-ssr-plus \
-    shadowsocks-libev \
-    shadowsocks-rust \
-    shadowsocksr-libev \
-    simple-obfs \
-    v2ray-core \
-    v2ray-plugin \
-    xray-core \
-    xray-plugin \
-    trojan-plus \
-    trojan-go \
-    dns2socks \
-    dns2tcp \
-    ipt2socks \
-    redsocks2 \
-    pdnsd-alt \
-    chinadns-ng \
-    mosdns \
-    luci-app-mosdns
+echo "Basic settings applied."
 
-install_from_feed packages smartdns
+# 验证关键包
+echo ""
+echo "=== Verifying critical packages ==="
 
-install_from_feed kenzo \
-    luci-app-smartdns \
-    luci-theme-argon
+if [ -d "feeds/kenzo/luci-app-ssr-plus" ] || [ -d "feeds/small/luci-app-ssr-plus" ]; then
+    echo "✓ luci-app-ssr-plus found"
+else
+    echo "✗ WARNING: luci-app-ssr-plus NOT found!"
+fi
 
-force_config CONFIG_PACKAGE_autosamba n
+if [ -d "feeds/kenzo/luci-app-mosdns" ] || [ -d "feeds/small/mosdns" ]; then
+    echo "✓ MosDNS found"
+else
+    echo "✗ MosDNS not found"
+fi
 
-echo
+if [ -d "feeds/kenzo/luci-app-smartdns" ] || [ -d "feeds/small/smartdns" ]; then
+    echo "✓ SmartDNS found"
+else
+    echo "✗ SmartDNS not found"
+fi
+
+echo ""
 echo "======================================"
-echo "OpenWrt 6.12 package setup completed."
-echo "  Kernel : 6.12"
-echo "  IP     : 192.168.0.133"
-echo "  Host   : EAY"
-echo "  Theme  : Argon"
+echo "OpenWrt 6.12 配置完成！"
+echo "======================================"
+echo "  - 内核: 6.12"
+echo "  - 默认IP: 192.168.0.133"
+echo "  - 主机名: EAY"
+echo "  - 主题: Argon"
 echo "======================================"
