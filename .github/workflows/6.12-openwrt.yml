@@ -120,9 +120,17 @@ jobs:
           cd openwrt
           "$GITHUB_WORKSPACE/$DIY_P2_SH"
 
-      - name: Install selected feed packages
+      - name: Install feed packages
         run: |
           cd openwrt
+
+          # Install complete official feeds so core packages can resolve feed-hosted deps.
+          for feed in packages luci; do
+            if [ -d "feeds/$feed" ]; then
+              echo "Installing all packages from official feed: $feed"
+              ./scripts/feeds install -a -f -p "$feed"
+            fi
+          done
 
           mapfile -t selected_feed_packages < <(
             comm -12 \
@@ -130,14 +138,13 @@ jobs:
               <(./scripts/feeds list -n | awk '{print $1}' | LC_ALL=C sort -u)
           )
 
-          if [ "${#selected_feed_packages[@]}" -eq 0 ]; then
-            echo "No selected feed packages found in .config"
-            exit 1
+          if [ "${#selected_feed_packages[@]}" -gt 0 ]; then
+            echo "Installing ${#selected_feed_packages[@]} selected third-party feed packages..."
+            printf '%s\n' "${selected_feed_packages[@]}" | tee selected-feed-packages.txt
+            xargs -r -n 20 ./scripts/feeds install -f < selected-feed-packages.txt
+          else
+            echo "No additional selected feed packages found in .config"
           fi
-
-          echo "Installing ${#selected_feed_packages[@]} selected feed packages..."
-          printf '%s\n' "${selected_feed_packages[@]}" | tee selected-feed-packages.txt
-          xargs -r -n 20 ./scripts/feeds install -f < selected-feed-packages.txt
 
       - name: Sync config
         run: |
