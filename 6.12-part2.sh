@@ -32,10 +32,16 @@ else
     echo "✗ WARNING: luci-app-ssr-plus NOT found!"
 fi
 
-if [ -d "feeds/kenzo/luci-app-mosdns" ] || [ -d "feeds/small/mosdns" ]; then
-    echo "✓ MosDNS found"
+if [ -d "package/mosdns/luci-app-mosdns" ]; then
+    echo "✓ MosDNS (sbwml v5) found"
 else
-    echo "✗ MosDNS not found"
+    echo "✗ WARNING: MosDNS (sbwml) NOT found!"
+fi
+
+if [ -d "feeds/passwall_luci/luci-app-passwall" ] || [ -d "feeds/kenzo/luci-app-passwall" ] || [ -d "feeds/small/luci-app-passwall" ]; then
+    echo "✓ luci-app-passwall found"
+else
+    echo "✗ WARNING: luci-app-passwall NOT found!"
 fi
 
 if [ -d "feeds/kenzo/luci-app-smartdns" ] || [ -d "feeds/small/smartdns" ]; then
@@ -52,4 +58,5 @@ echo "  - 内核: 6.12"
 echo "  - 默认IP: 192.168.0.133"
 echo "  - 主机名: EAY"
 echo "  - 主题: Argon"
+echo "  - 插件: SSR-Plus, Passwall, MosDNS, SmartDNS"
 echo "======================================"

@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: 检查项目分支
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 触发 6.12-optimized 编译
         uses: benc-uk/workflow-dispatch@v1
