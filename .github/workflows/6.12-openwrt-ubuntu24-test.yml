@@ -277,8 +277,14 @@ jobs:
       - name: Get kernel version
         if: env.status == 'success'
         run: |
-          kernel_version="$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | awk '{print $3}' | head -n 1)"
-          [ -n "${kernel_version}" ] || kernel_version="6.12"
+          kernel_version="$(sed -n 's/^LINUX_VERSION-6\.12[[:space:]]*[:?]?=[[:space:]]*//p' openwrt/include/kernel-6.12 | head -n 1 | tr -d '\r')"
+          if [ -z "${kernel_version}" ]; then
+            kernel_version="6.12"
+          elif [[ "${kernel_version}" =~ ^\.[0-9]+$ ]]; then
+            kernel_version="6.12${kernel_version}"
+          elif [[ "${kernel_version}" =~ ^[0-9]+$ ]]; then
+            kernel_version="6.12.${kernel_version}"
+          fi
           echo "KERNEL_VERSION_6_12=${kernel_version}" >> "$GITHUB_ENV"
 
       - name: Check disk usage
@@ -319,7 +325,7 @@ jobs:
           path: ${{ env.FIRMWARE }}
 
       - name: Create release metadata
-        if: env.status == 'success' && !cancelled() && (inputs.release || env.UPLOAD_RELEASE == 'true')
+        if: env.status == 'success' && !cancelled() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.release) || env.UPLOAD_RELEASE == 'true')
         run: |
           echo "release_tag=ubuntu24-test-$(date +"%Y.%m.%d-%H%M")-r${GITHUB_RUN_NUMBER}a${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
           cat > release.txt <<EOF
@@ -332,7 +338,7 @@ jobs:
           EOF
 
       - name: Publish release
-        if: env.status == 'success' && !cancelled() && (inputs.release || env.UPLOAD_RELEASE == 'true')
+        if: env.status == 'success' && !cancelled() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.release) || env.UPLOAD_RELEASE == 'true')
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -345,5 +351,5 @@ jobs:
 
           gh release create "${release_tag}" "${files[@]}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "OpenWrt ${KERNEL_VERSION_6_12} Ubuntu24 Test${DEVICE_NAME}${FILE_DATE}" \
+            --title "OpenWrt Linux-${KERNEL_VERSION_6_12} Ubuntu24 Test${DEVICE_NAME}${FILE_DATE}" \
             --notes-file release.txt
