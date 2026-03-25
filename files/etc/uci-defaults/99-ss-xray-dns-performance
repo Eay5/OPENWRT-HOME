@@ -1,0 +1,57 @@
+#!/bin/sh
+
+set -eu
+
+SMARTDNS_PORT="6053"
+
+if ! uci -q show smartdns | grep -q "=smartdns"; then
+	uci add smartdns smartdns >/dev/null
+fi
+
+if ! uci -q show mosdns.config >/dev/null 2>&1; then
+	uci set mosdns.config='mosdns'
+fi
+
+uci -q batch <<EOF
+set dhcp.@dnsmasq[0].cachesize='0'
+set dhcp.@dnsmasq[0].noresolv='1'
+delete dhcp.@dnsmasq[0].server
+add_list dhcp.@dnsmasq[0].server='127.0.0.1#${SMARTDNS_PORT}'
+add_list dhcp.@dnsmasq[0].server='::1#${SMARTDNS_PORT}'
+
+set smartdns.@smartdns[0].enabled='1'
+set smartdns.@smartdns[0].port='${SMARTDNS_PORT}'
+set smartdns.@smartdns[0].tcp_server='1'
+set smartdns.@smartdns[0].prefetch_domain='1'
+set smartdns.@smartdns[0].serve_expired='1'
+set smartdns.@smartdns[0].cache_size='8192'
+set smartdns.@smartdns[0].cache_persist='1'
+set smartdns.@smartdns[0].dualstack_ip_selection='0'
+set smartdns.@smartdns[0].force_aaaa_soa='0'
+set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80'
+set smartdns.@smartdns[0].rr_ttl_min='600'
+set smartdns.@smartdns[0].rr_ttl_max='3600'
+set smartdns.@smartdns[0].rr_ttl_reply_max='60'
+set smartdns.@smartdns[0].response_mode='first-ping'
+
+set mosdns.config.enabled='0'
+set mosdns.config.redirect='0'
+set mosdns.config.local_dns_redirect='0'
+set mosdns.config.cache='1'
+set mosdns.config.cache_size='4096'
+set mosdns.config.lazy_cache_ttl='86400'
+set mosdns.config.adblock='0'
+set mosdns.config.custom_stream_media_dns='0'
+EOF
+
+uci -q commit dhcp
+uci -q commit smartdns
+uci -q commit mosdns
+
+/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+/etc/init.d/smartdns enable >/dev/null 2>&1 || true
+/etc/init.d/smartdns restart >/dev/null 2>&1 || true
+/etc/init.d/mosdns disable >/dev/null 2>&1 || true
+/etc/init.d/mosdns stop >/dev/null 2>&1 || true
+
+exit 0
