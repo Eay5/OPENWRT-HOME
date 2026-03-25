@@ -1,0 +1,130 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+
+get_cpu_count() {
+	local count
+
+	count="$(nproc 2>/dev/null || true)"
+	case "$count" in
+		''|*[!0-9]*)
+			count="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)"
+			;;
+	esac
+
+	case "$count" in
+		''|*[!0-9]*|0)
+			count=1
+			;;
+	esac
+
+	echo "$count"
+}
+
+build_cpu_mask() {
+	local count="$1"
+	local chunk_hex
+	local mask=""
+
+	while [ "$count" -gt 0 ]; do
+		if [ "$count" -ge 32 ]; then
+			chunk_hex="ffffffff"
+			count=$((count - 32))
+		else
+			chunk_hex="$(printf '%x' $(( (1 << count) - 1 )))"
+			count=0
+		fi
+
+		if [ -n "$mask" ]; then
+			mask="${chunk_hex},${mask}"
+		else
+			mask="$chunk_hex"
+		fi
+	done
+
+	echo "$mask"
+}
+
+apply_cpu_governor() {
+	for governor_file in \
+		/sys/devices/system/cpu/cpufreq/policy*/scaling_governor \
+		/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+		[ -f "$governor_file" ] || continue
+
+		available_file="${governor_file%/*}/scaling_available_governors"
+		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
+			echo performance >"$governor_file" 2>/dev/null || true
+		fi
+	done
+
+	for epp_file in \
+		/sys/devices/system/cpu/cpufreq/policy*/energy_performance_preference \
+		/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+		[ -f "$epp_file" ] || continue
+
+		available_file="${epp_file%/*}/energy_performance_available_preferences"
+		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
+			echo performance >"$epp_file" 2>/dev/null || true
+		fi
+	done
+}
+
+apply_sysctl_tweaks() {
+	# Favor throughput and faster recovery on routed links.
+	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
+}
+
+apply_queue_tuning() {
+	local cpu_count cpu_mask iface rx_queue flow_cnt rx_queue_count
+
+	cpu_count="$(get_cpu_count)"
+	[ "$cpu_count" -gt 1 ] || return 0
+
+	cpu_mask="$(build_cpu_mask "$cpu_count")"
+	sysctl -w net.core.rps_sock_flow_entries=32768 >/dev/null 2>&1 || true
+
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+
+		case "${iface##*/}" in
+			lo)
+				continue
+				;;
+		esac
+
+		rx_queue_count=0
+		for rx_queue in "$iface"/queues/rx-*; do
+			[ -f "$rx_queue/rps_cpus" ] || continue
+			echo "$cpu_mask" >"$rx_queue/rps_cpus" 2>/dev/null || true
+			rx_queue_count=$((rx_queue_count + 1))
+		done
+
+		if [ "$rx_queue_count" -gt 0 ]; then
+			flow_cnt=$((32768 / rx_queue_count))
+			[ "$flow_cnt" -ge 256 ] || flow_cnt=256
+
+			for rx_queue in "$iface"/queues/rx-*; do
+				[ -f "$rx_queue/rps_flow_cnt" ] || continue
+				echo "$flow_cnt" >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
+			done
+		fi
+
+		for tx_queue in "$iface"/queues/tx-*; do
+			[ -f "$tx_queue/xps_cpus" ] || continue
+			echo "$cpu_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+		done
+	done
+}
+
+start() {
+	apply_cpu_governor
+	apply_sysctl_tweaks
+	apply_queue_tuning
+}
+
+restart() {
+	start
+}

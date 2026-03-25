@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -eu
+
+if ! uci -q show network.globals >/dev/null 2>&1; then
+	uci set network.globals='globals'
+fi
+
+uci -q set network.globals.packet_steering='1'
+uci -q commit network
+
+if uci -q get firewall.@defaults[0] >/dev/null 2>&1; then
+	uci -q set firewall.@defaults[0].flow_offloading='1'
+	uci -q set firewall.@defaults[0].flow_offloading_hw='0'
+	uci -q commit firewall
+fi
+
+if [ -x /etc/init.d/performance-mode ]; then
+	/etc/init.d/performance-mode enable >/dev/null 2>&1 || true
+	/etc/init.d/performance-mode restart >/dev/null 2>&1 || /etc/init.d/performance-mode start >/dev/null 2>&1 || true
+fi
+
+if [ -x /etc/init.d/irqbalance ]; then
+	/etc/init.d/irqbalance enable >/dev/null 2>&1 || true
+	/etc/init.d/irqbalance restart >/dev/null 2>&1 || /etc/init.d/irqbalance start >/dev/null 2>&1 || true
+fi
+
+exit 0

@@ -1,12 +1,20 @@
 name: Build 6.12-OpenWrt Ubuntu 24.04 Test
 
 on:
+  schedule:
+    # GitHub Actions cron uses UTC. 20:00 UTC = 04:00 Asia/Shanghai next day.
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       ssh:
         description: SSH connection to Actions
         required: false
         default: "false"
+      release:
+        description: Publish firmware as a GitHub Release
+        required: false
+        type: boolean
+        default: true
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -24,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -105,16 +113,24 @@ jobs:
           rm -rf staging_dir build_dir bin tmp
           mkdir -p dl bin staging_dir build_dir .ccache
           echo "CCACHE_DIR=$PWD/.ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
 
-      - name: Restore build cache
-        uses: actions/cache@v4
+      - name: Restore download cache
+        uses: actions/cache@v5
         with:
-          path: |
-            openwrt/dl
-            openwrt/.ccache
-          key: ${{ runner.os }}-openwrt-6.12-${{ hashFiles('feeds.conf.default', '6.12.config', '6.12-part1.sh', '6.12-part2.sh', '.github/workflows/6.12-openwrt-ubuntu24-test.yml') }}
+          path: openwrt/dl
+          key: ${{ runner.os }}-openwrt-6.12-dl-${{ hashFiles('feeds.conf.default', '6.12-part1.sh') }}
           restore-keys: |
-            ${{ runner.os }}-openwrt-6.12-
+            ${{ runner.os }}-openwrt-6.12-dl-
+
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: openwrt/.ccache
+          key: ${{ runner.os }}-openwrt-6.12-ccache-${{ hashFiles('feeds.conf.default', '6.12.config', '6.12-part1.sh', '6.12-part2.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-6.12-ccache-
 
       - name: Validate custom files
         run: |
@@ -193,12 +209,12 @@ jobs:
       - name: Build tools and toolchain
         run: |
           cd openwrt
-          ccache -M 1G || true
+          ccache -M "${CCACHE_MAXSIZE}" || true
           ccache -s || true
           echo "Building tools..."
-          make tools/install -j"$(nproc)" V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          make tools/install -j"$(nproc)" 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
           echo "Building toolchain..."
-          make toolchain/install -j"$(nproc)" V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
+          make toolchain/install -j"$(nproc)" 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
 
       - name: Upload toolchain logs
         if: always()
@@ -216,7 +232,7 @@ jobs:
           echo "Downloading packages..."
           for i in 1 2 3 4 5; do
             echo "=== Download attempt $i/5 ==="
-            make download -j8 V=s 2>&1 | tee -a download.log && break
+            make download -j8 2>&1 | tee -a download.log && break
             echo "Download failed, removing broken files before retry..."
             find dl -size -1024c -exec rm -f {} \;
             sleep 10
@@ -234,7 +250,7 @@ jobs:
           cd openwrt
           echo "Starting build with $(nproc) threads on Ubuntu 24.04"
           ccache -s || true
-          if make -j"$(nproc)" V=s 2>&1 | tee build.log; then
+          if make -j"$(nproc)" 2>&1 | tee build.log; then
             echo "Build succeeded"
           else
             echo "Parallel build failed, retrying with a single job..."
@@ -258,10 +274,26 @@ jobs:
           name: build-log-ubuntu24-test
           path: openwrt/build.log
 
+      - name: Get kernel version
+        if: env.status == 'success'
+        run: |
+          kernel_version="$(grep 'LINUX_VERSION-6.12' openwrt/include/kernel-6.12 | awk '{print $3}' | head -n 1)"
+          [ -n "${kernel_version}" ] || kernel_version="6.12"
+          echo "KERNEL_VERSION_6_12=${kernel_version}" >> "$GITHUB_ENV"
+
       - name: Check disk usage
         if: (!cancelled())
         run: |
           df -hT
+
+      - name: Upload bin directory
+        uses: actions/upload-artifact@v6
+        if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        with:
+          compression-level: 0
+          if-no-files-found: error
+          name: OpenWrt-6.12-Ubuntu24-Test-bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/bin
 
       - name: Organize firmware files
         id: organize
@@ -282,5 +314,36 @@ jobs:
         if: env.status == 'success' && !cancelled()
         with:
           compression-level: 0
+          if-no-files-found: error
           name: OpenWrt-6.12-Ubuntu24-Test${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
+
+      - name: Create release metadata
+        if: env.status == 'success' && !cancelled() && (inputs.release || env.UPLOAD_RELEASE == 'true')
+        run: |
+          echo "release_tag=ubuntu24-test-$(date +"%Y.%m.%d-%H%M")-r${GITHUB_RUN_NUMBER}a${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          cat > release.txt <<EOF
+          OpenWrt 6.12 Ubuntu 24.04 test build
+
+          Kernel: ${KERNEL_VERSION_6_12}
+          Device: ${DEVICE_NAME:-_generic}
+          Build time: ${FILE_DATE}
+          Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+
+      - name: Publish release
+        if: env.status == 'success' && !cancelled() && (inputs.release || env.UPLOAD_RELEASE == 'true')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=("${FIRMWARE}"/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No firmware files found in ${FIRMWARE}" >&2
+            exit 1
+          fi
+
+          gh release create "${release_tag}" "${files[@]}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "OpenWrt ${KERNEL_VERSION_6_12} Ubuntu24 Test${DEVICE_NAME}${FILE_DATE}" \
+            --notes-file release.txt
