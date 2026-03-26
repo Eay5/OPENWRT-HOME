@@ -58,6 +58,16 @@ rm -rf feeds/packages/lang/golang
 rm -rf package/feeds/packages/golang
 git clone --depth 1 -b 25.x https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
 
+# Expose pcre2 from the packages feed in the main tree as well. The 6.12 build
+# line pulls in proxy packages from `small` that require libpcre2, while lede
+# core packages may resolve dependencies before feed-installed package links are
+# available. Keeping a copy in package/libs makes the dependency visible early
+# and avoids ssr-plus being dropped during defconfig.
+if [ -d "feeds/packages/libs/pcre2" ]; then
+rm -rf package/libs/pcre2
+cp -a feeds/packages/libs/pcre2 package/libs/pcre2
+fi
+
 # Remove known conflicting LuCI apps from third-party feeds.
 rm -rf feeds/luci/applications/luci-app-fchomo
 rm -rf feeds/luci/applications/luci-app-bypass

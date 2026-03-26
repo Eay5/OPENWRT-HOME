@@ -110,6 +110,7 @@ jobs:
           cd openwrt
           # Keep feed installation simple and deterministic after feed cleanup.
           ./scripts/feeds install -a -f
+          ./scripts/feeds install -f pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core
 
       - name: Sync config
         run: |
@@ -136,8 +137,25 @@ jobs:
           ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
           ensure_config CONFIG_PACKAGE_autosamba n
           ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+          ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
+          ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
+          ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy y
+          ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Nftables_Transparent_Proxy n
+          ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-check y
+          ensure_config CONFIG_PACKAGE_libpcre2 y
+          ensure_config CONFIG_PACKAGE_coreutils y
+          ensure_config CONFIG_PACKAGE_coreutils-base64 y
+          ensure_config CONFIG_PACKAGE_ip-full y
+          ensure_config CONFIG_PACKAGE_jq y
+          ensure_config CONFIG_PACKAGE_lua-neturl y
+          ensure_config CONFIG_PACKAGE_resolveip y
+          ensure_config CONFIG_PACKAGE_nping y
 
           make defconfig
+
+          grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+          grep -q '^CONFIG_PACKAGE_shadowsocksr-libev-ssr-check=y' .config || { echo 'shadowsocksr-libev-ssr-check was not enabled'; exit 1; }
+          grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
 
       - name: Build tools and toolchain
         run: |
