@@ -38,7 +38,8 @@ echo "=== Verifying critical packages ==="
 if grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config && grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy=y' .config; then
     echo "SSR-Plus + iptables transparent proxy enabled"
 else
-    echo "WARNING: SSR-Plus iptables backend is missing in .config"
+    echo "ERROR: SSR-Plus iptables backend is missing in .config"
+    exit 1
 fi
 
 if [ -d "package/mosdns/luci-app-mosdns" ]; then
@@ -50,19 +51,14 @@ fi
 if [ -d "feeds/kenzo/luci-app-ssr-plus" ] || [ -d "feeds/small/luci-app-ssr-plus" ]; then
     echo "luci-app-ssr-plus found"
 else
-    echo "WARNING: luci-app-ssr-plus not found"
+    echo "ERROR: luci-app-ssr-plus feed source not found"
+    exit 1
 fi
 
 if [ -d "feeds/kenzo/luci-app-smartdns" ] || [ -d "feeds/small/smartdns" ]; then
     echo "SmartDNS found"
 else
     echo "WARNING: SmartDNS not found"
-fi
-
-if grep -q '^CONFIG_PACKAGE_luci-app-passwall=n' .config; then
-    echo "Passwall is disabled"
-else
-    echo "WARNING: Passwall is still enabled in .config"
 fi
 
 if grep -q '^CONFIG_PACKAGE_smartdns-ui=n' .config; then

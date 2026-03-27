@@ -157,8 +157,14 @@ jobs:
       - name: Install feed packages
         run: |
           cd openwrt
-          ./scripts/feeds install -a -f
-          ./scripts/feeds install -f pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core
+          ./scripts/feeds install -a
+          ./scripts/feeds install -f -p packages pcre2
+          ./scripts/feeds install -f -p kenzo luci-theme-argon luci-app-argon-config
+          ./scripts/feeds install -f -p small luci-app-ssr-plus lua-neturl tcping dns2socks dns2tcp microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core
+
+          [ -f package/feeds/small/luci-app-ssr-plus/Makefile ] || { echo 'luci-app-ssr-plus was not linked into package/feeds/small'; exit 1; }
+          [ -f package/feeds/small/shadowsocksr-libev/Makefile ] || { echo 'shadowsocksr-libev was not linked into package/feeds/small'; exit 1; }
+          [ -f package/feeds/small/shadowsocks-libev/Makefile ] || { echo 'shadowsocks-libev was not linked into package/feeds/small'; exit 1; }
 
       - name: Sync config
         run: |
@@ -186,8 +192,6 @@ jobs:
           ensure_config CONFIG_PACKAGE_autosamba n
           ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
           ensure_config CONFIG_PACKAGE_firewall4 n
-          ensure_config CONFIG_PACKAGE_luci-app-passwall n
-          ensure_config CONFIG_PACKAGE_luci-i18n-passwall-zh-cn n
           ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
           ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
           ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy y
@@ -208,6 +212,7 @@ jobs:
           ensure_config CONFIG_PACKAGE_libpcre2 y
           ensure_config CONFIG_PACKAGE_coreutils y
           ensure_config CONFIG_PACKAGE_coreutils-base64 y
+          ensure_config CONFIG_PACKAGE_dns2tcp y
           ensure_config CONFIG_PACKAGE_ip-full y
           ensure_config CONFIG_PACKAGE_jq y
           ensure_config CONFIG_PACKAGE_lua-neturl y
@@ -216,7 +221,16 @@ jobs:
 
           make defconfig
 
-          grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+          echo "Final key package selections:"
+          grep -E '^CONFIG_PACKAGE_(luci-app-ssr-plus|luci-i18n-ssr-plus-zh-cn|shadowsocksr-libev-ssr-check|shadowsocksr-libev-ssr-local|shadowsocksr-libev-ssr-redir|shadowsocks-libev-ss-local|shadowsocks-libev-ss-redir|simple-obfs|xray-core|v2ray-plugin|dns2socks|dns2tcp|lua-neturl|mosdns|smartdns|libpcre2|firewall4|dnsmasq_full_ipset)=' .config || true
+
+          grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || {
+            echo 'luci-app-ssr-plus was dropped during defconfig'
+            echo 'Installed candidate package directories:'
+            find package package/feeds -maxdepth 3 -type d \( -name 'luci-app-ssr-plus' -o -name 'shadowsocksr-libev' -o -name 'shadowsocks-libev' -o -name 'xray-core' -o -name 'v2ray-plugin' -o -name 'dns2socks' -o -name 'dns2tcp' -o -name 'lua-neturl' -o -name 'pcre2' \) | sort || true
+            exit 1
+          }
+          grep -q '^CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn=y' .config || { echo 'luci-i18n-ssr-plus-zh-cn was not enabled'; exit 1; }
           grep -q '^CONFIG_PACKAGE_shadowsocksr-libev-ssr-check=y' .config || { echo 'shadowsocksr-libev-ssr-check was not enabled'; exit 1; }
           grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
 
