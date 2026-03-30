@@ -1,17 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/common-proxy-verification.sh"
+
 echo "Applying basic settings..."
 
-# Default LAN IP
 sed -i 's/192\.168\.1\.1/192.168.0.133/g' package/base-files/files/bin/config_generate
-
-# Force kernel 6.12 for this build line
 sed -i 's/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=6.12/g' target/linux/x86/Makefile
 
-# Work around the current lede master libselinux -> pcre2 mismatch by
-# forcing libselinux back to the core-tree pcre package, which already has
-# matching target + host builds in the main tree.
 if [ -f package/libs/libselinux/Makefile ]; then
     sed -i 's/HOST_BUILD_DEPENDS:=libsepol\/host musl-fts\/host pcre2\/host/HOST_BUILD_DEPENDS:=libsepol\/host musl-fts\/host pcre\/host/' package/libs/libselinux/Makefile
     sed -i 's/DEPENDS:=+libsepol +libpcre2 +USE_MUSL:musl-fts/DEPENDS:=+libsepol +libpcre +USE_MUSL:musl-fts/' package/libs/libselinux/Makefile
@@ -21,51 +18,13 @@ if [ -f package/libs/libselinux/Makefile ]; then
     fi
 fi
 
-# Clear default root password hash if the file exists
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/files/zzz-default-settings 2>/dev/null || true
-
-# Switch default LuCI theme to Argon
 sed -i 's/luci-theme-bootstrap/luci-theme-argone/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
-
-# Set hostname
 sed -i "s/hostname='LEDE'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 sed -i "s/hostname='OpenWrt'/hostname='EAY'/g" package/base-files/files/bin/config_generate
 
 echo "Basic settings applied."
-echo ""
-echo "=== Verifying critical packages ==="
-
-if grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config && grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy=y' .config; then
-    echo "SSR-Plus + iptables transparent proxy enabled"
-else
-    echo "ERROR: SSR-Plus iptables backend is missing in .config"
-    exit 1
-fi
-
-if [ -d "package/mosdns/luci-app-mosdns" ]; then
-    echo "MosDNS (sbwml v5) found"
-else
-    echo "WARNING: MosDNS (sbwml v5) not found"
-fi
-
-if [ -d "feeds/kenzo/luci-app-ssr-plus" ] || [ -d "feeds/small/luci-app-ssr-plus" ]; then
-    echo "luci-app-ssr-plus found"
-else
-    echo "ERROR: luci-app-ssr-plus feed source not found"
-    exit 1
-fi
-
-if [ -d "feeds/kenzo/luci-app-smartdns" ] || [ -d "feeds/small/smartdns" ]; then
-    echo "SmartDNS found"
-else
-    echo "WARNING: SmartDNS not found"
-fi
-
-if grep -q '^CONFIG_PACKAGE_smartdns-ui=n' .config; then
-    echo "smartdns-ui is disabled to keep the build lighter"
-else
-    echo "WARNING: smartdns-ui is still enabled in .config"
-fi
+verify_proxy_stack "6.12" "1"
 
 echo ""
 echo "======================================"

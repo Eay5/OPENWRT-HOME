@@ -6,7 +6,7 @@ source "${script_dir}/common-feed-setup.sh"
 
 setup_common_feeds
 
-# Expose pcre2 from the packages feed in the main tree as well. The 6.12 build
+# Expose pcre2 from the packages feed in the main tree as well. The 6.18 build
 # line pulls in proxy packages from `helloworld` that require libpcre2, while
 # lede core packages may resolve dependencies before feed-installed package
 # links are available.

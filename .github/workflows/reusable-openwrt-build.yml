@@ -1,0 +1,438 @@
+name: Reusable OpenWrt Build
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: GitHub-hosted runner label.
+        required: false
+        type: string
+        default: ubuntu-22.04
+      apt_ncurses_package:
+        description: ncurses development package name for the selected runner.
+        required: false
+        type: string
+        default: libncurses5-dev
+      config_file:
+        description: OpenWrt .config file in the repository root.
+        required: true
+        type: string
+      diy_p1_sh:
+        description: Pre-feed customization script.
+        required: true
+        type: string
+      diy_p2_sh:
+        description: Post-config customization script.
+        required: true
+        type: string
+      kernel_series:
+        description: Kernel series, for example 5.10 or 6.12.
+        required: true
+        type: string
+      firmware_artifact_prefix:
+        description: Artifact name prefix for the firmware directory upload.
+        required: true
+        type: string
+      bin_artifact_prefix:
+        description: Artifact name prefix for the bin directory upload.
+        required: false
+        type: string
+        default: OpenWrt_bin
+      release_title_template:
+        description: Release title template. Supports {{kernel}}, {{device}}, {{date}}.
+        required: true
+        type: string
+      release_notes_title:
+        description: Optional first line for release notes.
+        required: false
+        type: string
+        default: ""
+      release_tag_prefix:
+        description: Optional prefix added before the generated release tag.
+        required: false
+        type: string
+        default: ""
+      toolchain_log_name:
+        description: Artifact name for the toolchain logs.
+        required: false
+        type: string
+        default: toolchain-install-logs
+      build_log_name:
+        description: Artifact name for the build log.
+        required: false
+        type: string
+        default: build-log
+      extra_feed_packages:
+        description: Additional packages to force-install from feeds.
+        required: false
+        type: string
+        default: ""
+      config_sync_mode:
+        description: Config sync strategy.
+        required: false
+        type: string
+        default: basic
+      enable_ssh:
+        description: Enable the interactive SSH step.
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: ${{ inputs.config_file }}
+  DIY_P1_SH: ${{ inputs.diy_p1_sh }}
+  DIY_P2_SH: ${{ inputs.diy_p2_sh }}
+  KERNEL_SERIES: ${{ inputs.kernel_series }}
+  EXTRA_FEED_PACKAGES: ${{ inputs.extra_feed_packages }}
+  CONFIG_SYNC_MODE: ${{ inputs.config_sync_mode }}
+  RELEASE_TITLE_TEMPLATE: ${{ inputs.release_title_template }}
+  RELEASE_NOTES_TITLE: ${{ inputs.release_notes_title }}
+  UPLOAD_BIN_DIR: true
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: true
+  UPLOAD_WETRANSFER: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      actions: write
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Free disk space
+        uses: coder-xiaomo/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NCURSES_PACKAGE: ${{ inputs.apt_ncurses_package }}
+        run: |
+          docker images -q | xargs -r docker rmi || true
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
+          sudo -E apt-mark hold grub-efi-amd64-signed
+          sudo -E apt update
+          sudo -E apt -y purge azure-cli* docker* ghc* zulu* llvm* firefox google* dotnet* powershell* openjdk* mysql* php* mongodb* snap*
+          sudo -E apt -y full-upgrade
+          sudo -E apt -y install build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git "${NCURSES_PACKAGE}" libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget \
+            llvm python3-pyelftools libpython3-dev ccache \
+            libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+            autoconf automake libtool cmake ninja-build
+          sudo -E systemctl daemon-reload
+          sudo -E apt -y autoremove --purge
+          sudo -E apt clean
+          sudo -E timedatectl set-timezone "${TZ}"
+          sudo mkdir -p /workdir
+          sudo chown "$USER:$(id -gn)" /workdir
+
+      - name: Clone OpenWrt source
+        run: |
+          df -hT "$PWD"
+          git clone "$REPO_URL" -b "$REPO_BRANCH" openwrt
+
+      - name: Prepare build directories
+        run: |
+          cd openwrt
+          rm -rf staging_dir build_dir bin tmp dl .ccache
+          mkdir -p dl bin staging_dir build_dir
+
+      - name: Validate custom files
+        run: |
+          ls -l "$GITHUB_WORKSPACE/"
+          [ -f "$CONFIG_FILE" ] && echo "$CONFIG_FILE found" || { echo "$CONFIG_FILE not found"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "$DIY_P1_SH found" || { echo "$DIY_P1_SH not found"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "$DIY_P2_SH found" || { echo "$DIY_P2_SH not found"; exit 1; }
+
+      - name: Load custom feeds
+        run: |
+          [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+          chmod +x "$DIY_P1_SH"
+          cd openwrt
+          "$GITHUB_WORKSPACE/$DIY_P1_SH"
+
+      - name: Install feed packages
+        run: |
+          cd openwrt
+          ./scripts/feeds install -a -f
+
+          if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
+            ./scripts/feeds install -f ${EXTRA_FEED_PACKAGES}
+          fi
+
+      - name: Load custom config
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+          chmod +x "$DIY_P2_SH"
+          cd openwrt
+          "$GITHUB_WORKSPACE/$DIY_P2_SH"
+
+      - name: Sync config
+        run: |
+          cd openwrt
+
+          ensure_config() {
+            local key="$1"
+            local value="$2"
+
+            sed -i "/^${key}=.*/d" .config
+            sed -i "/^# ${key} is not set$/d" .config
+            echo "${key}=${value}" >> .config
+          }
+
+          make defconfig
+
+          case "${CONFIG_SYNC_MODE}" in
+            basic)
+              ;;
+            proxy_stack_required)
+              echo "Reapplying required proxy packages..."
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
+              ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns y
+              ensure_config CONFIG_PACKAGE_mosdns y
+              ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
+              make defconfig
+              grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config || { echo 'luci-app-mosdns was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
+              ;;
+            ssr_plus_612)
+              echo "Reapplying forced package toggles..."
+              ensure_config CONFIG_DEVEL n
+              ensure_config CONFIG_CCACHE n
+              ensure_config CONFIG_PACKAGE_ksmbd-server n
+              ensure_config CONFIG_PACKAGE_ksmbd-utils n
+              ensure_config CONFIG_PACKAGE_luci-app-ksmbd n
+              ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
+              ensure_config CONFIG_PACKAGE_autosamba n
+              ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
+              ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy y
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Nftables_Transparent_Proxy n
+              ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-check y
+              ensure_config CONFIG_PACKAGE_libpcre2 y
+              ensure_config CONFIG_PACKAGE_coreutils y
+              ensure_config CONFIG_PACKAGE_coreutils-base64 y
+              ensure_config CONFIG_PACKAGE_ip-full y
+              ensure_config CONFIG_PACKAGE_jq y
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns y
+              ensure_config CONFIG_PACKAGE_mosdns y
+              ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_lua-neturl y
+              ensure_config CONFIG_PACKAGE_resolveip y
+              ensure_config CONFIG_PACKAGE_nping y
+              make defconfig
+              grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_shadowsocksr-libev-ssr-check=y' .config || { echo 'shadowsocksr-libev-ssr-check was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config || { echo 'luci-app-mosdns was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
+              ;;
+            *)
+              echo "Unknown config sync mode: ${CONFIG_SYNC_MODE}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Build tools and toolchain
+        run: |
+          cd openwrt
+          echo "Building tools..."
+          make tools/install -j"$(nproc)" V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          echo "Building toolchain..."
+          make toolchain/install -j"$(nproc)" V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
+
+      - name: Upload toolchain logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.toolchain_log_name }}
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      - name: SSH connection to Actions
+        if: inputs.enable_ssh
+        uses: P3TERX/ssh2actions@v1.0.0
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: Download packages
+        id: package
+        run: |
+          cd openwrt
+          echo "Downloading packages..."
+          for i in 1 2 3 4 5; do
+            echo "=== Download attempt $i/5 ==="
+            make download -j8 V=s 2>&1 | tee -a download.log && break
+            echo "Download failed, removing broken files before retry..."
+            find dl -size -1024c -exec rm -f {} \;
+            sleep 10
+          done
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Check disk space
+        run: |
+          df -hT
+
+      - name: Compile firmware
+        id: compile
+        run: |
+          cd openwrt
+          echo "Starting build with $(nproc) threads"
+          if make -j"$(nproc)" V=s 2>&1 | tee build.log; then
+            echo "Build succeeded"
+          else
+            echo "Parallel build failed, retrying with a single job..."
+            find dl -size -1024c -exec rm -f {} \;
+            make download -j4 V=s 2>&1 | tee -a download.log || true
+            make -j1 V=s 2>&1 | tee -a build.log
+          fi
+
+          echo "Checking generated firmware:"
+          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
+          echo "status=success" >> "$GITHUB_ENV"
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -E 's/.*DEVICE_(.*)=y/\1/' | head -n 1 > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> "$GITHUB_ENV"
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.build_log_name }}
+          path: openwrt/build.log
+
+      - name: Get kernel version
+        if: env.status == 'success'
+        run: |
+          kernel_pattern="${KERNEL_SERIES//./\\.}"
+          kernel_file="openwrt/include/kernel-${KERNEL_SERIES}"
+          kernel_version="$(sed -n "s/^LINUX_VERSION-${kernel_pattern}[[:space:]]*[:?]?=[[:space:]]*//p" "${kernel_file}" | head -n 1 | tr -d '\r')"
+
+          if [ -z "${kernel_version}" ]; then
+            kernel_version="${KERNEL_SERIES}"
+          elif [[ "${kernel_version}" =~ ^\.[0-9]+$ ]]; then
+            kernel_version="${KERNEL_SERIES}${kernel_version}"
+          elif [[ "${kernel_version}" =~ ^[0-9]+$ ]]; then
+            kernel_version="${KERNEL_SERIES}.${kernel_version}"
+          fi
+
+          echo "KERNEL_VERSION=${kernel_version}" >> "$GITHUB_ENV"
+
+      - name: Check disk usage
+        if: (!cancelled())
+        run: |
+          df -hT
+
+      - name: Upload bin directory
+        if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.bin_artifact_prefix }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/bin
+
+      - name: Organize firmware files
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
+            cd openwrt/bin/targets/*/*
+            rm -rf packages
+            echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+            echo "status=success" >> "$GITHUB_ENV"
+          else
+            echo "No firmware found in openwrt/bin/targets/"
+            echo "status=failure" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload firmware artifact
+        if: env.status == 'success' && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.firmware_artifact_prefix }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      - name: Create release metadata
+        if: env.UPLOAD_RELEASE == 'true' && env.status == 'success' && !cancelled()
+        run: |
+          release_title="${RELEASE_TITLE_TEMPLATE}"
+          release_title="${release_title//\{\{kernel\}\}/${KERNEL_VERSION}}"
+          release_title="${release_title//\{\{device\}\}/${DEVICE_NAME}}"
+          release_title="${release_title//\{\{date\}\}/${FILE_DATE}}"
+
+          echo "release_tag=${{ inputs.release_tag_prefix }}$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
+          echo "RELEASE_TITLE=${release_title}" >> "$GITHUB_ENV"
+
+          {
+            if [ -n "${RELEASE_NOTES_TITLE}" ]; then
+              echo "${RELEASE_NOTES_TITLE}"
+              echo
+            fi
+            echo "Kernel: ${KERNEL_VERSION}"
+            if [ -n "${DEVICE_NAME}" ]; then
+              echo "Device: ${DEVICE_NAME#_}"
+            fi
+            echo "Build time: ${FILE_DATE#_}"
+            [ "${UPLOAD_COWTRANSFER}" = "true" ] && echo "Cowtransfer enabled"
+            [ "${UPLOAD_WETRANSFER}" = "true" ] && echo "WeTransfer enabled"
+          } > release.txt
+
+      - name: Publish release
+        if: env.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          name: ${{ env.RELEASE_TITLE }}
+          tag_name: ${{ env.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
+
+      - name: Delete old workflow runs
+        if: always() && !cancelled()
+        uses: GitRML/delete-workflow-runs@main
+        with:
+          retain_days: 1
+          keep_minimum_runs: 3
+
+      - name: Delete old releases
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        uses: dev-drprasad/delete-older-releases@master
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          keep_latest: 30
+          delete_tags: true

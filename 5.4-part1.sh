@@ -6,4 +6,4 @@ source "${script_dir}/common-feed-setup.sh"
 
 setup_common_feeds
 
-echo "6.1 part1 completed."
+echo "5.4 part1 completed."

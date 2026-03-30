@@ -1,4 +1,4 @@
-name: Build 5.10 OpenWrt
+name: Build 6.18 OpenWrt
 
 on:
   repository_dispatch:
@@ -20,11 +20,12 @@ jobs:
     secrets: inherit
     with:
       enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
-      config_file: 5.10.config
-      diy_p1_sh: 5.10-part1.sh
-      diy_p2_sh: 5.10-part2.sh
-      kernel_series: "5.10"
-      firmware_artifact_prefix: OpenWrt-5.10
+      config_file: 6.18.config
+      diy_p1_sh: 6.18-part1.sh
+      diy_p2_sh: 6.18-part2.sh
+      kernel_series: "6.18"
+      firmware_artifact_prefix: OpenWrt-6.18
       bin_artifact_prefix: OpenWrt_bin
       release_title_template: OpenWrt {{kernel}}-X86-64{{date}}
-      config_sync_mode: proxy_stack_required
+      extra_feed_packages: pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core
+      config_sync_mode: ssr_plus_612
