@@ -8,6 +8,10 @@ on:
         description: SSH connection to Actions
         required: false
         default: "false"
+      runner:
+        description: Runner label, for example ubuntu-22.04 or self-hosted
+        required: false
+        default: "ubuntu-22.04"
   schedule:
     - cron: "0 19 * * *"
   watch:
@@ -19,6 +23,7 @@ jobs:
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
+      runner: ${{ github.event.inputs.runner || 'ubuntu-22.04' }}
       enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
       config_file: 5.15.config
       diy_p1_sh: 5.15-part1.sh

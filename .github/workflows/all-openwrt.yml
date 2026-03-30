@@ -7,6 +7,10 @@ on:
         description: SSH connection to Actions
         required: false
         default: "false"
+      runner:
+        description: Optional runner override, for example self-hosted
+        required: false
+        default: ""
 
 env:
   TZ: Asia/Shanghai
@@ -22,6 +26,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SSH_INPUT: ${{ github.event.inputs.ssh }}
+          RUNNER_INPUT: ${{ github.event.inputs.runner }}
         run: |
           workflows=(
             "6.18-openwrt.yml"
@@ -35,13 +40,18 @@ jobs:
             "5.4-openwrt.yml"
           )
 
+          runner_args=()
+          if [ -n "${RUNNER_INPUT}" ]; then
+            runner_args=(-f runner="${RUNNER_INPUT}")
+          fi
+
           for workflow in "${workflows[@]}"; do
             echo "Triggering ${workflow}"
 
             if [ "${SSH_INPUT}" = "true" ]; then
-              gh workflow run "${workflow}" --repo "${GITHUB_REPOSITORY}" -f ssh=true
+              gh workflow run "${workflow}" --repo "${GITHUB_REPOSITORY}" "${runner_args[@]}" -f ssh=true
             else
-              gh workflow run "${workflow}" --repo "${GITHUB_REPOSITORY}"
+              gh workflow run "${workflow}" --repo "${GITHUB_REPOSITORY}" "${runner_args[@]}"
             fi
           done
 
