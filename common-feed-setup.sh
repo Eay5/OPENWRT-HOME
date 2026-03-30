@@ -26,10 +26,10 @@ setup_common_feeds() {
 
     echo "Pinning third-party package sources..."
 
-    rm -rf feeds/kenzo/luci-app-smartdns
-    rm -rf package/feeds/kenzo/luci-app-smartdns
-    rm -rf feeds/kenzo/smartdns
-    rm -rf package/feeds/kenzo/smartdns
+    rm -rf feeds/luci/applications/luci-app-smartdns
+    rm -rf package/feeds/luci/luci-app-smartdns
+    rm -rf feeds/packages/net/smartdns
+    rm -rf package/feeds/packages/smartdns
 
     rm -rf feeds/kenzo/luci-app-ssr-plus
     rm -rf package/feeds/kenzo/luci-app-ssr-plus

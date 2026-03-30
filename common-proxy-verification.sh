@@ -51,10 +51,12 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if [ -d "feeds/luci/applications/luci-app-smartdns" ] && [ -d "feeds/packages/net/smartdns" ]; then
-        echo "SmartDNS source: official OpenWrt feeds"
+    if [ -d "package/feeds/kenzo/luci-app-smartdns" ] && [ -d "package/feeds/kenzo/smartdns" ]; then
+        echo "SmartDNS source: kenzok8/openwrt-packages"
+    elif [ -d "feeds/kenzo/luci-app-smartdns" ] && [ -d "feeds/kenzo/smartdns" ]; then
+        echo "SmartDNS source: kenzok8/openwrt-packages"
     else
-        echo "ERROR: official SmartDNS packages not found"
+        echo "ERROR: kenzok8/openwrt-packages SmartDNS packages not found"
         exit 1
     fi
 

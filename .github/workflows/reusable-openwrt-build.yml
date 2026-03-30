@@ -174,6 +174,8 @@ jobs:
         run: |
           cd openwrt
           ./scripts/feeds install -a -f
+          echo "Pinning SmartDNS packages from kenzo feed..."
+          ./scripts/feeds install -f -p kenzo smartdns luci-app-smartdns
 
           if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
             ./scripts/feeds install -f ${EXTRA_FEED_PACKAGES}
@@ -207,6 +209,7 @@ jobs:
               ;;
             proxy_stack_required)
               echo "Reapplying required proxy packages..."
+              ensure_config CONFIG_PACKAGE_luci-compat y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
               ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-app-mosdns y
@@ -231,6 +234,7 @@ jobs:
               ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
               ensure_config CONFIG_PACKAGE_autosamba n
               ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+              ensure_config CONFIG_PACKAGE_luci-compat y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
               ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy y
