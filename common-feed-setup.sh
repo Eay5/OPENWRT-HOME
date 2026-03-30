@@ -59,7 +59,7 @@ setup_common_feeds() {
 
     rm -rf feeds/packages/lang/golang
     rm -rf package/feeds/packages/golang
-    git clone --depth 1 -b 25.x https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
+    git clone --depth 1 -b 26.x https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
 
     rm -rf feeds/luci/applications/luci-app-fchomo
     rm -rf feeds/luci/applications/luci-app-bypass

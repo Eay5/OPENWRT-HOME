@@ -6,7 +6,7 @@ rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
 
 # 添加自定义 Golang 包以解决依赖问题
-git clone https://github.com/sbwml/packages_lang_golang -b 25.x feeds/packages/lang/golang
+git clone https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
 ./scripts/feeds install -a
 
 # 删除有循环依赖的冲突包，防止构建失败
