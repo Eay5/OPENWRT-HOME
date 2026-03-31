@@ -173,6 +173,13 @@ jobs:
             ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-
             ${{ runner.os }}-openwrt-dl-
 
+      - name: Purge stale Go module cache entries
+        run: |
+          rm -rf openwrt/dl/go-mod-cache/google.golang.org/protobuf@*
+          rm -rf openwrt/dl/go-mod-cache/cache/download/google.golang.org/protobuf
+          rm -rf openwrt/dl/go-mod-cache/github.com/urlesistiana
+          rm -rf openwrt/dl/go-mod-cache/cache/download/github.com/urlesistiana
+
       - name: Restore ccache
         id: restore_ccache
         uses: actions/cache/restore@v4
@@ -334,11 +341,11 @@ jobs:
             echo "=== Download attempt $i/5 ==="
             make download -j8 V=s 2>&1 | tee -a download.log && break
             echo "Download failed, removing broken files before retry..."
-            find dl -size -1024c -exec rm -f {} \;
+            find dl -path 'dl/go-mod-cache' -prune -o -type f -size -1024c -exec rm -f {} \;
             sleep 10
           done
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
+          find dl -path 'dl/go-mod-cache' -prune -o -type f -size -1024c -exec ls -l {} \;
+          find dl -path 'dl/go-mod-cache' -prune -o -type f -size -1024c -exec rm -f {} \;
 
       - name: Check disk space
         run: |
@@ -417,7 +424,7 @@ jobs:
 
       - name: Organize firmware files
         id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        if: env.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
           if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
             cd openwrt/bin/targets/*/*
