@@ -39,7 +39,7 @@ on:
         type: string
         default: OpenWrt_bin
       release_title_template:
-        description: Release title template. Supports {{kernel}}, {{device}}, {{date}}.
+        description: Release title template. Supports {{kernel}}, {{device}}, {{date}}, {{build_time}}.
         required: true
         type: string
       release_notes_title:
@@ -362,6 +362,8 @@ jobs:
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -E 's/.*DEVICE_(.*)=y/\1/' | head -n 1 > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> "$GITHUB_ENV"
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
+          echo "BUILD_TIME_DISPLAY=$(date +"%Y-%m-%d %H:%M:%S %Z")" >> "$GITHUB_ENV"
+          echo "BUILD_TIME_ISO=$(date -Iseconds)" >> "$GITHUB_ENV"
 
       - name: Upload build log
         if: always()
@@ -441,6 +443,7 @@ jobs:
           release_title="${release_title//\{\{kernel\}\}/${KERNEL_VERSION}}"
           release_title="${release_title//\{\{device\}\}/${DEVICE_NAME}}"
           release_title="${release_title//\{\{date\}\}/${FILE_DATE}}"
+          release_title="${release_title//\{\{build_time\}\}/${BUILD_TIME_DISPLAY}}"
 
           echo "release_tag=${{ inputs.release_tag_prefix }}$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
           echo "RELEASE_TITLE=${release_title}" >> "$GITHUB_ENV"
@@ -450,11 +453,22 @@ jobs:
               echo "${RELEASE_NOTES_TITLE}"
               echo
             fi
-            echo "Kernel: ${KERNEL_VERSION}"
+            echo "OpenWrt automated build release"
+            echo
+            echo "Kernel series: ${KERNEL_SERIES}"
+            echo "Linux kernel: ${KERNEL_VERSION}"
             if [ -n "${DEVICE_NAME}" ]; then
               echo "Device: ${DEVICE_NAME#_}"
             fi
-            echo "Build time: ${FILE_DATE#_}"
+            echo "Build timestamp: ${BUILD_TIME_DISPLAY}"
+            echo "Build timestamp (ISO 8601): ${BUILD_TIME_ISO}"
+            echo "Build ID: ${FILE_DATE#_}"
+            echo "Source repo: ${REPO_URL}"
+            echo "Source branch: ${REPO_BRANCH}"
+            echo "Config file: ${CONFIG_FILE}"
+            echo "Runner: ${{ inputs.runner }}"
+            echo "Workflow: ${{ github.workflow }}"
+            echo "Run number: ${{ github.run_number }}"
             [ "${UPLOAD_COWTRANSFER}" = "true" ] && echo "Cowtransfer enabled"
             [ "${UPLOAD_WETRANSFER}" = "true" ] && echo "WeTransfer enabled"
           } > release.txt

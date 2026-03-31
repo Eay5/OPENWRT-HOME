@@ -31,6 +31,6 @@ jobs:
       kernel_series: "6.18"
       firmware_artifact_prefix: OpenWrt-6.18
       bin_artifact_prefix: OpenWrt_bin
-      release_title_template: OpenWrt {{kernel}}-X86-64{{date}}
-      extra_feed_packages: pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core
+      release_title_template: OpenWrt Linux-{{kernel}} X86-64 Build {{build_time}}
+      extra_feed_packages: pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core luci-app-adguardhome
       config_sync_mode: ssr_plus_612
