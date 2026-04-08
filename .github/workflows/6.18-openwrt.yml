@@ -9,9 +9,9 @@ on:
         required: false
         default: "false"
       runner:
-        description: Runner label, for example ubuntu-24.04 or self-hosted
+        description: Runner label, for example ubuntu-22.04 or self-hosted
         required: false
-        default: "ubuntu-24.04"
+        default: "ubuntu-22.04"
   schedule:
     - cron: "0 19 * * *"
   watch:
@@ -23,8 +23,7 @@ jobs:
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
-      runner: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
-      apt_ncurses_package: libncurses-dev
+      runner: ${{ github.event.inputs.runner || 'ubuntu-22.04' }}
       enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
       config_file: 6.18.config
       diy_p1_sh: 6.18-part1.sh
