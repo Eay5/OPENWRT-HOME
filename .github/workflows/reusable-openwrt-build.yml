@@ -214,8 +214,13 @@ jobs:
         run: |
           cd openwrt
           ./scripts/feeds install -a -f
-          echo "Pinning SmartDNS packages from kenzo feed..."
-          ./scripts/feeds install -f -p kenzo smartdns luci-app-smartdns
+
+          if [ -f "package/smartdns/Makefile" ] && [ -f "package/luci-app-smartdns/Makefile" ]; then
+            echo "Using locally pinned SmartDNS packages from package/."
+          else
+            echo "Pinning SmartDNS packages from kenzo feed..."
+            ./scripts/feeds install -f -p kenzo smartdns luci-app-smartdns
+          fi
 
           if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
             ./scripts/feeds install -f ${EXTRA_FEED_PACKAGES}

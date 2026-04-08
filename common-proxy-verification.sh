@@ -51,12 +51,14 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if [ -d "package/feeds/kenzo/luci-app-smartdns" ] && [ -d "package/feeds/kenzo/smartdns" ]; then
+    if [ -f "package/luci-app-smartdns/Makefile" ] && [ -f "package/smartdns/Makefile" ]; then
+        echo "SmartDNS source: pymumu/openwrt-smartdns + pymumu/luci-app-smartdns (lede branch)"
+    elif [ -d "package/feeds/kenzo/luci-app-smartdns" ] && [ -d "package/feeds/kenzo/smartdns" ]; then
         echo "SmartDNS source: kenzok8/openwrt-packages"
     elif [ -d "feeds/kenzo/luci-app-smartdns" ] && [ -d "feeds/kenzo/smartdns" ]; then
         echo "SmartDNS source: kenzok8/openwrt-packages"
     else
-        echo "ERROR: kenzok8/openwrt-packages SmartDNS packages not found"
+        echo "ERROR: SmartDNS packages not found in either the local pin or kenzo feed"
         exit 1
     fi
 
