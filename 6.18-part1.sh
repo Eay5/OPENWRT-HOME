@@ -27,8 +27,11 @@ pin_618_package_sources() {
     rm -rf feeds/kenzo/luci-app-argon-config
     rm -rf package/feeds/kenzo/luci-theme-argon
     rm -rf package/feeds/kenzo/luci-app-argon-config
-    clone_package_repo "https://github.com/jerrykuku/luci-theme-argon.git" "package/luci-theme-argon" "18.06"
-    clone_package_repo "https://github.com/jerrykuku/luci-app-argon-config.git" "package/luci-app-argon-config" "18.06"
+    # The legacy 18.06 Argon branches still use old LuCI Lua templates and
+    # dispatcher internals (`__entries`), which crash on the current 6.18 LuCI
+    # stack. Pull the maintained branch instead.
+    clone_package_repo "https://github.com/jerrykuku/luci-theme-argon.git" "package/luci-theme-argon"
+    clone_package_repo "https://github.com/jerrykuku/luci-app-argon-config.git" "package/luci-app-argon-config"
 
     rm -rf feeds/luci/applications/luci-app-smartdns
     rm -rf package/feeds/luci/luci-app-smartdns
