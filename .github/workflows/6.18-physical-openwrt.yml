@@ -1,0 +1,31 @@
+name: Build 6.18 OpenWrt (x86 Physical + Intel/RTL 2.5G)
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: SSH connection to Actions
+        required: false
+        default: "false"
+      runner:
+        description: Runner label, for example ubuntu-22.04 or self-hosted
+        required: false
+        default: "ubuntu-22.04"
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ github.event.inputs.runner || 'ubuntu-22.04' }}
+      enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
+      config_file: 6.18-physical.config
+      diy_p1_sh: 6.18-part1.sh
+      diy_p2_sh: 6.18-physical-part2.sh
+      kernel_series: "6.18"
+      firmware_artifact_prefix: OpenWrt-6.18-x86-physical-intel-rtl25g
+      bin_artifact_prefix: OpenWrt_bin
+      release_title_template: OpenWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
+      extra_feed_packages: pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core luci-app-adguardhome
+      config_sync_mode: ssr_plus_612
