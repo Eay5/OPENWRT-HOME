@@ -176,6 +176,7 @@ apply_queue_tuning() {
 	done
 }
 
+# 启动时按顺序应用 CPU、IRQ、网络队列三类优化。
 start() {
 	apply_cpu_governor
 	apply_intel_pstate_tweaks
@@ -184,6 +185,7 @@ start() {
 	apply_queue_tuning
 }
 
+# 重启服务时直接复用启动逻辑，保证参数被重新写回。
 restart() {
 	start
 }

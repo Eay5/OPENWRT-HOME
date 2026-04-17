@@ -12,6 +12,11 @@ if ! uci -q show mosdns.config >/dev/null 2>&1; then
 	uci set mosdns.config='mosdns'
 fi
 
+# 让 LAN 侧 IPv6 客户端继续把路由器当作 DNS 入口，避免直接拿上游 DNS 绕过本机链路。
+uci -q set dhcp.lan.ra_dns='1'
+uci -q set dhcp.lan.dns_service='1'
+uci -q delete dhcp.lan.dns
+
 uci -q batch <<EOF
 set dhcp.@dnsmasq[0].cachesize='0'
 set dhcp.@dnsmasq[0].noresolv='1'

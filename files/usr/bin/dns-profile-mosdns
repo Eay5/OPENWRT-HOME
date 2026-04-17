@@ -15,6 +15,11 @@ if ! uci -q show mosdns.config >/dev/null 2>&1; then
 	uci set mosdns.config='mosdns'
 fi
 
+# 切回 MosDNS 时，同步恢复 LAN 侧 IPv6 本机 DNS 通告，避免 IPv6 客户端直接走上游 DNS。
+uci -q set dhcp.lan.ra_dns='1'
+uci -q set dhcp.lan.dns_service='1'
+uci -q delete dhcp.lan.dns
+
 uci -q delete dhcp.@dnsmasq[0].server
 uci -q add_list dhcp.@dnsmasq[0].server="127.0.0.1#${MOSDNS_PORT}"
 uci -q add_list dhcp.@dnsmasq[0].server="::1#${MOSDNS_PORT}"

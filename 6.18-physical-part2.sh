@@ -8,6 +8,21 @@ target_kernel_series="6.18"
 target_default_ip="192.168.0.133"
 target_hostname="EAY"
 
+# 安装 physical 构建专用覆盖文件。
+# 这里统一复制 physical-files/ 下的内容，避免 Intel 优化脚本和首启网口规则散落在多个位置单独处理。
+install_physical_overlay_files() {
+    local source_dir="${script_dir}/physical-files"
+    local target_dir="files"
+
+    if [ ! -d "${source_dir}" ]; then
+        echo "Missing physical overlay directory: ${source_dir}" >&2
+        exit 1
+    fi
+
+    mkdir -p "${target_dir}"
+    cp -a "${source_dir}/." "${target_dir}/"
+}
+
 config_is_enabled() {
     local key="$1"
 
@@ -125,6 +140,18 @@ detect_performance_defaults() {
         items+=("RPS/XPS")
     fi
 
+    if [ -f files/etc/init.d/performance-mode ] && grep -q 'intel_pstate' files/etc/init.d/performance-mode; then
+        items+=("Intel P-state/HWP")
+    fi
+
+    if [ -f files/etc/init.d/performance-mode ] && grep -q 'energy_perf_bias' files/etc/init.d/performance-mode; then
+        items+=("Intel EPB 0")
+    fi
+
+    if [ -f files/etc/init.d/performance-mode ] && grep -q 'default_smp_affinity' files/etc/init.d/performance-mode; then
+        items+=("IRQ affinity")
+    fi
+
     if [ -f files/etc/uci-defaults/99-system-performance ] && grep -q "flow_offloading='1'" files/etc/uci-defaults/99-system-performance; then
         items+=("flow offload")
     fi
@@ -173,6 +200,48 @@ detect_nic_drivers() {
     join_by_comma "${drivers[@]}"
 }
 
+# 检测当前 physical 配置保留的是哪一套 CPU 微码，避免 Intel 机型白带 AMD 微码包。
+detect_cpu_firmware_profile() {
+    local items=()
+
+    config_is_enabled CONFIG_PACKAGE_intel-microcode && items+=("Intel microcode")
+    config_is_enabled CONFIG_PACKAGE_amd64-microcode && items+=("AMD microcode")
+
+    join_by_comma "${items[@]}"
+}
+
+# 检测与 x86 物理机硬件信息展示直接相关的组件，主要用于温度、CPU/PCI 信息页面。
+detect_hardware_management() {
+    local items=()
+
+    config_is_enabled CONFIG_PACKAGE_lm-sensors && items+=("lm-sensors")
+    config_is_enabled CONFIG_PACKAGE_autocore-x86 && items+=("autocore-x86")
+
+    join_by_comma "${items[@]}"
+}
+
+# 检测物理机磁盘管理能力，直接对应 SMART、硬盘温度和休眠配置页面。
+detect_storage_management() {
+    local items=()
+
+    config_is_enabled CONFIG_PACKAGE_smartmontools && items+=("SMART")
+    config_is_enabled CONFIG_PACKAGE_smartmontools-drivedb && items+=("SMART drive DB")
+    config_is_enabled CONFIG_PACKAGE_kmod-hwmon-drivetemp && items+=("drive temperature")
+    config_is_enabled CONFIG_PACKAGE_hd-idle && items+=("hd-idle")
+    config_is_enabled CONFIG_PACKAGE_luci-app-hd-idle && items+=("LuCI hd-idle")
+
+    join_by_comma "${items[@]}"
+}
+
+# 检测首启网口划分规则是否已经注入到 physical 固件覆盖层。
+detect_firstboot_network_layout() {
+    if [ -f files/etc/board.d/99-default_network ]; then
+        echo "single NIC -> LAN DHCP; multi NIC -> eth0 WAN + others LAN"
+    else
+        echo "not installed"
+    fi
+}
+
 echo "Applying basic settings..."
 
 sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
@@ -191,6 +260,7 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/f
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
 sed -i "s/hostname='LEDE'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
 sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
+install_physical_overlay_files
 
 echo "Basic settings applied."
 verify_proxy_stack "${target_kernel_series}" "1"
@@ -203,6 +273,10 @@ performance_display="$(detect_performance_defaults)"
 proxy_stack_display="$(detect_proxy_stack)"
 apps_display="$(detect_enabled_apps)"
 nic_drivers_display="$(detect_nic_drivers)"
+cpu_firmware_display="$(detect_cpu_firmware_profile)"
+hardware_management_display="$(detect_hardware_management)"
+storage_management_display="$(detect_storage_management)"
+firstboot_network_layout_display="$(detect_firstboot_network_layout)"
 
 echo ""
 echo "======================================"
@@ -213,6 +287,10 @@ echo "  - Default IP: ${default_ip_display}"
 echo "  - Hostname: ${hostname_display}"
 echo "  - Theme: ${theme_display}"
 echo "  - NIC drivers: ${nic_drivers_display}"
+echo "  - CPU firmware: ${cpu_firmware_display}"
+echo "  - Hardware management: ${hardware_management_display}"
+echo "  - Storage management: ${storage_management_display}"
+echo "  - First-boot NIC layout: ${firstboot_network_layout_display}"
 echo "  - Performance defaults: ${performance_display}"
 echo "  - Proxy stack: ${proxy_stack_display}"
 echo "  - Apps: ${apps_display}"

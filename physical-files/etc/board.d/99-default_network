@@ -1,0 +1,41 @@
+#!/bin/sh
+
+# x86 物理机首启网口角色生成规则。
+# 1. 只有一个网口时，把 eth0 作为 LAN，并改成 DHCP，方便旁路由或先接入上级网络。
+# 2. 有多个网口时，把 eth0 作为 WAN，其余 eth* 全部并入 LAN。
+
+. /lib/functions/uci-defaults.sh
+
+board_config_update
+
+# 如果当前机型已经有板级网络定义，就不要覆盖，避免把专用机型的固定口位映射改坏。
+json_is_a network object && exit 0
+
+ethnum="$(ls /sys/class/net/ 2>/dev/null | grep -c '^eth[0-9]\+$' || true)"
+[ "${ethnum:-0}" -eq 0 ] && exit 0
+
+if [ "${ethnum}" -eq 1 ]; then
+    ucidef_set_interface_lan 'eth0' 'dhcp'
+else
+    [ -d /sys/class/net/eth0 ] && ucidef_set_interface_wan 'eth0'
+
+    lan_ifaces=""
+    for eth_path in /sys/class/net/eth*; do
+        [ -e "${eth_path}" ] || continue
+
+        eth_name="${eth_path##*/}"
+        [ "${eth_name}" = "eth0" ] && continue
+
+        if [ -n "${lan_ifaces}" ]; then
+            lan_ifaces="${lan_ifaces} ${eth_name}"
+        else
+            lan_ifaces="${eth_name}"
+        fi
+    done
+
+    [ -n "${lan_ifaces}" ] && ucidef_set_interface_lan "${lan_ifaces}"
+fi
+
+board_config_flush
+
+exit 0
