@@ -30,6 +30,8 @@ jobs:
         run: |
           workflows=(
             "6.18-openwrt.yml"
+            # 加入 physical 版本，保证总入口手动触发时会分发到这个工作流。
+            "6.18-physical-openwrt.yml"
             "6.12-openwrt.yml"
             "6.12-openwrt-ubuntu24-test.yml"
             "6.6-openwrt.yml"
@@ -59,6 +61,7 @@ jobs:
         run: |
           echo "Triggered workflows:"
           echo "  - 6.18-openwrt.yml"
+          echo "  - 6.18-physical-openwrt.yml"
           echo "  - 6.12-openwrt.yml"
           echo "  - 6.12-openwrt-ubuntu24-test.yml"
           echo "  - 6.6-openwrt.yml"

@@ -12,6 +12,12 @@ on:
         description: Runner label, for example ubuntu-22.04 or self-hosted
         required: false
         default: "ubuntu-22.04"
+  # 自动触发入口：与常规 6.18 工作流保持一致，避免 physical 版本永远只靠手动点运行。
+  schedule:
+    - cron: "0 19 * * *"
+  watch:
+    types:
+      - started
 
 jobs:
   build:
