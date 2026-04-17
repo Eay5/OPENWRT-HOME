@@ -1,0 +1,189 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+
+# 返回可用于调度和网卡队列分流的 CPU 核心数。
+get_cpu_count() {
+	local count
+
+	count="$(nproc 2>/dev/null || true)"
+	case "$count" in
+		''|*[!0-9]*)
+			count="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)"
+			;;
+	esac
+
+	case "$count" in
+		''|*[!0-9]*|0)
+			count=1
+			;;
+	esac
+
+	echo "$count"
+}
+
+# 按 CPU 核心数生成十六进制掩码，给 RPS/XPS 和 IRQ 亲和设置使用。
+build_cpu_mask() {
+	local count="$1"
+	local chunk_hex
+	local mask=""
+
+	while [ "$count" -gt 0 ]; do
+		if [ "$count" -ge 32 ]; then
+			chunk_hex="ffffffff"
+			count=$((count - 32))
+		else
+			chunk_hex="$(printf '%x' $(((1 << count) - 1)))"
+			count=0
+		fi
+
+		if [ -n "$mask" ]; then
+			mask="${chunk_hex},${mask}"
+		else
+			mask="$chunk_hex"
+		fi
+	done
+
+	echo "$mask"
+}
+
+# 判断当前是否为 Intel 处理器，避免把 Intel 专属参数写到其它 CPU 的 sysfs 节点。
+is_intel_cpu() {
+	grep -q 'vendor_id[[:space:]]*:[[:space:]]*GenuineIntel' /proc/cpuinfo 2>/dev/null
+}
+
+# 把 CPU governor 和 EPP 拉到性能档，减少路由场景下的突发降频。
+apply_cpu_governor() {
+	local available_file
+	local epp_file
+	local governor_file
+
+	for governor_file in \
+		/sys/devices/system/cpu/cpufreq/policy*/scaling_governor \
+		/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+		[ -f "$governor_file" ] || continue
+
+		available_file="${governor_file%/*}/scaling_available_governors"
+		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
+			echo performance >"$governor_file" 2>/dev/null || true
+		fi
+	done
+
+	for epp_file in \
+		/sys/devices/system/cpu/cpufreq/policy*/energy_performance_preference \
+		/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+		[ -f "$epp_file" ] || continue
+
+		available_file="${epp_file%/*}/energy_performance_available_preferences"
+		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
+			echo performance >"$epp_file" 2>/dev/null || true
+		fi
+	done
+}
+
+# 针对 Intel P-State/HWP 做额外优化：
+# 1. 放开 Turbo；
+# 2. 拉满最高性能百分比；
+# 3. 打开 HWP dynamic boost；
+# 4. 把 energy_perf_bias 设为 0，优先性能而不是省电。
+apply_intel_pstate_tweaks() {
+	local epb_file
+	local pstate_dir="/sys/devices/system/cpu/intel_pstate"
+
+	is_intel_cpu || return 0
+	[ -d "$pstate_dir" ] || return 0
+
+	[ -f "$pstate_dir/max_perf_pct" ] && echo 100 >"$pstate_dir/max_perf_pct" 2>/dev/null || true
+	[ -f "$pstate_dir/no_turbo" ] && echo 0 >"$pstate_dir/no_turbo" 2>/dev/null || true
+	[ -f "$pstate_dir/hwp_dynamic_boost" ] && echo 1 >"$pstate_dir/hwp_dynamic_boost" 2>/dev/null || true
+
+	for epb_file in /sys/devices/system/cpu/cpu*/power/energy_perf_bias; do
+		[ -f "$epb_file" ] || continue
+		echo 0 >"$epb_file" 2>/dev/null || true
+	done
+}
+
+# 调整网络栈参数，解决物理机高 PPS 或多队列网卡下包处理预算偏小的问题。
+apply_sysctl_tweaks() {
+	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_max_backlog=8192 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
+}
+
+# 提前把默认 IRQ 亲和范围放开到全部核心，避免多队列网卡的中断长时间偏在 CPU0。
+apply_irq_affinity_defaults() {
+	local cpu_count
+	local cpu_mask
+
+	cpu_count="$(get_cpu_count)"
+	[ "$cpu_count" -gt 1 ] || return 0
+
+	cpu_mask="$(build_cpu_mask "$cpu_count")"
+	[ -f /proc/irq/default_smp_affinity ] && echo "$cpu_mask" >/proc/irq/default_smp_affinity 2>/dev/null || true
+}
+
+# 为每个网卡队列设置 RPS/XPS 和 flow entries，减少单核心吃满时的软中断瓶颈。
+apply_queue_tuning() {
+	local cpu_count
+	local cpu_mask
+	local flow_cnt
+	local iface
+	local rx_queue
+	local rx_queue_count
+	local tx_queue
+
+	cpu_count="$(get_cpu_count)"
+	[ "$cpu_count" -gt 1 ] || return 0
+
+	cpu_mask="$(build_cpu_mask "$cpu_count")"
+	sysctl -w net.core.rps_sock_flow_entries=32768 >/dev/null 2>&1 || true
+
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+
+		case "${iface##*/}" in
+			lo)
+				continue
+				;;
+		esac
+
+		rx_queue_count=0
+		for rx_queue in "$iface"/queues/rx-*; do
+			[ -f "$rx_queue/rps_cpus" ] || continue
+			echo "$cpu_mask" >"$rx_queue/rps_cpus" 2>/dev/null || true
+			rx_queue_count=$((rx_queue_count + 1))
+		done
+
+		if [ "$rx_queue_count" -gt 0 ]; then
+			flow_cnt=$((32768 / rx_queue_count))
+			[ "$flow_cnt" -ge 256 ] || flow_cnt=256
+
+			for rx_queue in "$iface"/queues/rx-*; do
+				[ -f "$rx_queue/rps_flow_cnt" ] || continue
+				echo "$flow_cnt" >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
+			done
+		fi
+
+		for tx_queue in "$iface"/queues/tx-*; do
+			[ -f "$tx_queue/xps_cpus" ] || continue
+			echo "$cpu_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+		done
+	done
+}
+
+start() {
+	apply_cpu_governor
+	apply_intel_pstate_tweaks
+	apply_sysctl_tweaks
+	apply_irq_affinity_defaults
+	apply_queue_tuning
+}
+
+restart() {
+	start
+}

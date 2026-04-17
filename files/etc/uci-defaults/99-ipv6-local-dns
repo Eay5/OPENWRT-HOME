@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -eu
+
+# 把 LAN 侧 IPv6 DNS 通告固定回路由器本机地址。
+# 这样在开启 SmartDNS/MosDNS/SSR-Plus 的场景下，客户端不会直接拿运营商下发的 IPv6 DNS，
+# 从而绕过本机的分流、去广告或透明代理链路。
+if uci -q get dhcp.lan >/dev/null 2>&1; then
+	uci -q set dhcp.lan.ra_dns='1'
+	uci -q set dhcp.lan.dns_service='1'
+	uci -q delete dhcp.lan.dns
+	uci -q commit dhcp
+fi
+
+exit 0
