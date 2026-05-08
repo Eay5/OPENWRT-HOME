@@ -29,6 +29,12 @@ uci -q set dhcp.@dnsmasq[0].noresolv='1'
 uci -q set smartdns.@smartdns[0].enabled='0'
 uci -q set mosdns.config.enabled='1'
 uci -q set mosdns.config.redirect='1'
+# 切换到 MosDNS 时同步恢复缓存参数，避免高频域名查询全部回源。
+uci -q set mosdns.config.cache='1'
+uci -q set mosdns.config.cache_size='4096'
+uci -q set mosdns.config.lazy_cache_ttl='86400'
+uci -q set mosdns.config.adblock='0'
+uci -q set mosdns.config.custom_stream_media_dns='0'
 
 uci -q commit dhcp
 uci -q commit smartdns

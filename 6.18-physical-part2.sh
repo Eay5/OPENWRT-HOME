@@ -121,6 +121,7 @@ detect_theme() {
     to_title_case "${theme_pkg#luci-theme-}"
 }
 
+# 检测首启性能优化项，方便 Actions 日志直接看到 TCP 算法、IRQ 和网络队列设置是否进入配置。
 detect_performance_defaults() {
     local items=()
 
@@ -158,6 +159,14 @@ detect_performance_defaults() {
 
     if config_is_enabled CONFIG_PACKAGE_kmod-tcp-bbr || { [ -f files/etc/init.d/performance-mode ] && grep -q 'tcp_congestion_control=bbr' files/etc/init.d/performance-mode; }; then
         items+=("BBR")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-hybla; then
+        items+=("Hybla")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-scalable; then
+        items+=("Scalable")
     fi
 
     join_by_comma "${items[@]}"

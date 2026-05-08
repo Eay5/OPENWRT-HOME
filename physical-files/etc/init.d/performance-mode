@@ -103,13 +103,27 @@ apply_intel_pstate_tweaks() {
 	done
 }
 
+# 提前加载 TCP 拥塞控制模块，让 Turbo ACC 或 sysctl 能看到 BBR/Hybla/Scalable。
+load_tcp_congestion_modules() {
+	local module
+
+	for module in tcp_bbr tcp_hybla tcp_scalable; do
+		modprobe "$module" >/dev/null 2>&1 || true
+	done
+}
+
 # 调整网络栈参数，解决物理机高 PPS 或多队列网卡下包处理预算偏小的问题。
 apply_sysctl_tweaks() {
+	load_tcp_congestion_modules
+
 	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+	sysctl -w net.core.somaxconn=4096 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_syn_backlog=4096 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_max_backlog=8192 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true

@@ -2,6 +2,7 @@
 
 START=95
 
+# 返回可用于网络队列分流的 CPU 核心数。
 get_cpu_count() {
 	local count
 
@@ -21,6 +22,7 @@ get_cpu_count() {
 	echo "$count"
 }
 
+# 按 CPU 核心数生成十六进制掩码，供 RPS/XPS 队列绑定使用。
 build_cpu_mask() {
 	local count="$1"
 	local chunk_hex
@@ -45,6 +47,7 @@ build_cpu_mask() {
 	echo "$mask"
 }
 
+# 把 CPU governor 和 EPP 拉到性能档，减少代理转发高峰时的突发降频。
 apply_cpu_governor() {
 	for governor_file in \
 		/sys/devices/system/cpu/cpufreq/policy*/scaling_governor \
@@ -69,14 +72,33 @@ apply_cpu_governor() {
 	done
 }
 
+# 提前加载 TCP 拥塞控制模块，让 Turbo ACC 或 sysctl 能看到 BBR/Hybla/Scalable。
+load_tcp_congestion_modules() {
+	local module
+
+	for module in tcp_bbr tcp_hybla tcp_scalable; do
+		modprobe "$module" >/dev/null 2>&1 || true
+	done
+}
+
+# 调整网络栈参数，照顾 SSR-Plus 本机代理连接和 DNS 服务的突发请求。
 apply_sysctl_tweaks() {
-	# Favor throughput and faster recovery on routed links.
+	load_tcp_congestion_modules
+
 	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+	sysctl -w net.core.somaxconn=4096 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_syn_backlog=4096 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_max_backlog=8192 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
 }
 
+# 为每个网卡队列设置 RPS/XPS 和 flow entries，降低单核心软中断压力。
 apply_queue_tuning() {
 	local cpu_count cpu_mask iface rx_queue flow_cnt rx_queue_count
 
@@ -119,12 +141,14 @@ apply_queue_tuning() {
 	done
 }
 
+# 启动时按顺序应用 CPU、网络栈、队列分流三类优化。
 start() {
 	apply_cpu_governor
 	apply_sysctl_tweaks
 	apply_queue_tuning
 }
 
+# 重启服务时直接复用启动逻辑，保证参数重新写回。
 restart() {
 	start
 }

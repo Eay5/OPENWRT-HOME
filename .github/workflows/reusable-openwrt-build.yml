@@ -248,6 +248,7 @@ jobs:
         run: |
           cd openwrt
 
+          # 中文注释：覆盖 .config 中的指定开关，避免 make defconfig 继承旧值。
           ensure_config() {
             local key="$1"
             local value="$2"
@@ -289,6 +290,9 @@ jobs:
               ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
               ensure_config CONFIG_PACKAGE_autosamba n
               ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+              # 中文注释：明确移除“网络唤醒”插件和底层唤醒命令，避免默认项把页面带回固件。
+              ensure_config CONFIG_PACKAGE_luci-app-wol n
+              ensure_config CONFIG_PACKAGE_etherwake n
               ensure_config CONFIG_PACKAGE_luci-compat y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
               ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
@@ -300,6 +304,10 @@ jobs:
               ensure_config CONFIG_PACKAGE_coreutils-base64 y
               ensure_config CONFIG_PACKAGE_ip-full y
               ensure_config CONFIG_PACKAGE_jq y
+              # 中文注释：SSR-Plus 组件升级会调用 xz 解压数据包，缺少时管理页会提示缺少 xz 支持。
+              ensure_config CONFIG_PACKAGE_xz y
+              ensure_config CONFIG_PACKAGE_xz-utils y
+              ensure_config CONFIG_PACKAGE_liblzma y
               ensure_config CONFIG_PACKAGE_luci-app-mosdns y
               ensure_config CONFIG_PACKAGE_mosdns y
               ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
@@ -310,10 +318,22 @@ jobs:
               ensure_config CONFIG_PACKAGE_lua-neturl y
               ensure_config CONFIG_PACKAGE_resolveip y
               ensure_config CONFIG_PACKAGE_nping y
+              # 中文注释：给 Turbo ACC/TCP 调优提供更多可选拥塞控制算法，默认仍由启动脚本使用 BBR。
+              ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-hybla y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-scalable y
               make defconfig
               grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_etherwake=y' .config || { echo 'etherwake was unexpectedly enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_shadowsocksr-libev-ssr-check=y' .config || { echo 'shadowsocksr-libev-ssr-check was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_xz=y' .config || { echo 'xz was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_xz-utils=y' .config || { echo 'xz-utils was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_liblzma=y' .config || { echo 'liblzma was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_kmod-tcp-bbr=y' .config || { echo 'kmod-tcp-bbr was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_kmod-tcp-hybla=y' .config || { echo 'kmod-tcp-hybla was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_kmod-tcp-scalable=y' .config || { echo 'kmod-tcp-scalable was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config || { echo 'luci-app-mosdns was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
               ;;

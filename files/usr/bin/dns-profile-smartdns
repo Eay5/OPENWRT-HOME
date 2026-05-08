@@ -23,8 +23,21 @@ uci -q add_list dhcp.@dnsmasq[0].server="::1#${SMARTDNS_PORT}"
 uci -q set dhcp.@dnsmasq[0].cachesize='0'
 uci -q set dhcp.@dnsmasq[0].noresolv='1'
 
+# 切换到 SmartDNS 时同步恢复首启调优，避免切换后只改端口而丢掉缓存和预取参数。
 uci -q set smartdns.@smartdns[0].enabled='1'
 uci -q set smartdns.@smartdns[0].port="${SMARTDNS_PORT}"
+uci -q set smartdns.@smartdns[0].tcp_server='1'
+uci -q set smartdns.@smartdns[0].prefetch_domain='1'
+uci -q set smartdns.@smartdns[0].serve_expired='1'
+uci -q set smartdns.@smartdns[0].cache_size='8192'
+uci -q set smartdns.@smartdns[0].cache_persist='1'
+uci -q set smartdns.@smartdns[0].dualstack_ip_selection='0'
+uci -q set smartdns.@smartdns[0].force_aaaa_soa='0'
+uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80'
+uci -q set smartdns.@smartdns[0].rr_ttl_min='600'
+uci -q set smartdns.@smartdns[0].rr_ttl_max='3600'
+uci -q set smartdns.@smartdns[0].rr_ttl_reply_max='60'
+uci -q set smartdns.@smartdns[0].response_mode='first-ping'
 uci -q set mosdns.config.enabled='0'
 uci -q set mosdns.config.redirect='0'
 uci -q set mosdns.config.local_dns_redirect='0'
