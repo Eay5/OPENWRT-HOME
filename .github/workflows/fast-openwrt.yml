@@ -23,6 +23,7 @@ env:
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
   CCACHE_MAXSIZE: 5G
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
   fast_build:
@@ -33,6 +34,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
 
       - name: Setup build environment
         env:

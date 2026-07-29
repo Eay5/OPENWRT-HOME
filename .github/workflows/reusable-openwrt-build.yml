@@ -98,6 +98,7 @@ env:
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
   CCACHE_MAXSIZE: 2G
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
   build:
@@ -111,6 +112,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
 
       - name: Free disk space & setup build environment
         env:
@@ -500,14 +511,14 @@ jobs:
 
       - name: Delete old workflow runs
         if: always() && !cancelled()
-        uses: GitRML/delete-workflow-runs@main
+        uses: Mattraks/delete-workflow-runs@v2
         with:
           retain_days: 1
           keep_minimum_runs: 3
 
       - name: Delete old releases
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-        uses: dev-drprasad/delete-older-releases@master
+        uses: dev-drprasad/delete-older-releases@v0.3.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
