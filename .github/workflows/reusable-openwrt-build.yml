@@ -122,6 +122,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
+          cache: false
 
       - name: Free disk space & setup build environment
         env:
