@@ -17,7 +17,7 @@ env:
 
 jobs:
   dispatch:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       actions: write
       contents: read
@@ -30,14 +30,7 @@ jobs:
         run: |
           workflows=(
             "6.18-openwrt.yml"
-            # 加入 physical 版本，保证总入口手动触发时会分发到这个工作流。
             "6.18-physical-openwrt.yml"
-            "6.12-openwrt.yml"
-            "6.12-openwrt-ubuntu24-test.yml"
-            "6.6-openwrt.yml"
-            "6.1-openwrt.yml"
-            "5.15-openwrt.yml"
-            "5.10-openwrt.yml"
             "5.10.lucky-openwrt.yml"
             "5.4-openwrt.yml"
           )
@@ -62,11 +55,5 @@ jobs:
           echo "Triggered workflows:"
           echo "  - 6.18-openwrt.yml"
           echo "  - 6.18-physical-openwrt.yml"
-          echo "  - 6.12-openwrt.yml"
-          echo "  - 6.12-openwrt-ubuntu24-test.yml"
-          echo "  - 6.6-openwrt.yml"
-          echo "  - 6.1-openwrt.yml"
-          echo "  - 5.15-openwrt.yml"
-          echo "  - 5.10-openwrt.yml"
           echo "  - 5.10.lucky-openwrt.yml"
           echo "  - 5.4-openwrt.yml"

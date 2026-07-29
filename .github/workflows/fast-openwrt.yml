@@ -1,0 +1,180 @@
+name: Fast OpenWrt Build (Manual Cache Max)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Select target version to build"
+        required: true
+        default: "6.18"
+        type: choice
+        options:
+          - "6.18"
+          - "5.10.lucky"
+          - "5.4"
+      ssh:
+        description: "SSH connection to Actions"
+        required: false
+        default: "false"
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  TZ: Asia/Shanghai
+  CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
+  CCACHE_MAXSIZE: 5G
+
+jobs:
+  fast_build:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup build environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt update
+          sudo -E apt -y install build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget \
+            llvm python3-pyelftools libpython3-dev ccache \
+            libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+            autoconf automake libtool cmake ninja-build
+          sudo -E timedatectl set-timezone "${TZ}"
+
+      - name: Resolve target files
+        id: target
+        run: |
+          ver="${{ github.event.inputs.version }}"
+          echo "Building target version: ${ver}"
+          if [ "${ver}" = "5.10.lucky" ]; then
+            echo "config_file=5.10.lucky.config" >> "$GITHUB_OUTPUT"
+            echo "p1_sh=5.10.lucky-part1.sh" >> "$GITHUB_OUTPUT"
+            echo "p2_sh=5.10.lucky-part2.sh" >> "$GITHUB_OUTPUT"
+            echo "kernel_series=5.10" >> "$GITHUB_OUTPUT"
+            echo "sync_mode=basic" >> "$GITHUB_OUTPUT"
+          elif [ "${ver}" = "5.4" ]; then
+            echo "config_file=5.4.config" >> "$GITHUB_OUTPUT"
+            echo "p1_sh=5.4-part1.sh" >> "$GITHUB_OUTPUT"
+            echo "p2_sh=5.4-part2.sh" >> "$GITHUB_OUTPUT"
+            echo "kernel_series=5.4" >> "$GITHUB_OUTPUT"
+            echo "sync_mode=ssr_plus_612" >> "$GITHUB_OUTPUT"
+          else
+            echo "config_file=6.18.config" >> "$GITHUB_OUTPUT"
+            echo "p1_sh=6.18-part1.sh" >> "$GITHUB_OUTPUT"
+            echo "p2_sh=6.18-part2.sh" >> "$GITHUB_OUTPUT"
+            echo "kernel_series=6.18" >> "$GITHUB_OUTPUT"
+            echo "sync_mode=ssr_plus_612" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Clone OpenWrt source
+        run: |
+          git clone "$REPO_URL" -b "$REPO_BRANCH" openwrt
+
+      - name: Restore dl cache
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
+          restore-keys: |
+            fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-
+            fast-openwrt-dl-
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/.ccache
+          key: fast-openwrt-ccache-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
+          restore-keys: |
+            fast-openwrt-ccache-${{ steps.target.outputs.kernel_series }}-
+            fast-openwrt-ccache-
+
+      - name: Restore toolchain & staging cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            openwrt/staging_dir
+            openwrt/build_dir/host
+            openwrt/build_dir/toolchain-*
+          key: fast-openwrt-toolchain-v2-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
+          restore-keys: |
+            fast-openwrt-toolchain-v2-${{ steps.target.outputs.kernel_series }}-
+
+      - name: Configure ccache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=max_size="${CCACHE_MAXSIZE}" || true
+
+      - name: Load custom feeds & install
+        run: |
+          chmod +x "${{ steps.target.outputs.p1_sh }}"
+          cd openwrt
+          "$GITHUB_WORKSPACE/${{ steps.target.outputs.p1_sh }}"
+          ./scripts/feeds install -a -f
+
+      - name: Load custom config & sync
+        run: |
+          [ -e files ] && cp -r files openwrt/files
+          cp "${{ steps.target.outputs.config_file }}" openwrt/.config
+          chmod +x "${{ steps.target.outputs.p2_sh }}"
+          cd openwrt
+          "$GITHUB_WORKSPACE/${{ steps.target.outputs.p2_sh }}"
+          make defconfig
+
+      - name: Build tools and toolchain
+        run: |
+          cd openwrt
+          make tools/install -j"$(nproc)" || make tools/install -j1
+          make toolchain/install -j"$(nproc)" || make toolchain/install -j1
+
+      - name: Download packages
+        run: |
+          cd openwrt
+          make download -j8 || true
+
+      - name: Compile firmware
+        run: |
+          cd openwrt
+          make -j"$(nproc)" || make -j1 V=s
+
+      - name: Save dl cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/.ccache
+          key: fast-openwrt-ccache-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
+
+      - name: Save toolchain & staging cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            openwrt/staging_dir
+            openwrt/build_dir/host
+            openwrt/build_dir/toolchain-*
+          key: fast-openwrt-toolchain-v2-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
+
+      - name: Organize files
+        run: |
+          cd openwrt
+          mkdir -p bin/firmware
+          find bin/targets/ -type f \( -name "*sysupgrade*" -o -name "*combined*" -o -name "*.img*" -o -name "*.bin" \) -exec cp {} bin/firmware/ \;
+          echo "FIRMWARE_DIR=$PWD/bin/firmware" >> "$GITHUB_ENV"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fast-OpenWrt-${{ github.event.inputs.version }}
+          path: ${{ env.FIRMWARE_DIR }}/*
