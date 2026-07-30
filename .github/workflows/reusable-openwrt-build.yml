@@ -283,7 +283,16 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Nftables_Transparent_Proxy n
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray y
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ChinaDNS_NG y
+              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_DNS2SOCKS y
+              ensure_config CONFIG_PACKAGE_chinadns-ng y
+              ensure_config CONFIG_PACKAGE_dns2socks y
+              ensure_config CONFIG_PACKAGE_microsocks y
+              ensure_config CONFIG_PACKAGE_xray-core y
               ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-check y
+              ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-local y
+              ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-redir y
               ensure_config CONFIG_PACKAGE_libpcre2 y
               ensure_config CONFIG_PACKAGE_coreutils y
               ensure_config CONFIG_PACKAGE_coreutils-base64 y
@@ -296,6 +305,8 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-app-mosdns y
               ensure_config CONFIG_PACKAGE_mosdns y
               ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_v2ray-geoip y
+              ensure_config CONFIG_PACKAGE_v2ray-geosite y
               ensure_config CONFIG_PACKAGE_luci-app-smartdns y
               ensure_config CONFIG_PACKAGE_smartdns y
               ensure_config CONFIG_PACKAGE_smartdns-ui n

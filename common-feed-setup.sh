@@ -30,14 +30,22 @@ setup_common_feeds() {
     rm -rf package/feeds/luci/luci-app-smartdns
     rm -rf feeds/packages/net/smartdns
     rm -rf package/feeds/packages/smartdns
+    rm -rf feeds/kenzo/luci-app-smartdns
+    rm -rf package/feeds/kenzo/luci-app-smartdns
+    rm -rf feeds/kenzo/smartdns
+    rm -rf package/feeds/kenzo/smartdns
+    rm -rf package/smartdns package/luci-app-smartdns
+    git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
+    sed -i 's#^include ../../lang/rust/rust-package.mk$#include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk#' package/smartdns/Makefile 2>/dev/null || true
+    git clone --depth 1 -b lede https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
 
     rm -rf feeds/kenzo/luci-app-ssr-plus
     rm -rf package/feeds/kenzo/luci-app-ssr-plus
-    rm -rf feeds/kenzo/{chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray*,xray*,sing*,geoview,shadow-tls}
-    rm -rf package/feeds/kenzo/{chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray*,xray*,sing*,geoview,shadow-tls}
+    rm -rf feeds/kenzo/{hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray*,xray*,sing*,geoview,shadow-tls}
+    rm -rf package/feeds/kenzo/{hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray*,xray*,sing*,geoview,shadow-tls}
 
-    rm -rf feeds/packages/net/{adguardhome,alist,mosdns,xray*,v2ray*,sing*,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-    rm -rf package/feeds/packages/{adguardhome,alist,mosdns,xray*,v2ray*,sing*,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
+    rm -rf feeds/packages/net/{adguardhome,alist,mosdns,xray*,v2ray*,sing*,hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
+    rm -rf package/feeds/packages/{adguardhome,alist,mosdns,xray*,v2ray*,sing*,hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
     rm -rf feeds/packages/utils/v2dat
     rm -rf package/feeds/packages/v2dat
 

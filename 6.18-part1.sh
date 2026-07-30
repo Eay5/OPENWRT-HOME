@@ -33,17 +33,7 @@ pin_618_package_sources() {
     clone_package_repo "https://github.com/jerrykuku/luci-theme-argon.git" "package/luci-theme-argon"
     clone_package_repo "https://github.com/jerrykuku/luci-app-argon-config.git" "package/luci-app-argon-config"
 
-    rm -rf feeds/luci/applications/luci-app-smartdns
-    rm -rf package/feeds/luci/luci-app-smartdns
-    rm -rf feeds/packages/net/smartdns
-    rm -rf package/feeds/packages/smartdns
-    rm -rf feeds/kenzo/luci-app-smartdns
-    rm -rf package/feeds/kenzo/luci-app-smartdns
-    rm -rf feeds/kenzo/smartdns
-    rm -rf package/feeds/kenzo/smartdns
-    clone_package_repo "https://github.com/pymumu/openwrt-smartdns.git" "package/smartdns"
-    sed -i 's#^include ../../lang/rust/rust-package.mk$#include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk#' package/smartdns/Makefile
-    clone_package_repo "https://github.com/pymumu/luci-app-smartdns.git" "package/luci-app-smartdns" "lede"
+
 
     echo "6.18 package sources pinned."
 }
