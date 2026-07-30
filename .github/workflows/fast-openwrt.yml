@@ -57,7 +57,8 @@ jobs:
             llvm python3-pyelftools libpython3-dev ccache \
             libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
             autoconf automake libtool cmake ninja-build
-          sudo -E timedatectl set-timezone "${TZ}"
+          sudo ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
+          echo "${TZ}" | sudo tee /etc/timezone
 
       - name: Resolve target files
         id: target
