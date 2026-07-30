@@ -41,13 +41,13 @@ setup_common_feeds() {
 
     rm -rf feeds/kenzo/luci-app-ssr-plus
     rm -rf package/feeds/kenzo/luci-app-ssr-plus
-    rm -rf feeds/kenzo/{hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray*,xray*,sing*,geoview,shadow-tls}
-    rm -rf package/feeds/kenzo/{hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray*,xray*,sing*,geoview,shadow-tls}
-
-    rm -rf feeds/packages/net/{adguardhome,alist,mosdns,xray*,v2ray*,sing*,hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-    rm -rf package/feeds/packages/{adguardhome,alist,mosdns,xray*,v2ray*,sing*,hysteria,ipt2socks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-    rm -rf feeds/packages/utils/v2dat
-    rm -rf package/feeds/packages/v2dat
+    rm -rf feeds/luci/applications/luci-app-passwall
+    rm -rf package/feeds/luci/luci-app-passwall
+    rm -rf feeds/kenzo/luci-app-passwall
+    rm -rf package/feeds/kenzo/luci-app-passwall
+    rm -rf package/passwall package/passwall-packages
+    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall.git package/passwall
+    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall-packages
 
     rm -rf feeds/luci/applications/luci-app-alist
     rm -rf package/feeds/luci/luci-app-alist

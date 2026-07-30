@@ -7,26 +7,17 @@ verify_proxy_stack() {
     echo ""
     echo "=== Verifying required proxy packages ==="
 
-    if grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config; then
-        echo "SSR-Plus enabled in .config"
+    if grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config; then
+        echo "PassWall enabled in .config"
     else
-        echo "ERROR: luci-app-ssr-plus is disabled in .config"
+        echo "ERROR: luci-app-passwall is disabled in .config"
         exit 1
     fi
 
-    if [ "${require_iptables_proxy}" = "1" ]; then
-        if grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy=y' .config; then
-            echo "SSR-Plus iptables backend enabled"
-        else
-            echo "ERROR: SSR-Plus iptables backend is missing in .config"
-            exit 1
-        fi
-    fi
-
-    if [ -d "feeds/helloworld/luci-app-ssr-plus" ]; then
-        echo "SSR-Plus source: fw876/helloworld"
+    if [ -d "package/passwall" ] || [ -d "feeds/luci/applications/luci-app-passwall" ]; then
+        echo "PassWall source: xiaorouji/openwrt-passwall"
     else
-        echo "ERROR: fw876/helloworld luci-app-ssr-plus not found"
+        echo "ERROR: PassWall package not found"
         exit 1
     fi
 
@@ -44,26 +35,8 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config && grep -q '^CONFIG_PACKAGE_smartdns=y' .config; then
-        echo "SmartDNS enabled in .config"
-    else
-        echo "ERROR: SmartDNS is not fully enabled in .config"
-        exit 1
-    fi
-
-    if [ -f "package/luci-app-smartdns/Makefile" ] && [ -f "package/smartdns/Makefile" ]; then
-        echo "SmartDNS source: pymumu/openwrt-smartdns + pymumu/luci-app-smartdns (lede branch)"
-    elif [ -d "package/feeds/kenzo/luci-app-smartdns" ] && [ -d "package/feeds/kenzo/smartdns" ]; then
-        echo "SmartDNS source: kenzok8/openwrt-packages"
-    elif [ -d "feeds/kenzo/luci-app-smartdns" ] && [ -d "feeds/kenzo/smartdns" ]; then
-        echo "SmartDNS source: kenzok8/openwrt-packages"
-    else
-        echo "ERROR: SmartDNS packages not found in either the local pin or kenzo feed"
-        exit 1
-    fi
-
-    if grep -q '^CONFIG_PACKAGE_smartdns-ui=n' .config; then
-        echo "smartdns-ui kept disabled"
+    if grep -q '^CONFIG_PACKAGE_smartdns=n' .config; then
+        echo "SmartDNS disabled in .config (PassWall + MosDNS stack)"
     fi
 
     echo "Proxy stack verified for kernel ${kernel_series}"
