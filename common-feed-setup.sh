@@ -36,7 +36,9 @@ setup_common_feeds() {
     rm -rf package/feeds/kenzo/smartdns
     rm -rf package/smartdns package/luci-app-smartdns
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
-    sed -i 's#^include ../../lang/rust/rust-package.mk$#include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk#' package/smartdns/Makefile 2>/dev/null || true
+    if [ -f package/smartdns/Makefile ]; then
+        sed -i 's#^include ../../lang/rust/rust-package.mk$#include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk#' package/smartdns/Makefile || true
+    fi
     git clone --depth 1 -b lede https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
 
     rm -rf feeds/kenzo/luci-app-ssr-plus
