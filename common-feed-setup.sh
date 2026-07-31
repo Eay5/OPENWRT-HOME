@@ -48,8 +48,8 @@ setup_common_feeds() {
     rm -rf feeds/kenzo/luci-app-passwall
     rm -rf package/feeds/kenzo/luci-app-passwall
     rm -rf package/passwall package/passwall-packages
-    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall.git package/passwall
-    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall-packages
+    git clone --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall
+    git clone --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
 
     rm -rf feeds/luci/applications/luci-app-alist
     rm -rf package/feeds/luci/luci-app-alist
