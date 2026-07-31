@@ -14,7 +14,7 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if [ -d "package/passwall" ] || [ -d "feeds/luci/applications/luci-app-passwall" ]; then
+    if [ -d "package/passwall" ] || [ -d "package/passwall/luci-app-passwall" ] || [ -d "feeds/luci/applications/luci-app-passwall" ] || [ -d "package/feeds/luci/luci-app-passwall" ]; then
         echo "PassWall source: xiaorouji/openwrt-passwall"
     else
         echo "ERROR: PassWall package not found"
