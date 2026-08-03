@@ -137,6 +137,7 @@ jobs:
           chmod +x "${{ steps.target.outputs.p2_sh }}"
           cd openwrt
           "$GITHUB_WORKSPACE/${{ steps.target.outputs.p2_sh }}"
+          echo "CONFIG_CCACHE=y" >> .config
           make defconfig
 
       - name: Build tools and toolchain
@@ -154,6 +155,7 @@ jobs:
         run: |
           cd openwrt
           make -j"$(nproc)" || make -j1 V=s
+          ccache -s || true
 
       - name: Save dl cache
         if: always()

@@ -43,13 +43,8 @@ setup_common_feeds() {
 
     rm -rf feeds/kenzo/luci-app-ssr-plus
     rm -rf package/feeds/kenzo/luci-app-ssr-plus
-    rm -rf feeds/luci/applications/luci-app-passwall
-    rm -rf package/feeds/luci/luci-app-passwall
-    rm -rf feeds/kenzo/luci-app-passwall
-    rm -rf package/feeds/kenzo/luci-app-passwall
-    rm -rf package/passwall package/passwall-packages
-    git clone --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall
-    git clone --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
+    rm -rf package/helloworld
+    git clone --depth 1 https://github.com/fw876/helloworld.git package/helloworld
 
     rm -rf feeds/luci/applications/luci-app-alist
     rm -rf package/feeds/luci/luci-app-alist

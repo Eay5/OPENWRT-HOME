@@ -7,17 +7,17 @@ verify_proxy_stack() {
     echo ""
     echo "=== Verifying required proxy packages ==="
 
-    if grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config; then
-        echo "PassWall enabled in .config"
+    if grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config; then
+        echo "SSR-Plus enabled in .config"
     else
-        echo "ERROR: luci-app-passwall is disabled in .config"
+        echo "ERROR: luci-app-ssr-plus is disabled in .config"
         exit 1
     fi
 
-    if [ -d "package/passwall" ] || [ -d "package/passwall/luci-app-passwall" ] || [ -d "feeds/luci/applications/luci-app-passwall" ] || [ -d "package/feeds/luci/luci-app-passwall" ]; then
-        echo "PassWall source: Openwrt-Passwall/openwrt-passwall"
+    if [ -d "package/helloworld" ] || [ -d "feeds/kenzo/luci-app-ssr-plus" ] || [ -d "package/feeds/kenzo/luci-app-ssr-plus" ]; then
+        echo "SSR-Plus source: fw876/helloworld"
     else
-        echo "ERROR: PassWall package not found"
+        echo "ERROR: SSR-Plus package not found"
         exit 1
     fi
 
@@ -36,7 +36,7 @@ verify_proxy_stack() {
     fi
 
     if grep -q '^CONFIG_PACKAGE_smartdns=n' .config; then
-        echo "SmartDNS disabled in .config (PassWall + MosDNS stack)"
+        echo "SmartDNS disabled in .config (SSR-Plus + MosDNS stack)"
     fi
 
     echo "Proxy stack verified for kernel ${kernel_series}"

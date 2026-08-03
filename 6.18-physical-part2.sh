@@ -173,12 +173,8 @@ detect_performance_defaults() {
 }
 
 detect_proxy_stack() {
-    if config_is_enabled CONFIG_PACKAGE_luci-app-passwall_Iptables_Transparent_Proxy; then
-        echo "PassWall (iptables backend)"
-    elif config_is_enabled CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy; then
-        echo "PassWall (nftables backend)"
-    elif config_is_enabled CONFIG_PACKAGE_luci-app-passwall; then
-        echo "PassWall"
+    if config_is_enabled CONFIG_PACKAGE_luci-app-ssr-plus; then
+        echo "SSR-Plus"
     else
         echo "not detected"
     fi
@@ -187,7 +183,7 @@ detect_proxy_stack() {
 detect_enabled_apps() {
     local apps=()
 
-    config_is_enabled CONFIG_PACKAGE_luci-app-passwall && apps+=("PassWall")
+    config_is_enabled CONFIG_PACKAGE_luci-app-ssr-plus && apps+=("SSR-Plus")
     config_is_enabled CONFIG_PACKAGE_luci-app-mosdns && apps+=("MosDNS")
     config_is_enabled CONFIG_PACKAGE_luci-app-smartdns && apps+=("SmartDNS")
     config_is_enabled CONFIG_PACKAGE_luci-app-adguardhome && apps+=("AdGuardHome")
