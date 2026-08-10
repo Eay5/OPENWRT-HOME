@@ -138,6 +138,10 @@ detect_performance_defaults() {
         items+=("UDP GRO")
     fi
 
+    if config_is_enabled CONFIG_PACKAGE_kmod-virtio-rng; then
+        items+=("Virtio-RNG")
+    fi
+
     if config_is_enabled CONFIG_PACKAGE_kmod-tcp-bbr || { [ -f files/etc/init.d/performance-mode ] && grep -q 'tcp_congestion_control=bbr' files/etc/init.d/performance-mode; }; then
         items+=("BBR")
     fi
