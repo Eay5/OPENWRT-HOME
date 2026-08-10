@@ -130,10 +130,6 @@ detect_performance_defaults() {
         items+=("flow offload")
     fi
 
-    if config_is_enabled CONFIG_PACKAGE_kmod-shortcut-fe || config_is_enabled CONFIG_PACKAGE_kmod-fast-classifier; then
-        items+=("Shortcut-FE")
-    fi
-
     if [ -f files/etc/init.d/performance-mode ] && grep -q 'rx-udp-gro-forwarding' files/etc/init.d/performance-mode; then
         items+=("UDP GRO")
     fi
