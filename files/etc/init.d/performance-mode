@@ -93,9 +93,30 @@ apply_sysctl_tweaks() {
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_max_syn_backlog=4096 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
-	sysctl -w net.core.netdev_max_backlog=8192 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_max_backlog=16384 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
+	sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+}
+
+# 开启网卡 UDP GRO (Generic Receive Offload) 加速，提升 Sing-box / Xray 等 UDP 协议性能。
+apply_udp_gro_tuning() {
+	local iface dev
+
+	command -v ethtool >/dev/null 2>&1 || return 0
+
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+		dev="${iface##*/}"
+
+		case "$dev" in
+			lo|veth*|br-*|docker*|tun*|tap*|ppp*|wg*)
+				continue
+				;;
+		esac
+
+		ethtool -K "$dev" rx-udp-gro-forwarding on >/dev/null 2>&1 || true
+	done
 }
 
 # 为每个网卡队列设置 RPS/XPS 和 flow entries，降低单核心软中断压力。
@@ -141,10 +162,11 @@ apply_queue_tuning() {
 	done
 }
 
-# 启动时按顺序应用 CPU、网络栈、队列分流三类优化。
+# 启动时按顺序应用 CPU、网络栈、UDP GRO、队列分流调优。
 start() {
 	apply_cpu_governor
 	apply_sysctl_tweaks
+	apply_udp_gro_tuning
 	apply_queue_tuning
 }
 
@@ -152,3 +174,4 @@ start() {
 restart() {
 	start
 }
+
