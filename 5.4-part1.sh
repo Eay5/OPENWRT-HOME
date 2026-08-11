@@ -47,6 +47,11 @@ pin_54_package_sources() {
 
 setup_common_feeds
 
+# Override golang for 5.4 to 22.x branch to fix compilation on older kernel/LEDE source
+rm -rf feeds/packages/lang/golang
+rm -rf package/feeds/packages/golang
+clone_package_repo "https://github.com/sbwml/packages_lang_golang.git" "feeds/packages/lang/golang" "22.x"
+
 if [ -d "feeds/packages/libs/pcre2" ]; then
     rm -rf package/libs/pcre2
     cp -a feeds/packages/libs/pcre2 package/libs/pcre2
