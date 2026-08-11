@@ -22,7 +22,7 @@ env:
   REPO_BRANCH: master
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
-  CCACHE_MAXSIZE: 5G
+  CCACHE_MAXSIZE: 15G
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
@@ -68,7 +68,7 @@ jobs:
           if [ "${ver}" = "5.10.lucky" ]; then
             echo "config_file=5.10.lucky.config" >> "$GITHUB_OUTPUT"
             echo "p1_sh=5.10.lucky-part1.sh" >> "$GITHUB_OUTPUT"
-            echo "p2_sh=5.10.lucky-part2.sh" >> "$GITHUB_OUTPUT"
+            echo "p2_sh=5.4-part2.sh" >> "$GITHUB_OUTPUT" # fixed fallback
             echo "kernel_series=5.10" >> "$GITHUB_OUTPUT"
             echo "sync_mode=basic" >> "$GITHUB_OUTPUT"
           elif [ "${ver}" = "5.4" ]; then
@@ -98,14 +98,16 @@ jobs:
             fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-
             fast-openwrt-dl-
 
-      - name: Restore ccache
+      - name: Restore ccache & Go cache
         uses: actions/cache/restore@v4
         with:
-          path: openwrt/.ccache
-          key: fast-openwrt-ccache-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
+          path: |
+            openwrt/.ccache
+            ~/.cache/go-build
+          key: fast-openwrt-ccache-v2-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
           restore-keys: |
-            fast-openwrt-ccache-${{ steps.target.outputs.kernel_series }}-
-            fast-openwrt-ccache-
+            fast-openwrt-ccache-v2-${{ steps.target.outputs.kernel_series }}-
+            fast-openwrt-ccache-v2-
 
       - name: Restore toolchain & staging cache
         uses: actions/cache/restore@v4
@@ -114,14 +116,15 @@ jobs:
             openwrt/staging_dir
             openwrt/build_dir/host
             openwrt/build_dir/toolchain-*
-          key: fast-openwrt-toolchain-v2-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
+          key: fast-openwrt-toolchain-v3-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
           restore-keys: |
-            fast-openwrt-toolchain-v2-${{ steps.target.outputs.kernel_series }}-
+            fast-openwrt-toolchain-v3-${{ steps.target.outputs.kernel_series }}-
 
       - name: Configure ccache
         run: |
           mkdir -p "$CCACHE_DIR"
           ccache --set-config=max_size="${CCACHE_MAXSIZE}" || true
+          ccache --set-config=compression=true || true
 
       - name: Load custom feeds & install
         run: |
@@ -154,7 +157,7 @@ jobs:
       - name: Compile firmware
         run: |
           cd openwrt
-          make -j"$(nproc)" || make -j1 V=s
+          make -j$(( $(nproc) + 1 )) || make -j1 V=s
           ccache -s || true
 
       - name: Save dl cache
@@ -164,12 +167,14 @@ jobs:
           path: openwrt/dl
           key: fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
 
-      - name: Save ccache
+      - name: Save ccache & Go cache
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: openwrt/.ccache
-          key: fast-openwrt-ccache-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
+          path: |
+            openwrt/.ccache
+            ~/.cache/go-build
+          key: fast-openwrt-ccache-v2-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
 
       - name: Save toolchain & staging cache
         if: always()
@@ -179,7 +184,7 @@ jobs:
             openwrt/staging_dir
             openwrt/build_dir/host
             openwrt/build_dir/toolchain-*
-          key: fast-openwrt-toolchain-v2-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
+          key: fast-openwrt-toolchain-v3-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
 
       - name: Organize files
         run: |
