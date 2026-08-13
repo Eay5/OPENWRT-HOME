@@ -37,25 +37,50 @@ uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80'
 uci -q set smartdns.@smartdns[0].rr_ttl_min='600'
 uci -q set smartdns.@smartdns[0].rr_ttl_max='3600'
 uci -q set smartdns.@smartdns[0].rr_ttl_reply_max='60'
-uci -q set smartdns.@smartdns[0].response_mode='first-ping'
+uci -q set smartdns.@smartdns[0].response_mode='fastest-ip'
 
-uci -q delete smartdns.@smartdns[0].server
-uci -q add_list smartdns.@smartdns[0].server='202.103.24.68'
-uci -q add_list smartdns.@smartdns[0].server='202.103.44.150'
-uci -q add_list smartdns.@smartdns[0].server='202.103.0.117'
-uci -q add_list smartdns.@smartdns[0].server='202.103.0.68'
-uci -q add_list smartdns.@smartdns[0].server='119.28.28.28'
-uci -q add_list smartdns.@smartdns[0].server='119.29.29.29'
-uci -q add_list smartdns.@smartdns[0].server='223.5.5.5'
-uci -q add_list smartdns.@smartdns[0].server='223.6.6.6'
-uci -q add_list smartdns.@smartdns[0].server='180.76.76.76'
-uci -q add_list smartdns.@smartdns[0].server='180.184.1.1'
-uci -q add_list smartdns.@smartdns[0].server='180.184.2.2'
-uci -q add_list smartdns.@smartdns[0].server='101.226.4.6'
-uci -q add_list smartdns.@smartdns[0].server='218.30.118.6'
-uci -q add_list smartdns.@smartdns[0].server='114.114.114.114'
-uci -q add_list smartdns.@smartdns[0].server='210.2.4.8'
-uci -q add_list smartdns.@smartdns[0].server='1.2.4.8'
+if ! uci -q get smartdns.@bind[0] >/dev/null 2>&1; then
+	b_idx=$(uci add smartdns bind)
+	uci -q set smartdns.${b_idx}.enabled='1'
+	uci -q set smartdns.${b_idx}.name='default'
+	uci -q set smartdns.${b_idx}.bind_dns_over_udp='1'
+	uci -q set smartdns.${b_idx}.bind_dns_over_tcp='1'
+	uci -q set smartdns.${b_idx}.port="${SMARTDNS_PORT}"
+else
+	uci -q set smartdns.@bind[0].enabled='1'
+	uci -q set smartdns.@bind[0].name='default'
+	uci -q set smartdns.@bind[0].bind_dns_over_udp='1'
+	uci -q set smartdns.@bind[0].bind_dns_over_tcp='1'
+	uci -q set smartdns.@bind[0].port="${SMARTDNS_PORT}"
+fi
+
+uci -q delete smartdns.@smartdns[0].server || true
+while uci -q delete smartdns.@server[0] >/dev/null 2>&1; do :; done
+
+for ip in \
+	"202.103.24.68" \
+	"202.103.44.150" \
+	"202.103.0.117" \
+	"202.103.0.68" \
+	"119.28.28.28" \
+	"119.29.29.29" \
+	"223.5.5.5" \
+	"223.6.6.6" \
+	"180.76.76.76" \
+	"180.184.1.1" \
+	"180.184.2.2" \
+	"101.226.4.6" \
+	"218.30.118.6" \
+	"114.114.114.114" \
+	"210.2.4.8" \
+	"1.2.4.8"
+do
+	s_idx=$(uci add smartdns server)
+	uci -q set smartdns.${s_idx}.enabled='1'
+	uci -q set smartdns.${s_idx}.name="${ip}"
+	uci -q set smartdns.${s_idx}.type='udp'
+	uci -q set smartdns.${s_idx}.ip="${ip}"
+done
 
 uci -q set mosdns.config.enabled='0'
 uci -q set mosdns.config.redirect='0'

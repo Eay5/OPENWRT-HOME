@@ -38,6 +38,18 @@ setup_common_feeds() {
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     if [ -f package/smartdns/Makefile ]; then
         sed -i 's#^include ../../lang/rust/rust-package.mk$#include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk#' package/smartdns/Makefile || true
+
+        SMARTDNS_COMMIT=$(curl -sL https://api.github.com/repos/pymumu/smartdns/commits/master | grep -o '"sha": "[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+        SMARTDNS_TAG=$(curl -sL https://api.github.com/repos/pymumu/smartdns/releases/latest | grep -o '"tag_name": "[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+        if [ -n "$SMARTDNS_COMMIT" ]; then
+            SMARTDNS_VER=$(echo "$SMARTDNS_TAG" | sed 's/[^0-9.]//g')
+            SMARTDNS_VER="${SMARTDNS_VER:-latest}"
+            echo "Bumping SmartDNS package to master commit ${SMARTDNS_COMMIT} (version: ${SMARTDNS_VER})..."
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${SMARTDNS_VER}/" package/smartdns/Makefile || true
+            sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${SMARTDNS_COMMIT}/" package/smartdns/Makefile || true
+            sed -i '/^PKG_MIRROR_HASH:=/d' package/smartdns/Makefile || true
+            sed -i '/^PKG_HASH:=/d' package/smartdns/Makefile || true
+        fi
     fi
     git clone --depth 1 -b lede https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
 
