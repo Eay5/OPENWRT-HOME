@@ -35,8 +35,8 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if grep -q '^CONFIG_PACKAGE_smartdns=n' .config; then
-        echo "SmartDNS disabled in .config (SSR-Plus + MosDNS stack)"
+    if grep -q '^CONFIG_PACKAGE_smartdns=y' .config; then
+        echo "SmartDNS enabled in .config"
     fi
 
     echo "Proxy stack verified for kernel ${kernel_series}"
