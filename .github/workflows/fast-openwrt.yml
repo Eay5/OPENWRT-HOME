@@ -1,4 +1,4 @@
-name: Fast OpenWrt Build (Manual Cache Max)
+name: Fast OpenWrt Build (Release Toolchain Cache)
 
 on:
   workflow_dispatch:
@@ -12,6 +12,14 @@ on:
           - "6.18"
           - "5.10.lucky"
           - "5.4"
+      rebuild_toolchain:
+        description: "Force rebuild and update Toolchain cache in Release"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
       ssh:
         description: "SSH connection to Actions"
         required: false
@@ -22,7 +30,8 @@ env:
   REPO_BRANCH: master
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
-  CCACHE_MAXSIZE: 15G
+  CCACHE_MAXSIZE: 3G
+  RELEASE_TOOLCHAIN_TAG: toolchain-cache
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
@@ -54,9 +63,9 @@ jobs:
           sudo -E apt -y install build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget \
-            llvm python3-pyelftools libpython3-dev ccache \
+            llvm python3-pyelftools libpython3-dev ccache zstd \
             libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
-            autoconf automake libtool cmake ninja-build
+            autoconf automake libtool cmake ninja-build gh
           sudo ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
           echo "${TZ}" | sudo tee /etc/timezone
 
@@ -68,7 +77,7 @@ jobs:
           if [ "${ver}" = "5.10.lucky" ]; then
             echo "config_file=5.10.lucky.config" >> "$GITHUB_OUTPUT"
             echo "p1_sh=5.10.lucky-part1.sh" >> "$GITHUB_OUTPUT"
-            echo "p2_sh=5.4-part2.sh" >> "$GITHUB_OUTPUT" # fixed fallback
+            echo "p2_sh=5.4-part2.sh" >> "$GITHUB_OUTPUT"
             echo "kernel_series=5.10" >> "$GITHUB_OUTPUT"
             echo "sync_mode=basic" >> "$GITHUB_OUTPUT"
           elif [ "${ver}" = "5.4" ]; then
@@ -89,38 +98,19 @@ jobs:
         run: |
           git clone "$REPO_URL" -b "$REPO_BRANCH" openwrt
 
-      - name: Restore dl cache
-        uses: actions/cache/restore@v4
-        with:
-          path: openwrt/dl
-          key: fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
-          restore-keys: |
-            fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-
-            fast-openwrt-dl-
-
-      - name: Restore ccache & Go cache
-        uses: actions/cache/restore@v4
+      - name: Restore download & CCache (safe size under 10G limit)
+        uses: actions/cache@v4
         with:
           path: |
+            openwrt/dl
             openwrt/.ccache
             ~/.cache/go-build
-          key: fast-openwrt-ccache-v2-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
+          key: fast-openwrt-safe-cache-${{ steps.target.outputs.kernel_series }}-${{ hashFiles('**/feeds.conf.default', steps.target.outputs.config_file) }}
           restore-keys: |
-            fast-openwrt-ccache-v2-${{ steps.target.outputs.kernel_series }}-
-            fast-openwrt-ccache-v2-
+            fast-openwrt-safe-cache-${{ steps.target.outputs.kernel_series }}-
+            fast-openwrt-safe-cache-
 
-      - name: Restore toolchain & staging cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            openwrt/staging_dir
-            openwrt/build_dir/host
-            openwrt/build_dir/toolchain-*
-          key: fast-openwrt-toolchain-v3-${{ steps.target.outputs.kernel_series }}-${{ github.ref_name }}
-          restore-keys: |
-            fast-openwrt-toolchain-v3-${{ steps.target.outputs.kernel_series }}-
-
-      - name: Configure ccache
+      - name: Configure CCache
         run: |
           mkdir -p "$CCACHE_DIR"
           ccache --set-config=max_size="${CCACHE_MAXSIZE}" || true
@@ -143,11 +133,59 @@ jobs:
           echo "CONFIG_CCACHE=y" >> .config
           make defconfig
 
+      - name: Restore prebuilt toolchain from GitHub Release
+        id: restore_toolchain
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARCHIVE_NAME="toolchain-${{ steps.target.outputs.kernel_series }}.tar.zst"
+          REBUILD="${{ github.event.inputs.rebuild_toolchain }}"
+          
+          if [ "$REBUILD" != "true" ]; then
+            echo "Checking Release tag '${RELEASE_TOOLCHAIN_TAG}' for prebuilt $ARCHIVE_NAME..."
+            if gh release download "$RELEASE_TOOLCHAIN_TAG" -p "$ARCHIVE_NAME" --dir /tmp 2>/dev/null; then
+              echo "Toolchain archive found in release! Extracting..."
+              cd openwrt
+              tar -I zstd -xf "/tmp/$ARCHIVE_NAME"
+              rm -f "/tmp/$ARCHIVE_NAME"
+              
+              echo "Fixing file timestamps to prevent GNU Make rebuild..."
+              # 关键：更新解压出产物的时间戳，防止 Makefile 判定过期
+              find staging_dir build_dir -exec touch {} + 2>/dev/null || true
+              echo "toolchain_hit=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Toolchain archive not found in Release. Will build from source and publish."
+              echo "toolchain_hit=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Force rebuild requested. Skipping download."
+            echo "toolchain_hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build tools and toolchain
         run: |
           cd openwrt
+          echo "Building / verifying tools..."
           make tools/install -j"$(nproc)" || make tools/install -j1
+          echo "Building / verifying toolchain..."
           make toolchain/install -j"$(nproc)" || make toolchain/install -j1
+
+      - name: Package & Publish Toolchain to Release (if rebuilt or missing)
+        if: steps.restore_toolchain.outputs.toolchain_hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARCHIVE_NAME="toolchain-${{ steps.target.outputs.kernel_series }}.tar.zst"
+          echo "Packaging toolchain for future builds..."
+          cd openwrt
+          tar -I 'zstd -3 -T0' -cf "/tmp/$ARCHIVE_NAME" staging_dir build_dir/host build_dir/toolchain-*
+          
+          echo "Publishing to Release tag '${RELEASE_TOOLCHAIN_TAG}'..."
+          gh release view "$RELEASE_TOOLCHAIN_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TOOLCHAIN_TAG" --title "Prebuilt OpenWrt Toolchains" --notes "Cached toolchain tarballs for fast builds"
+          
+          gh release upload "$RELEASE_TOOLCHAIN_TAG" "/tmp/$ARCHIVE_NAME" --clobber
+          rm -f "/tmp/$ARCHIVE_NAME"
 
       - name: Download packages
         run: |
@@ -159,32 +197,6 @@ jobs:
           cd openwrt
           make -j$(( $(nproc) + 1 )) || make -j1 V=s
           ccache -s || true
-
-      - name: Save dl cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: openwrt/dl
-          key: fast-openwrt-dl-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
-
-      - name: Save ccache & Go cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            openwrt/.ccache
-            ~/.cache/go-build
-          key: fast-openwrt-ccache-v2-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
-
-      - name: Save toolchain & staging cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            openwrt/staging_dir
-            openwrt/build_dir/host
-            openwrt/build_dir/toolchain-*
-          key: fast-openwrt-toolchain-v3-${{ steps.target.outputs.kernel_series }}-${{ github.run_id }}
 
       - name: Organize files
         run: |
