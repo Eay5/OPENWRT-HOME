@@ -79,7 +79,7 @@ on:
         default: false
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: ${{ inputs.config_file }}
@@ -135,7 +135,7 @@ jobs:
             python3-setuptools rsync swig unzip zlib1g-dev file wget \
             llvm python3-pyelftools libpython3-dev ccache \
             libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
-            autoconf automake libtool cmake ninja-build
+            autoconf automake libtool cmake ninja-build meson python3-pip
           sudo ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
           echo "${TZ}" | sudo tee /etc/timezone
           sudo mkdir -p /workdir

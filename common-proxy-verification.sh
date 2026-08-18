@@ -14,10 +14,10 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if [ -d "package/helloworld" ] || [ -d "feeds/kenzo/luci-app-ssr-plus" ] || [ -d "package/feeds/kenzo/luci-app-ssr-plus" ]; then
+    if [ -d "feeds/helloworld/luci-app-ssr-plus" ] || [ -d "package/feeds/helloworld/luci-app-ssr-plus" ] || [ -d "package/helloworld" ]; then
         echo "SSR-Plus source: fw876/helloworld"
     else
-        echo "ERROR: SSR-Plus package not found"
+        echo "ERROR: SSR-Plus package source not found"
         exit 1
     fi
 
@@ -28,7 +28,7 @@ verify_proxy_stack() {
         exit 1
     fi
 
-    if [ -d "package/mosdns/luci-app-mosdns" ]; then
+    if [ -d "package/mosdns/luci-app-mosdns" ] || [ -d "package/mosdns" ]; then
         echo "MosDNS source: sbwml/luci-app-mosdns v5"
     else
         echo "ERROR: sbwml/luci-app-mosdns v5 not found"

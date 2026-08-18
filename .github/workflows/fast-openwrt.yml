@@ -1,4 +1,4 @@
-name: Fast OpenWrt Build (Release Toolchain Cache)
+name: Fast ImmortalWrt Build (Release Toolchain Cache)
 
 on:
   workflow_dispatch:
@@ -10,8 +10,7 @@ on:
         type: choice
         options:
           - "6.18"
-          - "5.10.lucky"
-          - "5.4"
+          - "6.18-physical"
       rebuild_toolchain:
         description: "Force rebuild and update Toolchain cache in Release"
         required: false
@@ -26,12 +25,12 @@ on:
         default: "false"
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: master
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
   CCACHE_MAXSIZE: 3G
-  RELEASE_TOOLCHAIN_TAG: toolchain-cache
+  RELEASE_TOOLCHAIN_TAG: toolchain-cache-immortalwrt
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
@@ -65,7 +64,7 @@ jobs:
             python3-setuptools rsync swig unzip zlib1g-dev file wget \
             llvm python3-pyelftools libpython3-dev ccache zstd \
             libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
-            autoconf automake libtool cmake ninja-build gh
+            autoconf automake libtool cmake ninja-build meson python3-pip gh
           sudo ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
           echo "${TZ}" | sudo tee /etc/timezone
 
@@ -74,24 +73,16 @@ jobs:
         run: |
           ver="${{ github.event.inputs.version }}"
           echo "Building target version: ${ver}"
-          if [ "${ver}" = "5.10.lucky" ]; then
-            echo "config_file=5.10.lucky.config" >> "$GITHUB_OUTPUT"
-            echo "p1_sh=5.10.lucky-part1.sh" >> "$GITHUB_OUTPUT"
-            echo "p2_sh=5.4-part2.sh" >> "$GITHUB_OUTPUT"
-            echo "kernel_series=5.10" >> "$GITHUB_OUTPUT"
-            echo "sync_mode=basic" >> "$GITHUB_OUTPUT"
-          elif [ "${ver}" = "5.4" ]; then
-            echo "config_file=5.4.config" >> "$GITHUB_OUTPUT"
-            echo "p1_sh=5.4-part1.sh" >> "$GITHUB_OUTPUT"
-            echo "p2_sh=5.4-part2.sh" >> "$GITHUB_OUTPUT"
-            echo "kernel_series=5.4" >> "$GITHUB_OUTPUT"
-            echo "sync_mode=ssr_plus_612" >> "$GITHUB_OUTPUT"
+          if [ "${ver}" = "6.18-physical" ]; then
+            echo "config_file=6.18-physical.config" >> "$GITHUB_OUTPUT"
+            echo "p1_sh=6.18-part1.sh" >> "$GITHUB_OUTPUT"
+            echo "p2_sh=6.18-physical-part2.sh" >> "$GITHUB_OUTPUT"
+            echo "kernel_series=6.18" >> "$GITHUB_OUTPUT"
           else
             echo "config_file=6.18.config" >> "$GITHUB_OUTPUT"
             echo "p1_sh=6.18-part1.sh" >> "$GITHUB_OUTPUT"
             echo "p2_sh=6.18-part2.sh" >> "$GITHUB_OUTPUT"
             echo "kernel_series=6.18" >> "$GITHUB_OUTPUT"
-            echo "sync_mode=ssr_plus_612" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Clone OpenWrt source
@@ -126,6 +117,7 @@ jobs:
       - name: Load custom config & sync
         run: |
           [ -e files ] && cp -r files openwrt/files
+          [ -e physical-files ] && cp -r physical-files openwrt/physical-files
           cp "${{ steps.target.outputs.config_file }}" openwrt/.config
           chmod +x "${{ steps.target.outputs.p2_sh }}"
           cd openwrt
@@ -182,7 +174,7 @@ jobs:
           
           echo "Publishing to Release tag '${RELEASE_TOOLCHAIN_TAG}'..."
           gh release view "$RELEASE_TOOLCHAIN_TAG" >/dev/null 2>&1 || \
-            gh release create "$RELEASE_TOOLCHAIN_TAG" --title "Prebuilt OpenWrt Toolchains" --notes "Cached toolchain tarballs for fast builds"
+            gh release create "$RELEASE_TOOLCHAIN_TAG" --title "Prebuilt ImmortalWrt Toolchains" --notes "Cached toolchain tarballs for fast ImmortalWrt builds"
           
           gh release upload "$RELEASE_TOOLCHAIN_TAG" "/tmp/$ARCHIVE_NAME" --clobber
           rm -f "/tmp/$ARCHIVE_NAME"
@@ -208,5 +200,5 @@ jobs:
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Fast-OpenWrt-${{ github.event.inputs.version }}
+          name: Fast-ImmortalWrt-${{ github.event.inputs.version }}
           path: ${{ env.FIRMWARE_DIR }}/*

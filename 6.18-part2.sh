@@ -177,18 +177,10 @@ echo "Applying basic settings..."
 sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
 sed -i "s/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${target_kernel_series}/g" target/linux/x86/Makefile
 
-if [ -f package/libs/libselinux/Makefile ]; then
-    sed -i 's/HOST_BUILD_DEPENDS:=libsepol\/host musl-fts\/host pcre2\/host/HOST_BUILD_DEPENDS:=libsepol\/host musl-fts\/host pcre\/host/' package/libs/libselinux/Makefile
-    sed -i 's/DEPENDS:=+libsepol +libpcre2 +USE_MUSL:musl-fts/DEPENDS:=+libsepol +libpcre +USE_MUSL:musl-fts/' package/libs/libselinux/Makefile
-
-    if ! grep -q 'USE_PCRE2=n' package/libs/libselinux/Makefile; then
-        perl -0pi -e 's/MAKE_FLAGS \+= \\\n\tSHLIBDIR=\/usr\/lib \\\n\tOS=Linux/MAKE_FLAGS += \\\n\tUSE_PCRE2=n \\\n\tSHLIBDIR=\/usr\/lib \\\n\tOS=Linux/s' package/libs/libselinux/Makefile
-    fi
-fi
-
-sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/lean/default-settings/files/zzz-default-settings 2>/dev/null || true
+# Clear default root password (ImmortalWrt default-settings path)
+sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
-sed -i "s/hostname='LEDE'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
+sed -i "s/hostname='ImmortalWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
 sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
 
 echo "Basic settings applied."
@@ -204,7 +196,7 @@ apps_display="$(detect_enabled_apps)"
 
 echo ""
 echo "======================================"
-echo "OpenWrt ${kernel_display} configuration complete"
+echo "ImmortalWrt ${kernel_display} configuration complete"
 echo "======================================"
 echo "  - Kernel: ${kernel_display}"
 echo "  - Default IP: ${default_ip_display}"

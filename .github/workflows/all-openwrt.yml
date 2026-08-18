@@ -1,4 +1,4 @@
-name: Build All OpenWrt Variants
+name: Build All ImmortalWrt Variants
 
 on:
   workflow_dispatch:
@@ -31,8 +31,6 @@ jobs:
           workflows=(
             "6.18-openwrt.yml"
             "6.18-physical-openwrt.yml"
-            "5.10.lucky-openwrt.yml"
-            "5.4-openwrt.yml"
           )
 
           runner_args=()
@@ -55,5 +53,3 @@ jobs:
           echo "Triggered workflows:"
           echo "  - 6.18-openwrt.yml"
           echo "  - 6.18-physical-openwrt.yml"
-          echo "  - 5.10.lucky-openwrt.yml"
-          echo "  - 5.4-openwrt.yml"
