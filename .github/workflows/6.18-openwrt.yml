@@ -32,5 +32,5 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18
       bin_artifact_prefix: ImmortalWrt_bin
       release_title_template: ImmortalWrt Linux-{{kernel}} X86-64 Build {{build_time}}
-      extra_feed_packages: pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev simple-obfs v2ray-plugin xray-core luci-app-adguardhome
+      extra_feed_packages: pcre2 luci-app-ssr-plus lua-neturl tcping dns2socks microsocks shadowsocks-libev shadowsocksr-libev v2ray-plugin xray-core luci-app-adguardhome
       config_sync_mode: ssr_plus_612

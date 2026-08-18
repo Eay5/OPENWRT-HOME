@@ -343,9 +343,9 @@ jobs:
         run: |
           cd openwrt
           echo "Building tools..."
-          make tools/install -j"$(nproc)" V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee tools_install.log
+          make tools/install -j"$(nproc)" V=s 2>&1 | tee tools_install.log || make tools/install -j1 V=s 2>&1 | tee -a tools_install.log
           echo "Building toolchain..."
-          make toolchain/install -j"$(nproc)" V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee toolchain_install.log
+          make toolchain/install -j"$(nproc)" V=s 2>&1 | tee toolchain_install.log || make toolchain/install -j1 V=s 2>&1 | tee -a toolchain_install.log
 
       - name: Upload toolchain logs
         if: always()
@@ -389,8 +389,10 @@ jobs:
           echo "Starting build with $(nproc) threads"
           if make -j"$(nproc)" V=s 2>&1 | tee build.log; then
             echo "Build succeeded"
+          elif make -j1 V=s 2>&1 | tee -a build.log; then
+            echo "Single-thread build retry succeeded"
           else
-            echo "Parallel build failed"
+            echo "Build failed"
             exit 1
           fi
 
