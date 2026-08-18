@@ -29,6 +29,7 @@ setup_common_feeds() {
     rm -rf package/smartdns package/luci-app-smartdns
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
+    sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile
 
     # Clean default MosDNS and pull sbwml v5 branch with geodata
     rm -rf feeds/luci/applications/luci-app-mosdns
