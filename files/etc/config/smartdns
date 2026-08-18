@@ -1,0 +1,124 @@
+config smartdns
+	option enabled '1'
+	option server_name 'smartdns'
+	option port '6053'
+	option auto_set_dnsmasq '0'
+	option tcp_server '1'
+	option tls_server '0'
+	option doh_server '0'
+	option ipv6_server '0'
+	option dualstack_ip_selection '0'
+	option prefetch_domain '1'
+	option serve_expired '1'
+	option cache_persist '1'
+	option cache_size '20000'
+	option speed_check_mode 'tcp:443,tcp:80'
+	option response_mode 'fastest-ip'
+	option force_aaaa_soa '1'
+	option force_https_soa '0'
+	option rr_ttl_min '300'
+	option rr_ttl_max '3600'
+	option rr_ttl_reply_max '60'
+
+config bind
+	option enabled '1'
+	option name 'default'
+	option bind_dns_over_udp '1'
+	option bind_dns_over_tcp '1'
+	option port '6053'
+
+config server
+	option enabled '1'
+	option name '202.103.24.68'
+	option type 'udp'
+	option ip '202.103.24.68'
+
+config server
+	option enabled '1'
+	option name '202.103.44.150'
+	option type 'udp'
+	option ip '202.103.44.150'
+
+config server
+	option enabled '1'
+	option name '202.103.0.117'
+	option type 'udp'
+	option ip '202.103.0.117'
+
+config server
+	option enabled '1'
+	option name '202.103.0.68'
+	option type 'udp'
+	option ip '202.103.0.68'
+
+config server
+	option enabled '1'
+	option name '119.28.28.28'
+	option type 'udp'
+	option ip '119.28.28.28'
+
+config server
+	option enabled '1'
+	option name '119.29.29.29'
+	option type 'udp'
+	option ip '119.29.29.29'
+
+config server
+	option enabled '1'
+	option name '223.5.5.5'
+	option type 'udp'
+	option ip '223.5.5.5'
+
+config server
+	option enabled '1'
+	option name '223.6.6.6'
+	option type 'udp'
+	option ip '223.6.6.6'
+
+config server
+	option enabled '1'
+	option name '180.76.76.76'
+	option type 'udp'
+	option ip '180.76.76.76'
+
+config server
+	option enabled '1'
+	option name '180.184.1.1'
+	option type 'udp'
+	option ip '180.184.1.1'
+
+config server
+	option enabled '1'
+	option name '180.184.2.2'
+	option type 'udp'
+	option ip '180.184.2.2'
+
+config server
+	option enabled '1'
+	option name '101.226.4.6'
+	option type 'udp'
+	option ip '101.226.4.6'
+
+config server
+	option enabled '1'
+	option name '218.30.118.6'
+	option type 'udp'
+	option ip '218.30.118.6'
+
+config server
+	option enabled '1'
+	option name '114.114.114.114'
+	option type 'udp'
+	option ip '114.114.114.114'
+
+config server
+	option enabled '1'
+	option name '210.2.4.8'
+	option type 'udp'
+	option ip '210.2.4.8'
+
+config server
+	option enabled '1'
+	option name '1.2.4.8'
+	option type 'udp'
+	option ip '1.2.4.8'

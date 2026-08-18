@@ -1,3 +1,5 @@
 .history/
 0_build.txt
 build.log
+log/toolchain_install.log
+log/tools_install.log

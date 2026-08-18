@@ -33,16 +33,44 @@ fi
 
 # Apply kernel sysctl performance optimizations
 cat << 'EOF' > /etc/sysctl.d/99-performance.conf
+# TCP BBR & Queue discipline
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
+
+# TCP Fast Open (Client=1, Server=2, Both=3 - saves 1 RTT on TCP handshakes)
+net.ipv4.tcp_fastopen = 3
+
+# Keep TCP window open even after idle (boosts video / proxy burst speeds)
+net.ipv4.tcp_slow_start_after_idle = 0
+
+# Path MTU Probing (prevents packet loss on PPPoE / VPN / MTU mismatches)
+net.ipv4.tcp_mtu_probing = 1
+
+# Quick socket reuse & faster timeout cleanup (PT / BT / high concurrency optimization)
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+
+# Large memory buffers for 1G/2.5G/10G throughput
 net.core.rmem_max = 33554432
 net.core.wmem_max = 33554432
+net.core.optmem_max = 65536
 net.ipv4.tcp_rmem = 4096 87380 33554432
 net.ipv4.tcp_wmem = 4096 65536 33554432
+net.ipv4.udp_rmem_min = 8192
+net.ipv4.udp_wmem_min = 8192
 net.core.netdev_max_backlog = 16384
 net.core.somaxconn = 8192
+
+# Conntrack table size & timeout optimization (prevents NAT table exhaustion from torrents)
+net.netfilter.nf_conntrack_max = 1048576
+net.netfilter.nf_conntrack_tcp_timeout_established = 7200
+
+# Virtual memory optimization
 vm.swappiness = 10
 EOF
+
+# Clean non-existent snapshot package repos (helloworld, video)
+sed -i '/helloworld/d;/video/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
 
 sysctl -p /etc/sysctl.d/99-performance.conf >/dev/null 2>&1 || true
 

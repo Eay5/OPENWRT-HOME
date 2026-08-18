@@ -26,12 +26,18 @@ uci -q add_list dhcp.@dnsmasq[0].server="::1#${MOSDNS_PORT}"
 uci -q set dhcp.@dnsmasq[0].cachesize='0'
 uci -q set dhcp.@dnsmasq[0].noresolv='1'
 
-uci -q set smartdns.@smartdns[0].enabled='0'
+uci -q set smartdns.@smartdns[0].enabled='1'
+uci -q set smartdns.@smartdns[0].port='6053'
 uci -q set mosdns.config.enabled='1'
+uci -q set mosdns.config.listen_port="${MOSDNS_PORT}"
 uci -q set mosdns.config.redirect='1'
+uci -q set mosdns.config.custom_local_dns='1'
+uci -q delete mosdns.config.local_dns
+uci -q add_list mosdns.config.local_dns='127.0.0.1:6053'
+uci -q set mosdns.config.bootstrap_dns='127.0.0.1:6053'
 # 切换到 MosDNS 时同步恢复缓存参数，避免高频域名查询全部回源。
 uci -q set mosdns.config.cache='1'
-uci -q set mosdns.config.cache_size='4096'
+uci -q set mosdns.config.cache_size='8192'
 uci -q set mosdns.config.lazy_cache_ttl='86400'
 uci -q set mosdns.config.adblock='0'
 uci -q set mosdns.config.custom_stream_media_dns='0'
@@ -40,8 +46,8 @@ uci -q commit dhcp
 uci -q commit smartdns
 uci -q commit mosdns
 
-/etc/init.d/smartdns disable >/dev/null 2>&1 || true
-/etc/init.d/smartdns stop >/dev/null 2>&1 || true
+/etc/init.d/smartdns enable >/dev/null 2>&1 || true
+/etc/init.d/smartdns restart >/dev/null 2>&1 || true
 /etc/init.d/mosdns enable >/dev/null 2>&1 || true
 /etc/init.d/mosdns restart >/dev/null 2>&1 || true
 /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true

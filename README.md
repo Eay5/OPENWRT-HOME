@@ -52,7 +52,7 @@
 
 | 版本代号 | 目标场景 | 包含核心驱动 / 特性 |
 | :--- | :--- | :--- |
-| **`6.18`** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、e1000、e1000e、r8169、r8125、igc |
+| **`6.18`** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125)<br>📖 [Unraid 虚拟机直通调优指南](file:///c:/Users/eay/Desktop/OPENWRT-HOME/UNRAID-VM-GUIDE.md) |
 | **`6.18-physical`** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` + `hd-idle` 硬盘休眠与健康管理、首启多网口智能角色自动划分 |
 
 ---
@@ -62,7 +62,7 @@
 * **基础固件源码**：[ImmortalWrt](https://github.com/immortalwrt/immortalwrt)
 * **科学代理套件**：[SSR-Plus (fw876/helloworld)](https://github.com/fw876/helloworld)
 * **分流 DNS 服务**：[MosDNS v5 (sbwml)](https://github.com/sbwml/luci-app-mosdns)
-* **本地加速 DNS**：[SmartDNS (pymumu)](https://github.com/pymumu/openwrt-smartdns)
+* **本地加速 DNS**：[SmartDNS (PikuZheng)](https://github.com/PikuZheng/smartdns)
 * **LuCI 主题套件**：[Argon Theme (jerrykuku)](https://github.com/jerrykuku/luci-theme-argon)
 * **Golang 构建环境**：[Go 26.x (sbwml)](https://github.com/sbwml/packages_lang_golang)
 * **Actions 构建脚本**：[P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt)
