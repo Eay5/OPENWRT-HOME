@@ -251,6 +251,16 @@ jobs:
               ;;
             proxy_stack_required)
               echo "Reapplying required proxy packages..."
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc y
+              ensure_config CONFIG_PACKAGE_luci-i18n-turboacc-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA y
               ensure_config CONFIG_PACKAGE_luci-compat y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
               ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
@@ -279,6 +289,16 @@ jobs:
               # 中文注释：明确移除“网络唤醒”插件和底层唤醒命令，避免默认项把页面带回固件。
               ensure_config CONFIG_PACKAGE_luci-app-wol n
               ensure_config CONFIG_PACKAGE_etherwake n
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc y
+              ensure_config CONFIG_PACKAGE_luci-i18n-turboacc-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA y
               ensure_config CONFIG_PACKAGE_luci-compat y
               ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
               ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
