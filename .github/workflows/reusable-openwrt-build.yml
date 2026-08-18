@@ -430,9 +430,22 @@ jobs:
       - name: Get kernel version
         if: env.status == 'success'
         run: |
-          kernel_pattern="${KERNEL_SERIES//./\\.}"
+          kernel_version=""
           kernel_file="openwrt/include/kernel-${KERNEL_SERIES}"
-          kernel_version="$(sed -n "s/^LINUX_VERSION-${kernel_pattern}[[:space:]]*[:?]?=[[:space:]]*//p" "${kernel_file}" | head -n 1 | tr -d '\r')"
+
+          if [ -f "${kernel_file}" ]; then
+            kernel_pattern="${KERNEL_SERIES//./\\.}"
+            kernel_version="$(sed -n "s/^LINUX_VERSION-${kernel_pattern}[[:space:]]*[:?]?=[[:space:]]*//p" "${kernel_file}" 2>/dev/null | head -n 1 | tr -d '\r')"
+          fi
+
+          if [ -z "${kernel_version}" ]; then
+            patchver="$(sed -n 's/^KERNEL_PATCHVER:=//p' openwrt/target/linux/x86/Makefile 2>/dev/null | head -n 1 | tr -d '\r')"
+            if [ -n "${patchver}" ] && [ -f "openwrt/include/kernel-${patchver}" ]; then
+              p_pat="${patchver//./\\.}"
+              kernel_version="$(sed -n "s/^LINUX_VERSION-${p_pat}[[:space:]]*[:?]?=[[:space:]]*//p" "openwrt/include/kernel-${patchver}" 2>/dev/null | head -n 1 | tr -d '\r')"
+              [ -n "${kernel_version}" ] && kernel_version="${patchver}.${kernel_version}"
+            fi
+          fi
 
           if [ -z "${kernel_version}" ]; then
             kernel_version="${KERNEL_SERIES}"
@@ -443,6 +456,7 @@ jobs:
           fi
 
           echo "KERNEL_VERSION=${kernel_version}" >> "$GITHUB_ENV"
+          echo "Detected KERNEL_VERSION: ${kernel_version}"
 
       - name: Check disk usage
         if: (!cancelled())

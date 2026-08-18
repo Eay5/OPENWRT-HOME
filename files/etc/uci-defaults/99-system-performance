@@ -15,6 +15,12 @@ if uci -q get firewall.@defaults[0] >/dev/null 2>&1; then
 	uci -q commit firewall
 fi
 
+# Set default LuCI language to Chinese (zh_cn)
+if uci -q get luci.main >/dev/null 2>&1; then
+	uci -q set luci.main.lang='zh_cn'
+	uci -q commit luci
+fi
+
 if [ -x /etc/init.d/performance-mode ]; then
 	/etc/init.d/performance-mode enable >/dev/null 2>&1 || true
 	/etc/init.d/performance-mode restart >/dev/null 2>&1 || /etc/init.d/performance-mode start >/dev/null 2>&1 || true

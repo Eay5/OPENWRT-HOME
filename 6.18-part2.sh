@@ -182,6 +182,8 @@ sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/emortal/default-setting
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
 sed -i "s/hostname='ImmortalWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
 sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
+sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" feeds/luci/modules/luci-base/root/etc/config/luci 2>/dev/null || true
+sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" package/feeds/luci/luci-base/root/etc/config/luci 2>/dev/null || true
 
 echo "Basic settings applied."
 verify_proxy_stack "${target_kernel_series}" "1"
