@@ -112,7 +112,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
@@ -370,7 +370,7 @@ jobs:
 
       - name: Upload toolchain logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.toolchain_log_name }}
           path: |
@@ -428,7 +428,7 @@ jobs:
 
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.build_log_name }}
           path: openwrt/build.log
@@ -485,7 +485,7 @@ jobs:
 
       - name: Upload bin directory
         if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.bin_artifact_prefix }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
@@ -493,24 +493,29 @@ jobs:
       - name: Inspect and display package versions
         if: env.status == 'success'
         run: |
+          set +e
           cd openwrt
 
           find_pkg() {
             local pattern="$1"
-            find bin/packages -type f \( -name "${pattern}*.apk" -o -name "${pattern}*.ipk" \) 2>/dev/null | head -n 1 | xargs -r -n 1 basename
+            local res
+            res=$(find bin/packages -type f -name "*${pattern}*" 2>/dev/null | grep -E '\.(apk|ipk)$' | head -n 1 || true)
+            if [ -n "${res}" ]; then
+              basename "${res}"
+            fi
           }
 
-          SMARTDNS_PKG="$(find_pkg 'smartdns[-_]')"
-          SMARTDNS_LUCI_PKG="$(find_pkg 'luci-app-smartdns[-_]')"
+          SMARTDNS_PKG="$(find_pkg 'smartdns')"
+          SMARTDNS_LUCI_PKG="$(find_pkg 'luci-app-smartdns')"
           SMARTDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
           SMARTDNS_COMMIT="$(sed -n 's/^PKG_SOURCE_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
 
-          MOSDNS_PKG="$(find_pkg 'mosdns[-_]')"
-          MOSDNS_LUCI_PKG="$(find_pkg 'luci-app-mosdns[-_]')"
+          MOSDNS_PKG="$(find_pkg 'mosdns')"
+          MOSDNS_LUCI_PKG="$(find_pkg 'luci-app-mosdns')"
           MOSDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/mosdns/Makefile 2>/dev/null | tr -d '\r')"
 
-          XRAY_PKG="$(find_pkg 'xray-core[-_]')"
-          SSR_PKG="$(find_pkg 'luci-app-ssr-plus[-_]')"
+          XRAY_PKG="$(find_pkg 'xray-core')"
+          SSR_PKG="$(find_pkg 'luci-app-ssr-plus')"
 
           echo "========================================================="
           echo "📦 核心插件与组件版本明细 (Core Package Versions)"
@@ -564,7 +569,7 @@ jobs:
 
       - name: Upload package versions artifact
         if: env.status == 'success' && !cancelled()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: Package-Versions${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/package-versions.txt
@@ -586,7 +591,7 @@ jobs:
 
       - name: Upload firmware artifact
         if: env.status == 'success' && !cancelled()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.firmware_artifact_prefix }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
@@ -640,7 +645,10 @@ jobs:
           name: ${{ env.RELEASE_TITLE }}
           tag_name: ${{ env.release_tag }}
           body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
+          files: |
+            ${{ env.FIRMWARE }}/*
+            openwrt/package-versions.txt
+            release.txt
 
       - name: Delete old workflow runs
         if: always() && !cancelled()
