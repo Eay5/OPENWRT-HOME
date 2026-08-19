@@ -62,7 +62,7 @@
 * **基础固件源码**：[ImmortalWrt](https://github.com/immortalwrt/immortalwrt)
 * **科学代理套件**：[SSR-Plus (fw876/helloworld)](https://github.com/fw876/helloworld)
 * **分流 DNS 服务**：[MosDNS v5 (sbwml)](https://github.com/sbwml/luci-app-mosdns)
-* **本地加速 DNS**：[SmartDNS (PikuZheng)](https://github.com/PikuZheng/smartdns)
+* **本地加速 DNS**：[SmartDNS (pymumu)](https://github.com/pymumu/smartdns)
 * **LuCI 主题套件**：[Argon Theme (jerrykuku)](https://github.com/jerrykuku/luci-theme-argon)
 * **Golang 构建环境**：[Go 26.x (sbwml)](https://github.com/sbwml/packages_lang_golang)
 * **Actions 构建脚本**：[P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt)

@@ -490,6 +490,85 @@ jobs:
           name: ${{ inputs.bin_artifact_prefix }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
+      - name: Inspect and display package versions
+        if: env.status == 'success'
+        run: |
+          cd openwrt
+
+          find_pkg() {
+            local pattern="$1"
+            find bin/packages -type f \( -name "${pattern}*.apk" -o -name "${pattern}*.ipk" \) 2>/dev/null | head -n 1 | xargs -r -n 1 basename
+          }
+
+          SMARTDNS_PKG="$(find_pkg 'smartdns[-_]')"
+          SMARTDNS_LUCI_PKG="$(find_pkg 'luci-app-smartdns[-_]')"
+          SMARTDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
+          SMARTDNS_COMMIT="$(sed -n 's/^PKG_SOURCE_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
+
+          MOSDNS_PKG="$(find_pkg 'mosdns[-_]')"
+          MOSDNS_LUCI_PKG="$(find_pkg 'luci-app-mosdns[-_]')"
+          MOSDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/mosdns/Makefile 2>/dev/null | tr -d '\r')"
+
+          XRAY_PKG="$(find_pkg 'xray-core[-_]')"
+          SSR_PKG="$(find_pkg 'luci-app-ssr-plus[-_]')"
+
+          echo "========================================================="
+          echo "📦 核心插件与组件版本明细 (Core Package Versions)"
+          echo "========================================================="
+          echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG:-未找到包} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
+          echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG:-未找到包}"
+          echo "🔹 MosDNS 核心包   : ${MOSDNS_PKG:-未找到包} (Makefile: ${MOSDNS_MAKE_VER:-未知})"
+          echo "🔹 MosDNS LuCI     : ${MOSDNS_LUCI_PKG:-未找到包}"
+          echo "🔹 Xray-core       : ${XRAY_PKG:-未找到包}"
+          echo "🔹 SSR-Plus        : ${SSR_PKG:-未找到包}"
+          echo "========================================================="
+
+          {
+            echo "========================================================="
+            echo "📦 OpenWrt 核心插件与组件版本清单 (Package Versions)"
+            echo "========================================================="
+            echo "构建时间: $(date +"%Y-%m-%d %H:%M:%S %Z")"
+            echo "内核系列: ${KERNEL_SERIES} (${KERNEL_VERSION})"
+            echo ""
+            echo "[SmartDNS]"
+            echo "  核心包文件名: ${SMARTDNS_PKG:-未找到包}"
+            echo "  Makefile 版本: ${SMARTDNS_MAKE_VER:-未知}"
+            echo "  Git Commit   : ${SMARTDNS_COMMIT:-未知}"
+            echo "  LuCI 界面包  : ${SMARTDNS_LUCI_PKG:-未找到包}"
+            echo ""
+            echo "[MosDNS]"
+            echo "  核心包文件名: ${MOSDNS_PKG:-未找到包}"
+            echo "  Makefile 版本: ${MOSDNS_MAKE_VER:-未知}"
+            echo "  LuCI 界面包  : ${MOSDNS_LUCI_PKG:-未找到包}"
+            echo ""
+            echo "[SSR-Plus / 核心套件]"
+            echo "  Xray-core   : ${XRAY_PKG:-未找到包}"
+            echo "  LuCI 界面包  : ${SSR_PKG:-未找到包}"
+            echo "========================================================="
+          } > package-versions.txt
+
+          {
+            echo "### 📦 核心组件与插件构建版本"
+            echo "| 组件名称 | 生成的安装包 (APK/IPK) | 源码/Commit 版本 |"
+            echo "| :--- | :--- | :--- |"
+            echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
+            echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
+            echo "| **MosDNS** | \`${MOSDNS_PKG:-未找到}\` | \`${MOSDNS_MAKE_VER:-未知}\` |"
+            echo "| **MosDNS LuCI** | \`${MOSDNS_LUCI_PKG:-未找到}\` | - |"
+            echo "| **Xray-core** | \`${XRAY_PKG:-未找到}\` | - |"
+            echo "| **SSR-Plus** | \`${SSR_PKG:-未找到}\` | - |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER:-未知}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"
+          echo "MOSDNS_VER_DISPLAY=${MOSDNS_PKG:-${MOSDNS_MAKE_VER:-未知}}" >> "$GITHUB_ENV"
+
+      - name: Upload package versions artifact
+        if: env.status == 'success' && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Package-Versions${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/package-versions.txt
+
       - name: Organize firmware files
         id: organize
         if: env.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
@@ -497,6 +576,7 @@ jobs:
           if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
             cd openwrt/bin/targets/*/*
             rm -rf packages
+            cp -f "$GITHUB_WORKSPACE/openwrt/package-versions.txt" . || true
             echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
             echo "status=success" >> "$GITHUB_ENV"
           else
@@ -541,12 +621,15 @@ jobs:
             echo "Source repo: ${REPO_URL}"
             echo "Source branch: ${REPO_BRANCH}"
             echo "Config file: ${CONFIG_FILE}"
+            [ -n "${SMARTDNS_VER_DISPLAY}" ] && echo "SmartDNS version: ${SMARTDNS_VER_DISPLAY}"
+            [ -n "${MOSDNS_VER_DISPLAY}" ] && echo "MosDNS version: ${MOSDNS_VER_DISPLAY}"
             echo "Runner: ${{ inputs.runner }}"
             echo "Workflow: ${{ github.workflow }}"
             echo "Run number: ${{ github.run_number }}"
             [ "${UPLOAD_COWTRANSFER}" = "true" ] && echo "Cowtransfer enabled"
             [ "${UPLOAD_WETRANSFER}" = "true" ] && echo "WeTransfer enabled"
           } > release.txt
+          cp -f release.txt "${{ env.FIRMWARE }}/release-info.txt" || true
 
       - name: Publish release
         if: env.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()

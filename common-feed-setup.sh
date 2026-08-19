@@ -21,7 +21,7 @@ setup_common_feeds() {
 
     echo "Pinning third-party package sources..."
 
-    # Clean legacy/conflicting SmartDNS entries and use PikuZheng/smartdns latest source
+    # Clean legacy/conflicting SmartDNS entries and use official pymumu/smartdns latest source
     rm -rf feeds/luci/applications/luci-app-smartdns
     rm -rf package/feeds/luci/luci-app-smartdns
     rm -rf feeds/packages/net/smartdns
@@ -29,8 +29,8 @@ setup_common_feeds() {
     rm -rf package/smartdns package/luci-app-smartdns
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
-    smartdns_commit="$(git ls-remote https://github.com/PikuZheng/smartdns.git HEAD 2>/dev/null | awk '{print $1}' || true)"
-    sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/PikuZheng/smartdns.git|g' package/smartdns/Makefile
+    smartdns_commit="$(git ls-remote https://github.com/pymumu/smartdns.git HEAD 2>/dev/null | awk '{print $1}' || true)"
+    sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/pymumu/smartdns.git|g' package/smartdns/Makefile
     if [ -n "${smartdns_commit}" ]; then
         sed -i "s|PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=${smartdns_commit}|g" package/smartdns/Makefile
     else
