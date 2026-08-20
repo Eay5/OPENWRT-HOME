@@ -26,15 +26,31 @@ setup_common_feeds() {
     rm -rf package/feeds/luci/luci-app-smartdns
     rm -rf feeds/packages/net/smartdns
     rm -rf package/feeds/packages/smartdns
+    rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns
+    rm -rf package/feeds/*/luci-app-smartdns package/feeds/*/smartdns
     rm -rf package/smartdns package/luci-app-smartdns
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
-    smartdns_commit="$(git ls-remote https://github.com/pymumu/smartdns.git HEAD 2>/dev/null | awk '{print $1}' || true)"
+
+    # Dynamically obtain latest pymumu/smartdns release tag (e.g. Release48.4 -> 48.4) and its commit
+    smartdns_tag="$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | awk -F'/' '{print $3}' | grep -E '^Release[0-9]+(\.[0-9]+)?$' | sort -V | tail -n 1 || true)"
+    smartdns_ver="${smartdns_tag#Release}"
+    smartdns_commit=""
+    if [ -n "${smartdns_tag}" ]; then
+        smartdns_commit="$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git "refs/tags/${smartdns_tag}" 2>/dev/null | awk '{print $1}' || true)"
+    fi
+    if [ -z "${smartdns_commit}" ]; then
+        smartdns_commit="$(git ls-remote https://github.com/pymumu/smartdns.git HEAD 2>/dev/null | awk '{print $1}' || true)"
+    fi
+
     sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/pymumu/smartdns.git|g' package/smartdns/Makefile
+    if [ -n "${smartdns_ver}" ]; then
+        sed -i "s|^PKG_VERSION:=.*|PKG_VERSION:=${smartdns_ver}|g" package/smartdns/Makefile
+    fi
     if [ -n "${smartdns_commit}" ]; then
-        sed -i "s|PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=${smartdns_commit}|g" package/smartdns/Makefile
+        sed -i "s|^PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=${smartdns_commit}|g" package/smartdns/Makefile
     else
-        sed -i 's|PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=master|g' package/smartdns/Makefile
+        sed -i 's|^PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=master|g' package/smartdns/Makefile
     fi
     sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile
 
