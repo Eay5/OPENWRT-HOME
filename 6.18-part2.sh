@@ -176,6 +176,9 @@ detect_enabled_apps() {
 
 echo "Applying basic settings..."
 
+# Ensure locally pinned SmartDNS packages take precedence over any feed symlinks
+rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns 2>/dev/null || true
+
 sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
 sed -i "s/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${target_kernel_series}/g" target/linux/x86/Makefile
 

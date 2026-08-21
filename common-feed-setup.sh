@@ -33,8 +33,10 @@ setup_common_feeds() {
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
 
     # Dynamically obtain latest pymumu/smartdns release tag (e.g. Release48.4 -> 48.4) and its commit
-    smartdns_tag="$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | awk -F'/' '{print $3}' | grep -E '^Release[0-9]+(\.[0-9]+)?$' | sort -V | tail -n 1 || true)"
+    smartdns_tag="$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | awk -F'/' '{print $3}' | grep -E '^Release[0-9]+(\.[0-9]+)*$' | sort -V | tail -n 1 || true)"
     smartdns_ver="${smartdns_tag#Release}"
+    [ -n "${smartdns_ver}" ] || smartdns_ver="48.4"
+
     smartdns_commit=""
     if [ -n "${smartdns_tag}" ]; then
         smartdns_commit="$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git "refs/tags/${smartdns_tag}" 2>/dev/null | awk '{print $1}' || true)"
@@ -42,17 +44,17 @@ setup_common_feeds() {
     if [ -z "${smartdns_commit}" ]; then
         smartdns_commit="$(git ls-remote https://github.com/pymumu/smartdns.git HEAD 2>/dev/null | awk '{print $1}' || true)"
     fi
+    [ -n "${smartdns_commit}" ] || smartdns_commit="21c940edc65520849ba03544c5cf8d9cf326e680"
+
+    smartdns_pkg_ver="1.$(date +%Y).${smartdns_ver}"
 
     sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/pymumu/smartdns.git|g' package/smartdns/Makefile
-    if [ -n "${smartdns_ver}" ]; then
-        sed -i "s|^PKG_VERSION:=.*|PKG_VERSION:=${smartdns_ver}|g" package/smartdns/Makefile
-    fi
-    if [ -n "${smartdns_commit}" ]; then
-        sed -i "s|^PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=${smartdns_commit}|g" package/smartdns/Makefile
-    else
-        sed -i 's|^PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=master|g' package/smartdns/Makefile
-    fi
+    sed -i "s|^PKG_VERSION:=.*|PKG_VERSION:=${smartdns_pkg_ver}|g" package/smartdns/Makefile
+    sed -i "s|^PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=${smartdns_commit}|g" package/smartdns/Makefile
     sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile
+
+    # Sync luci-app-smartdns package version with smartdns
+    sed -i "s|^PKG_VERSION:=.*|PKG_VERSION:=${smartdns_pkg_ver}|g" package/luci-app-smartdns/Makefile
 
     # Clean default MosDNS and pull sbwml v5 branch with geodata
     rm -rf feeds/luci/applications/luci-app-mosdns
