@@ -190,7 +190,6 @@ detect_enabled_apps() {
     config_is_enabled CONFIG_PACKAGE_luci-app-ssr-plus && apps+=("SSR-Plus")
     config_is_enabled CONFIG_PACKAGE_luci-app-mosdns && apps+=("MosDNS")
     config_is_enabled CONFIG_PACKAGE_luci-app-smartdns && apps+=("SmartDNS")
-    config_is_enabled CONFIG_PACKAGE_luci-app-adguardhome && apps+=("AdGuardHome")
     config_is_enabled CONFIG_PACKAGE_luci-app-turboacc && apps+=("Turbo ACC")
     config_is_enabled CONFIG_PACKAGE_luci-app-sqm && apps+=("SQM (CAKE)")
 

@@ -167,7 +167,6 @@ detect_enabled_apps() {
     config_is_enabled CONFIG_PACKAGE_luci-app-ssr-plus && apps+=("SSR-Plus")
     config_is_enabled CONFIG_PACKAGE_luci-app-mosdns && apps+=("MosDNS")
     config_is_enabled CONFIG_PACKAGE_luci-app-smartdns && apps+=("SmartDNS")
-    config_is_enabled CONFIG_PACKAGE_luci-app-adguardhome && apps+=("AdGuardHome")
     config_is_enabled CONFIG_PACKAGE_luci-app-turboacc && apps+=("Turbo ACC")
     config_is_enabled CONFIG_PACKAGE_luci-app-sqm && apps+=("SQM (CAKE)")
 
@@ -175,9 +174,6 @@ detect_enabled_apps() {
 }
 
 echo "Applying basic settings..."
-
-# Ensure locally pinned SmartDNS packages take precedence over any feed symlinks
-rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns 2>/dev/null || true
 
 sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
 sed -i "s/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${target_kernel_series}/g" target/linux/x86/Makefile
