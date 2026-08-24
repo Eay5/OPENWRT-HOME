@@ -93,19 +93,28 @@ apply_sysctl_tweaks() {
 	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_notsent_lowat=16384 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_max_syn_backlog=8192 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_keepalive_time=300 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_max_backlog=16384 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
 	sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
+	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
 }
 
-# 开启网卡 UDP GRO (Generic Receive Offload) 加速，提升 Sing-box / Xray 等 UDP 协议性能。
-apply_udp_gro_tuning() {
+# 优化 PCIe 电源策略与网卡硬件缓冲，消除 2.5G/10G 网卡断流抖动与突发丢包
+apply_nic_hardware_tuning() {
 	local iface dev
-
 	command -v ethtool >/dev/null 2>&1 || return 0
+
+	# 锁定 PCIe ASPM 为高性能模式
+	for aspm_file in /sys/module/pcie_aspm/parameters/policy; do
+		[ -f "$aspm_file" ] || continue
+		echo performance >"$aspm_file" 2>/dev/null || true
+	done
 
 	for iface in /sys/class/net/*; do
 		[ -d "$iface" ] || continue
@@ -117,13 +126,17 @@ apply_udp_gro_tuning() {
 				;;
 		esac
 
-		ethtool -K "$dev" rx-udp-gro-forwarding on >/dev/null 2>&1 || true
+		# 扩容网卡硬件环形缓冲区 (Ring Buffer)
+		ethtool -G "$dev" rx 4096 tx 4096 >/dev/null 2>&1 || ethtool -G "$dev" rx 2048 tx 2048 >/dev/null 2>&1 || true
+
+		# 开启硬件卸载与 UDP GRO 加速
+		ethtool -K "$dev" rx on tx on tso on gso on gro on rx-udp-gro-forwarding on >/dev/null 2>&1 || true
 	done
 }
 
 # 为每个网卡队列设置 RPS/XPS 和 flow entries，降低单核心软中断压力。
 apply_queue_tuning() {
-	local cpu_count cpu_mask iface rx_queue flow_cnt rx_queue_count
+	local cpu_count cpu_mask iface rx_queue flow_cnt rx_queue_count tx_queue
 
 	cpu_count="$(get_cpu_count)"
 	[ "$cpu_count" -gt 1 ] || return 0
@@ -164,11 +177,11 @@ apply_queue_tuning() {
 	done
 }
 
-# 启动时按顺序应用 CPU、网络栈、UDP GRO、队列分流调优。
+# 启动时按顺序应用 CPU、网络栈、网卡硬件/UDP GRO、队列分流调优。
 start() {
 	apply_cpu_governor
 	apply_sysctl_tweaks
-	apply_udp_gro_tuning
+	apply_nic_hardware_tuning
 	apply_queue_tuning
 }
 
@@ -176,4 +189,3 @@ start() {
 restart() {
 	start
 }
-

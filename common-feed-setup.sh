@@ -57,10 +57,45 @@ setup_common_feeds() {
     git clone --depth 1 -b v5 https://github.com/sbwml/luci-app-mosdns package/mosdns
     git clone --depth 1 https://github.com/sbwml/v2ray-geodata package/v2ray-geodata
 
-    # Use stable golang 26.x
+    # 动态获取 upstream sbwml/packages_lang_golang 最新分支，保持实时编译最新版本
+    local golang_branch=""
+    golang_branch=$(git ls-remote --heads https://github.com/sbwml/packages_lang_golang.git 2>/dev/null | grep -o 'refs/heads/[0-9]\+\.x' | sed 's#refs/heads/##' | sort -V | tail -n 1 || true)
+    golang_branch="${golang_branch:-27.x}"
+
     rm -rf feeds/packages/lang/golang
     rm -rf package/feeds/packages/golang
-    git clone --depth 1 -b 26.x https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
+    git clone --depth 1 -b "${golang_branch}" https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
+    echo "Golang tracking upstream latest branch: ${golang_branch}"
+
+    # 动态获取 upstream XTLS/Xray-core 最新 Release 版本，保持实时编译最新核心
+    local xray_tag=""
+    xray_tag=$(git ls-remote --tags --refs https://github.com/XTLS/Xray-core.git 2>/dev/null | grep -o 'refs/tags/v[0-9.]*' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
+    if [ -n "${xray_tag}" ]; then
+        for xray_mk in feeds/helloworld/xray-core/Makefile package/feeds/helloworld/xray-core/Makefile feeds/packages/net/xray-core/Makefile package/xray-core/Makefile; do
+            if [ -f "$xray_mk" ]; then
+                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${xray_tag}/g" "$xray_mk"
+                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$xray_mk"
+            fi
+        done
+        echo "Xray-core tracking upstream latest release: v${xray_tag}"
+    fi
+
+    # 动态获取 upstream SagerNet/sing-box 最新 Release 版本，保持实时编译最新核心
+    local singbox_tag=""
+    singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null | grep -o 'refs/tags/v[0-9.]*' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
+    if [ -n "${singbox_tag}" ]; then
+        for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile feeds/helloworld/sing-box/Makefile package/sing-box/Makefile; do
+            if [ -f "$singbox_mk" ]; then
+                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
+                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"
+            fi
+        done
+        echo "Sing-box tracking upstream latest release: v${singbox_tag}"
+    fi
+
+    # 动态获取 Loyalsoldier/v2ray-rules-dat 实时最新规则库
+    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/v2ray-geodata/Makefile 2>/dev/null || true
+    echo "GeoData rules library tracking upstream latest daily release"
 
     echo "Feed cleanup and pinning completed."
 }

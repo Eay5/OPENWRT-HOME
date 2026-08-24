@@ -54,9 +54,7 @@ is_intel_cpu() {
 
 # 把 CPU governor 和 EPP 拉到性能档，减少路由场景下的突发降频。
 apply_cpu_governor() {
-	local available_file
-	local epp_file
-	local governor_file
+	local available_file epp_file governor_file
 
 	for governor_file in \
 		/sys/devices/system/cpu/cpufreq/policy*/scaling_governor \
@@ -117,22 +115,28 @@ apply_sysctl_tweaks() {
 	load_tcp_congestion_modules
 
 	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
-	sysctl -w net.core.somaxconn=4096 >/dev/null 2>&1 || true
+	sysctl -w net.core.somaxconn=8192 >/dev/null 2>&1 || true
+	sysctl -w net.core.rmem_max=33554432 >/dev/null 2>&1 || true
+	sysctl -w net.core.wmem_max=33554432 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
-	sysctl -w net.ipv4.tcp_max_syn_backlog=4096 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_notsent_lowat=16384 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_syn_backlog=8192 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
-	sysctl -w net.core.netdev_max_backlog=8192 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_keepalive_time=300 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_max_backlog=16384 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
+	sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
+	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
 }
 
 # 提前把默认 IRQ 亲和范围放开到全部核心，避免多队列网卡的中断长时间偏在 CPU0。
 apply_irq_affinity_defaults() {
-	local cpu_count
-	local cpu_mask
+	local cpu_count cpu_mask
 
 	cpu_count="$(get_cpu_count)"
 	[ "$cpu_count" -gt 1 ] || return 0
@@ -141,15 +145,38 @@ apply_irq_affinity_defaults() {
 	[ -f /proc/irq/default_smp_affinity ] && echo "$cpu_mask" >/proc/irq/default_smp_affinity 2>/dev/null || true
 }
 
+# 优化 PCIe 电源策略与物理网卡硬件缓冲，消除 2.5G/10G 网卡断流抖动与突发丢包
+apply_nic_hardware_tuning() {
+	local iface dev
+	command -v ethtool >/dev/null 2>&1 || return 0
+
+	# 锁定 PCIe ASPM 为高性能模式，防止 Intel i225/i226 / Realtek 8125 节能抖动
+	for aspm_file in /sys/module/pcie_aspm/parameters/policy; do
+		[ -f "$aspm_file" ] || continue
+		echo performance >"$aspm_file" 2>/dev/null || true
+	done
+
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+		dev="${iface##*/}"
+
+		case "$dev" in
+			lo|veth*|br-*|docker*|tun*|tap*|ppp*|wg*)
+				continue
+				;;
+		esac
+
+		# 扩容网卡硬件环形缓冲区 (Ring Buffer)
+		ethtool -G "$dev" rx 4096 tx 4096 >/dev/null 2>&1 || ethtool -G "$dev" rx 2048 tx 2048 >/dev/null 2>&1 || true
+
+		# 开启硬件卸载与 UDP GRO 加速
+		ethtool -K "$dev" rx on tx on tso on gso on gro on rx-udp-gro-forwarding on >/dev/null 2>&1 || true
+	done
+}
+
 # 为每个网卡队列设置 RPS/XPS 和 flow entries，减少单核心吃满时的软中断瓶颈。
 apply_queue_tuning() {
-	local cpu_count
-	local cpu_mask
-	local flow_cnt
-	local iface
-	local rx_queue
-	local rx_queue_count
-	local tx_queue
+	local cpu_count cpu_mask flow_cnt iface rx_queue rx_queue_count tx_queue
 
 	cpu_count="$(get_cpu_count)"
 	[ "$cpu_count" -gt 1 ] || return 0
@@ -190,12 +217,13 @@ apply_queue_tuning() {
 	done
 }
 
-# 启动时按顺序应用 CPU、IRQ、网络队列三类优化。
+# 启动时按顺序应用 CPU、Intel P-State、网络栈、IRQ、网卡硬件/UDP GRO、队列分流调优。
 start() {
 	apply_cpu_governor
 	apply_intel_pstate_tweaks
 	apply_sysctl_tweaks
 	apply_irq_affinity_defaults
+	apply_nic_hardware_tuning
 	apply_queue_tuning
 }
 
