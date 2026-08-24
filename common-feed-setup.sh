@@ -28,6 +28,25 @@ setup_common_feeds() {
     rm -rf package/smartdns package/luci-app-smartdns
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
+
+    # 动态获取 upstream pymumu/smartdns 最新 master commit 与最新 release 标签，保持实时编译最新版本
+    local smartdns_commit=""
+    local smartdns_tag=""
+    local smartdns_ver=""
+
+    smartdns_commit=$(git ls-remote https://github.com/pymumu/smartdns.git refs/heads/master 2>/dev/null | cut -f1 || true)
+    smartdns_tag=$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | grep -o 'refs/tags/Release[0-9.]*' | sed 's#refs/tags/##' | sort -V | tail -n 1 || true)
+
+    if [ -n "${smartdns_tag}" ]; then
+        smartdns_ver="1.$(date +%Y).${smartdns_tag#Release}"
+    fi
+
+    if [ -n "${smartdns_commit}" ]; then
+        sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${smartdns_commit}/g" package/smartdns/Makefile
+        [ -n "${smartdns_ver}" ] && sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
+        echo "SmartDNS tracking upstream master: Commit=${smartdns_commit}, Version=${smartdns_ver:-latest}"
+    fi
+
     sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
     sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
 
