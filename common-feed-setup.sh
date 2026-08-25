@@ -35,7 +35,7 @@ setup_common_feeds() {
     local smartdns_ver=""
 
     smartdns_commit=$(git ls-remote https://github.com/pymumu/smartdns.git refs/heads/master 2>/dev/null | cut -f1 || true)
-    smartdns_tag=$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | grep -o 'refs/tags/Release[0-9.]*' | sed 's#refs/tags/##' | sort -V | tail -n 1 || true)
+    smartdns_tag=$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | grep -oE 'refs/tags/Release[0-9.]+$' | sed 's#refs/tags/##' | sort -V | tail -n 1 || true)
 
     if [ -n "${smartdns_tag}" ]; then
         smartdns_ver="1.$(date +%Y).${smartdns_tag#Release}"
@@ -47,8 +47,10 @@ setup_common_feeds() {
         echo "SmartDNS tracking upstream master: Commit=${smartdns_commit}, Version=${smartdns_ver:-latest}"
     fi
 
-    sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
-    sed -i 's/PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
+    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
+    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
+    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
+    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
 
     # Clean conflicting MosDNS and pull sbwml v5 branch with geodata
     rm -rf feeds/luci/applications/luci-app-mosdns package/feeds/luci/luci-app-mosdns
@@ -69,7 +71,7 @@ setup_common_feeds() {
 
     # 动态获取 upstream XTLS/Xray-core 最新 Release 版本，保持实时编译最新核心
     local xray_tag=""
-    xray_tag=$(git ls-remote --tags --refs https://github.com/XTLS/Xray-core.git 2>/dev/null | grep -o 'refs/tags/v[0-9.]*' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
+    xray_tag=$(git ls-remote --tags --refs https://github.com/XTLS/Xray-core.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
     if [ -n "${xray_tag}" ]; then
         for xray_mk in feeds/helloworld/xray-core/Makefile package/feeds/helloworld/xray-core/Makefile feeds/packages/net/xray-core/Makefile package/xray-core/Makefile; do
             if [ -f "$xray_mk" ]; then
@@ -82,7 +84,7 @@ setup_common_feeds() {
 
     # 动态获取 upstream SagerNet/sing-box 最新 Release 版本，保持实时编译最新核心
     local singbox_tag=""
-    singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null | grep -o 'refs/tags/v[0-9.]*' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
+    singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
     if [ -n "${singbox_tag}" ]; then
         for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile feeds/helloworld/sing-box/Makefile package/sing-box/Makefile; do
             if [ -f "$singbox_mk" ]; then
