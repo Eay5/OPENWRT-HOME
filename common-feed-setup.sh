@@ -69,6 +69,16 @@ setup_common_feeds() {
     git clone --depth 1 -b "${golang_branch}" https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
     echo "Golang tracking upstream latest branch: ${golang_branch}"
 
+    # 针对 Go 27+ 适配补丁：关闭未定稿的 jsonv2 等实验性特性，防止 sing-box / 第三方库发生符号冲突
+    if [ -f feeds/packages/lang/golang/golang-build.sh ]; then
+        sed -i '1a export GOEXPERIMENT=none' feeds/packages/lang/golang/golang-build.sh 2>/dev/null || true
+    fi
+    for mk in feeds/packages/lang/golang/golang-package.mk feeds/packages/lang/golang/golang-values.mk; do
+        if [ -f "$mk" ]; then
+            sed -i 's/GOENV=off/GOENV=off GOEXPERIMENT=none/g' "$mk" 2>/dev/null || true
+        fi
+    done
+
     # 动态获取 upstream XTLS/Xray-core 最新 Release 版本，保持实时编译最新核心
     local xray_tag=""
     xray_tag=$(git ls-remote --tags --refs https://github.com/XTLS/Xray-core.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
@@ -90,6 +100,7 @@ setup_common_feeds() {
             if [ -f "$singbox_mk" ]; then
                 sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
                 sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"
+                sed -i '/GO_PKG_BUILD_VARS/ s/$/ GOEXPERIMENT=none/' "$singbox_mk" 2>/dev/null || true
             fi
         done
         echo "Sing-box tracking upstream latest release: v${singbox_tag}"
