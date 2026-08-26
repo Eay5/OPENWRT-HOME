@@ -11,10 +11,9 @@ add_or_replace_feed() {
 setup_common_feeds() {
     echo "Adding custom feeds..."
 
-    # Clean old helloworld feed and conflicting passwall sources
+    # Clean old helloworld feed and conflicting passwall feeds
     sed -i '\|^src-git helloworld |d' feeds.conf.default 2>/dev/null || true
-    rm -rf feeds/luci/applications/luci-app-ssr-plus package/feeds/luci/luci-app-ssr-plus package/helloworld
-    rm -rf feeds/*/luci-app-passwall package/feeds/*/luci-app-passwall package/passwall-luci package/passwall-packages
+    sed -i '\|^src-git passwall |d' feeds.conf.default 2>/dev/null || true
 
     echo "Updated feeds.conf.default:"
     cat feeds.conf.default
@@ -23,9 +22,12 @@ setup_common_feeds() {
 
     echo "Pinning third-party package sources..."
 
-    # Pull official xiaorouji passwall-packages and luci-app-passwall
-    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall-packages
-    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall.git package/passwall-luci
+    # 移除 openwrt feeds 自带的过时核心库与旧版 luci-app-passwall，按官方公告由 passwall 官方仓库接管
+    rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,v2ray-plugin,xray-plugin,geoview,shadow-tls} 2>/dev/null || true
+    rm -rf feeds/luci/applications/luci-app-passwall package/feeds/luci/luci-app-passwall 2>/dev/null || true
+    rm -rf package/passwall-packages package/passwall-luci
+    git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
+    git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall-luci
 
     # 移除 passwall-packages 中与独立源码仓库重叠的重复包，防止编译时报 duplicate package 冲突
     rm -rf package/passwall-packages/smartdns package/passwall-packages/luci-app-smartdns package/passwall-packages/mosdns package/passwall-packages/luci-app-mosdns package/passwall-packages/v2ray-geodata package/passwall-packages/v2ray-rules-dat 2>/dev/null || true
