@@ -23,7 +23,7 @@ setup_common_feeds() {
     echo "Pinning third-party package sources..."
 
     # 移除 openwrt feeds 自带的过时核心库与旧版 luci-app-passwall，按官方公告由 passwall 官方仓库接管
-    rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,v2ray-plugin,xray-plugin,geoview,shadow-tls} 2>/dev/null || true
+    rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,v2ray-plugin,xray-plugin,geoview,shadow-tls,mosdns} 2>/dev/null || true
     rm -rf feeds/luci/applications/luci-app-passwall package/feeds/luci/luci-app-passwall 2>/dev/null || true
     rm -rf package/passwall-packages package/passwall-luci
     git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
@@ -35,7 +35,7 @@ setup_common_feeds() {
     # Clean conflicting feeds and pull official pymumu/smartdns latest source
     rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns
     rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns
-    rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/smartdns
+    rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns feeds/*/*/luci-app-smartdns feeds/*/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/*/luci-app-smartdns package/feeds/*/*/smartdns 2>/dev/null || true
     rm -rf package/smartdns package/luci-app-smartdns
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
@@ -65,8 +65,9 @@ setup_common_feeds() {
 
     # Clean conflicting MosDNS and pull sbwml v5 branch with geodata
     rm -rf feeds/luci/applications/luci-app-mosdns package/feeds/luci/luci-app-mosdns
-    rm -rf feeds/*/luci-app-mosdns package/feeds/*/luci-app-mosdns
-    rm -rf feeds/*/mosdns package/feeds/*/mosdns package/mosdns package/v2ray-geodata
+    rm -rf feeds/packages/net/mosdns package/feeds/packages/mosdns
+    rm -rf feeds/*/luci-app-mosdns feeds/*/*/luci-app-mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
+    rm -rf feeds/*/mosdns feeds/*/*/mosdns package/feeds/*/mosdns package/feeds/*/*/mosdns package/mosdns package/v2ray-geodata 2>/dev/null || true
     git clone --depth 1 -b v5 https://github.com/sbwml/luci-app-mosdns package/mosdns
     git clone --depth 1 https://github.com/sbwml/v2ray-geodata package/v2ray-geodata
 

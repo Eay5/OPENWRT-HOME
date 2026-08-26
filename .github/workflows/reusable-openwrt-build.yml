@@ -211,9 +211,14 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a -f
 
-          if [ -f "package/smartdns/Makefile" ] && [ -f "package/luci-app-smartdns/Makefile" ]; then
+          if [ -f "package/smartdns/Makefile" ] || [ -d "package/smartdns" ]; then
             echo "Using locally pinned SmartDNS packages from package/."
-            rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns 2>/dev/null || true
+            rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true
+          fi
+
+          if [ -d "package/mosdns" ] || [ -f "package/mosdns/Makefile" ]; then
+            echo "Using locally pinned MosDNS packages from package/."
+            rm -rf package/feeds/packages/mosdns package/feeds/luci/luci-app-mosdns package/feeds/*/mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
           fi
 
           if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
