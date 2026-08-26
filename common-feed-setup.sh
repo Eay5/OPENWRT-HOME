@@ -11,8 +11,10 @@ add_or_replace_feed() {
 setup_common_feeds() {
     echo "Adding custom feeds..."
 
-    # Use helloworld feed for SSR-Plus and proxy runtimes
-    add_or_replace_feed "helloworld" "https://github.com/fw876/helloworld"
+    # Clean old helloworld feed and conflicting passwall sources
+    sed -i '\|^src-git helloworld |d' feeds.conf.default 2>/dev/null || true
+    rm -rf feeds/luci/applications/luci-app-ssr-plus package/feeds/luci/luci-app-ssr-plus package/helloworld
+    rm -rf feeds/*/luci-app-passwall package/feeds/*/luci-app-passwall package/passwall-luci package/passwall-packages
 
     echo "Updated feeds.conf.default:"
     cat feeds.conf.default
@@ -20,6 +22,13 @@ setup_common_feeds() {
     ./scripts/feeds update -a
 
     echo "Pinning third-party package sources..."
+
+    # Pull official xiaorouji passwall-packages and luci-app-passwall
+    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall-packages
+    git clone --depth 1 https://github.com/xiaorouji/openwrt-passwall.git package/passwall-luci
+
+    # 移除 passwall-packages 中与独立源码仓库重叠的重复包，防止编译时报 duplicate package 冲突
+    rm -rf package/passwall-packages/smartdns package/passwall-packages/luci-app-smartdns package/passwall-packages/mosdns package/passwall-packages/luci-app-mosdns package/passwall-packages/v2ray-geodata package/passwall-packages/v2ray-rules-dat 2>/dev/null || true
 
     # Clean conflicting feeds and pull official pymumu/smartdns latest source
     rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns
@@ -83,7 +92,7 @@ setup_common_feeds() {
     local xray_tag=""
     xray_tag=$(git ls-remote --tags --refs https://github.com/XTLS/Xray-core.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
     if [ -n "${xray_tag}" ]; then
-        for xray_mk in feeds/helloworld/xray-core/Makefile package/feeds/helloworld/xray-core/Makefile feeds/packages/net/xray-core/Makefile package/xray-core/Makefile; do
+        for xray_mk in package/passwall-packages/xray-core/Makefile feeds/packages/net/xray-core/Makefile package/xray-core/Makefile; do
             if [ -f "$xray_mk" ]; then
                 sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${xray_tag}/g" "$xray_mk"
                 sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$xray_mk"
@@ -96,7 +105,7 @@ setup_common_feeds() {
     local singbox_tag=""
     singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
     if [ -n "${singbox_tag}" ]; then
-        for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile feeds/helloworld/sing-box/Makefile package/sing-box/Makefile; do
+        for singbox_mk in package/passwall-packages/sing-box/Makefile feeds/packages/net/sing-box/Makefile package/sing-box/Makefile; do
             if [ -f "$singbox_mk" ]; then
                 sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
                 sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"

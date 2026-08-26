@@ -260,8 +260,8 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING y
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA y
               ensure_config CONFIG_PACKAGE_luci-compat y
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
-              ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall y
+              ensure_config CONFIG_PACKAGE_luci-i18n-passwall-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-app-mosdns y
               ensure_config CONFIG_PACKAGE_mosdns y
               ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
@@ -270,12 +270,12 @@ jobs:
               ensure_config CONFIG_PACKAGE_smartdns-ui n
               ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
               make defconfig
-              grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config || { echo 'luci-app-passwall was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config || { echo 'luci-app-mosdns was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
               ;;
-            ssr_plus_612)
-              echo "Reapplying forced package toggles..."
+            passwall|passwall_618|ssr_plus_612)
+              echo "Reapplying forced package toggles for PassWall..."
               ensure_config CONFIG_DEVEL n
               ensure_config CONFIG_CCACHE y
               ensure_config CONFIG_PACKAGE_ksmbd-server n
@@ -298,26 +298,25 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING y
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA y
               ensure_config CONFIG_PACKAGE_luci-compat y
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus y
-              ensure_config CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn y
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Iptables_Transparent_Proxy y
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_Nftables_Transparent_Proxy n
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray y
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ChinaDNS_NG y
-              ensure_config CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_DNS2SOCKS y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall y
+              ensure_config CONFIG_PACKAGE_luci-i18n-passwall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ChinaDNS_NG y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Hysteria y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Tuic_Client y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadow_TLS y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Libev_Client y
               ensure_config CONFIG_PACKAGE_chinadns-ng y
-              ensure_config CONFIG_PACKAGE_dns2socks y
-              ensure_config CONFIG_PACKAGE_microsocks y
+              ensure_config CONFIG_PACKAGE_sing-box y
               ensure_config CONFIG_PACKAGE_xray-core y
-              ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-check y
-              ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-local y
-              ensure_config CONFIG_PACKAGE_shadowsocksr-libev-ssr-redir y
               ensure_config CONFIG_PACKAGE_libpcre2 y
               ensure_config CONFIG_PACKAGE_coreutils y
               ensure_config CONFIG_PACKAGE_coreutils-base64 y
               ensure_config CONFIG_PACKAGE_ip-full y
               ensure_config CONFIG_PACKAGE_jq y
-              # 中文注释：SSR-Plus 组件升级会调用 xz 解压数据包，缺少时管理页会提示缺少 xz 支持。
               ensure_config CONFIG_PACKAGE_xz y
               ensure_config CONFIG_PACKAGE_xz-utils y
               ensure_config CONFIG_PACKAGE_liblzma y
@@ -338,10 +337,9 @@ jobs:
               ensure_config CONFIG_PACKAGE_kmod-tcp-hybla y
               ensure_config CONFIG_PACKAGE_kmod-tcp-scalable y
               make defconfig
-              grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config || { echo 'luci-app-ssr-plus was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config || { echo 'luci-app-passwall was dropped during defconfig'; exit 1; }
               ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
               ! grep -q '^CONFIG_PACKAGE_etherwake=y' .config || { echo 'etherwake was unexpectedly enabled'; exit 1; }
-              grep -q '^CONFIG_PACKAGE_shadowsocksr-libev-ssr-check=y' .config || { echo 'shadowsocksr-libev-ssr-check was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_xz=y' .config || { echo 'xz was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_xz-utils=y' .config || { echo 'xz-utils was not enabled'; exit 1; }
@@ -513,7 +511,8 @@ jobs:
           MOSDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/mosdns/Makefile 2>/dev/null | tr -d '\r')"
 
           XRAY_PKG="$(find_pkg 'xray-core')"
-          SSR_PKG="$(find_pkg 'luci-app-ssr-plus')"
+          SINGBOX_PKG="$(find_pkg 'sing-box')"
+          PASSWALL_PKG="$(find_pkg 'luci-app-passwall')"
 
           echo "========================================================="
           echo "📦 核心插件与组件版本明细 (Core Package Versions)"
@@ -523,7 +522,8 @@ jobs:
           echo "🔹 MosDNS 核心包   : ${MOSDNS_PKG:-未找到包} (Makefile: ${MOSDNS_MAKE_VER:-未知})"
           echo "🔹 MosDNS LuCI     : ${MOSDNS_LUCI_PKG:-未找到包}"
           echo "🔹 Xray-core       : ${XRAY_PKG:-未找到包}"
-          echo "🔹 SSR-Plus        : ${SSR_PKG:-未找到包}"
+          echo "🔹 Sing-box        : ${SINGBOX_PKG:-未找到包}"
+          echo "🔹 PassWall        : ${PASSWALL_PKG:-未找到包}"
           echo "========================================================="
 
           {
@@ -544,9 +544,10 @@ jobs:
             echo "  Makefile 版本: ${MOSDNS_MAKE_VER:-未知}"
             echo "  LuCI 界面包  : ${MOSDNS_LUCI_PKG:-未找到包}"
             echo ""
-            echo "[SSR-Plus / 核心套件]"
+            echo "[PassWall / 核心套件]"
             echo "  Xray-core   : ${XRAY_PKG:-未找到包}"
-            echo "  LuCI 界面包  : ${SSR_PKG:-未找到包}"
+            echo "  Sing-box    : ${SINGBOX_PKG:-未找到包}"
+            echo "  LuCI 界面包  : ${PASSWALL_PKG:-未找到包}"
             echo "========================================================="
           } > package-versions.txt
 
@@ -559,7 +560,8 @@ jobs:
             echo "| **MosDNS** | \`${MOSDNS_PKG:-未找到}\` | \`${MOSDNS_MAKE_VER:-未知}\` |"
             echo "| **MosDNS LuCI** | \`${MOSDNS_LUCI_PKG:-未找到}\` | - |"
             echo "| **Xray-core** | \`${XRAY_PKG:-未找到}\` | - |"
-            echo "| **SSR-Plus** | \`${SSR_PKG:-未找到}\` | - |"
+            echo "| **Sing-box** | \`${SINGBOX_PKG:-未找到}\` | - |"
+            echo "| **PassWall** | \`${PASSWALL_PKG:-未找到}\` | - |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER:-未知}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"

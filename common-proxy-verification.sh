@@ -7,17 +7,17 @@ verify_proxy_stack() {
     echo ""
     echo "=== Verifying required proxy packages ==="
 
-    if grep -q '^CONFIG_PACKAGE_luci-app-ssr-plus=y' .config; then
-        echo "SSR-Plus enabled in .config"
+    if grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config; then
+        echo "PassWall enabled in .config"
     else
-        echo "ERROR: luci-app-ssr-plus is disabled in .config"
+        echo "ERROR: luci-app-passwall is disabled in .config"
         exit 1
     fi
 
-    if [ -d "feeds/helloworld/luci-app-ssr-plus" ] || [ -d "package/feeds/helloworld/luci-app-ssr-plus" ] || [ -d "package/helloworld" ]; then
-        echo "SSR-Plus source: fw876/helloworld"
+    if [ -d "package/passwall-luci" ] || [ -d "package/passwall-packages" ] || [ -d "feeds/passwall" ] || [ -d "package/feeds/passwall" ]; then
+        echo "PassWall source: xiaorouji/openwrt-passwall"
     else
-        echo "ERROR: SSR-Plus package source not found"
+        echo "ERROR: PassWall package source not found"
         exit 1
     fi
 

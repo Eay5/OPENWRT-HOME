@@ -86,8 +86,51 @@ vm.dirty_ratio = 10
 vm.dirty_background_ratio = 5
 EOF
 
+# 7. PassWall & MosDNS Bypass Gateway Default Tuning
+# Dnsmasq: 允许作为旁路由 DNS 服务器，关闭 localservice 丢包限制
+if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
+	uci -q set dhcp.@dnsmasq[0].localservice='0'
+	uci -q set dhcp.@dnsmasq[0].rebind_protection='0'
+	uci -q commit dhcp
+fi
+
+# Firewall: 自动为 LAN 区域开启 IP 动态伪装与 MSS 钳制 (解决旁路由流量转发与跨网段通信)
+if uci -q get firewall.lan >/dev/null 2>&1; then
+	uci -q set firewall.lan.masq='1'
+	uci -q set firewall.lan.mtu_fix='1'
+	uci -q commit firewall
+fi
+
+# 8. SmartDNS & MosDNS Integration Tuning
+# SmartDNS: 监听在 6053 端口，作为国内 DNS 加速引擎
+if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
+	uci -q set smartdns.@smartdns[0].enabled='1'
+	uci -q set smartdns.@smartdns[0].port='6053'
+	uci -q set smartdns.@smartdns[0].tcp_server='1'
+	uci -q set smartdns.@smartdns[0].dualstack_ip_selection='1'
+	uci -q set smartdns.@smartdns[0].prefetch_domain='1'
+	uci -q set smartdns.@smartdns[0].serve_expired='1'
+	uci -q set smartdns.@smartdns[0].cache_size='8000'
+	uci -q commit smartdns
+fi
+
+# MosDNS: 将国内 DNS 与 Bootstrap 引导 DNS 指向 SmartDNS (127.0.0.1:6053)
+if uci -q get mosdns.config >/dev/null 2>&1; then
+	uci -q set mosdns.config.enabled='1'
+	uci -q set mosdns.config.listen_port='5335'
+	uci -q set mosdns.config.bootstrap_dns='127.0.0.1:6053'
+	uci -q set mosdns.config.local_dns='127.0.0.1:6053'
+	uci -q commit mosdns
+elif uci -q get mosdns.@mosdns[0] >/dev/null 2>&1; then
+	uci -q set mosdns.@mosdns[0].enabled='1'
+	uci -q set mosdns.@mosdns[0].listen_port='5335'
+	uci -q set mosdns.@mosdns[0].bootstrap_dns='127.0.0.1:6053'
+	uci -q set mosdns.@mosdns[0].local_dns='127.0.0.1:6053'
+	uci -q commit mosdns
+fi
+
 # Clean non-existent snapshot package repos (helloworld, video)
-sed -i '/helloworld/d;/video/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
+sed -i '/helloworld/d;/video/d;/passwall/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
 
 sysctl -p /etc/sysctl.d/99-performance.conf >/dev/null 2>&1 || true
 

@@ -60,7 +60,7 @@
 ## 🛠️ 插件与上游来源
 
 * **基础固件源码**：[ImmortalWrt](https://github.com/immortalwrt/immortalwrt)
-* **科学代理套件**：[SSR-Plus (fw876/helloworld)](https://github.com/fw876/helloworld)
+* **科学代理套件**：[PassWall (xiaorouji)](https://github.com/xiaorouji/openwrt-passwall)
 * **分流 DNS 服务**：[MosDNS v5 (sbwml)](https://github.com/sbwml/luci-app-mosdns)
 * **本地加速 DNS**：[SmartDNS (pymumu)](https://github.com/pymumu/smartdns)
 * **LuCI 主题套件**：[Argon Theme (jerrykuku)](https://github.com/jerrykuku/luci-theme-argon)
