@@ -27,8 +27,9 @@
    - **网卡 UDP GRO (Generic Receive Offload)** 开启，大幅降低高负载代理转发时的 CPU 占用。
    - **CPU Governor & EPP** 性能档位锁定。
 
-4. **双重 DNS 智能分流栈**
-   - 预置 **SmartDNS**（端口 6053）+ **MosDNS v5** 双方案，支持一键切换脚本（`dns-profile-smartdns` / `dns-profile-mosdns`）。
+4. **现代化代理与加速 DNS 栈**
+   - **HomeProxy (Sing-box 原生架构)**：ImmortalWrt 官方新一代透明代理套件，深度集成 Firewall4 (nftables) 与 Linux 6.x 高性能内核。
+   - **SmartDNS 极速加速引擎**（端口 6053）：预置 21 个国内顶级公共与运营商 DNS 并发测速，开启 0ms 乐观缓存、32768 大缓存与双栈 IP 优选。
    - IPv6 LAN 侧 DNS 智能通告闭环，防止 IPv6 泄露与旁路绕过。
 
 ---
@@ -60,8 +61,8 @@
 ## 🛠️ 插件与上游来源
 
 * **基础固件源码**：[ImmortalWrt](https://github.com/immortalwrt/immortalwrt)
-* **科学代理套件**：[PassWall (xiaorouji)](https://github.com/xiaorouji/openwrt-passwall)
-* **分流 DNS 服务**：[MosDNS v5 (sbwml)](https://github.com/sbwml/luci-app-mosdns)
+* **科学代理套件**：[HomeProxy (immortalwrt)](https://github.com/immortalwrt/homeproxy)
+* **代理底层内核**：[Sing-box (SagerNet)](https://github.com/SagerNet/sing-box)
 * **本地加速 DNS**：[SmartDNS (pymumu)](https://github.com/pymumu/smartdns)
 * **LuCI 主题套件**：[Argon Theme (jerrykuku)](https://github.com/jerrykuku/luci-theme-argon)
 * **Golang 构建环境**：[Go 27.x (sbwml)](https://github.com/sbwml/packages_lang_golang)

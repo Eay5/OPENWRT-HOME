@@ -33,5 +33,5 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-x86-physical-intel-rtl25g
       bin_artifact_prefix: ImmortalWrt_bin
       release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
-      extra_feed_packages: pcre2 luci-app-passwall lua-neturl tcping chinadns-ng xray-core sing-box hysteria tuic-client shadowsocks-rust
-      config_sync_mode: passwall
+      extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns
+      config_sync_mode: homeproxy

@@ -40,7 +40,7 @@
 | **Name** | `ImmortalWrt` | 虚拟机名称 |
 | **CPU Mode** | **`Host-Passthrough`** | **【核心必选】** 直接透传物理 CPU 的 AES-NI、AVX2 指令集，代理加解密性能提升数倍 |
 | **Logical CPUs** | 勾选 **2 ~ 4 个核心** | 分配 2~4 个物理 CPU 核心 |
-| **Initial Memory** | `1024 MB` 或 `2048 MB` | 运行 MosDNS、SmartDNS 持久化缓存 1~2G 即可满足 |
+| **Initial Memory** | `1024 MB` 或 `2048 MB` | 运行 SmartDNS 持久化缓存与 HomeProxy 透明代理 1~2G 即可满足 |
 | **Max Memory** | `1024 MB` 或 `2048 MB` | 保持与初始内存一致，避免内存气球动态调节引入网络丢包 |
 | **Machine** | **`Q35`**（如 `pc-q35-7.1` 或最新） | PCIe 设备直通兼容性最佳 |
 | **BIOS** | **`OVMF (UEFI)`** | 现代 UEFI 固件引导，与本固件 EFI 镜像完美配合 |

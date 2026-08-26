@@ -81,7 +81,7 @@ load_tcp_congestion_modules() {
 	done
 }
 
-# 调整网络栈参数，照顾 PassWall 本机代理连接和 DNS 服务的突发请求。
+# 调整网络栈参数，照顾 HomeProxy 本机代理连接和 DNS 服务的突发请求。
 apply_sysctl_tweaks() {
 	load_tcp_congestion_modules
 

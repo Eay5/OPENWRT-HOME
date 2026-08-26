@@ -5,29 +5,39 @@ verify_proxy_stack() {
     local require_iptables_proxy="${2:-0}"
 
     echo ""
-    echo "=== Verifying required proxy packages ==="
+    echo "=== Verifying required proxy and DNS packages ==="
 
-    if grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config; then
-        echo "PassWall enabled in .config"
+    if grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config; then
+        echo "HomeProxy enabled in .config"
     else
-        echo "ERROR: luci-app-passwall is disabled in .config"
+        echo "ERROR: luci-app-homeproxy is disabled in .config"
         exit 1
     fi
 
-    if [ -d "package/passwall-luci" ] || [ -d "package/passwall-packages" ] || [ -d "feeds/passwall" ] || [ -d "package/feeds/passwall" ]; then
-        echo "PassWall source: Openwrt-Passwall/openwrt-passwall"
+    if grep -q '^CONFIG_PACKAGE_sing-box=y' .config; then
+        echo "Sing-box enabled in .config"
     else
-        echo "ERROR: PassWall package source not found"
+        echo "ERROR: sing-box is disabled in .config"
         exit 1
     fi
 
-    if grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config && grep -q '^CONFIG_PACKAGE_mosdns=y' .config; then
-        echo "MosDNS enabled in .config"
+    if [ -d "package/homeproxy" ] || [ -d "feeds/luci/applications/luci-app-homeproxy" ] || [ -d "package/feeds/luci/luci-app-homeproxy" ]; then
+        echo "HomeProxy package source verified"
+    else
+        echo "ERROR: HomeProxy package source not found"
+        exit 1
     fi
 
-    if grep -q '^CONFIG_PACKAGE_smartdns=y' .config; then
+    if grep -q '^CONFIG_PACKAGE_smartdns=y' .config && grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config; then
         echo "SmartDNS enabled in .config"
+    else
+        echo "ERROR: smartdns / luci-app-smartdns is disabled in .config"
+        exit 1
     fi
 
-    echo "Proxy stack verified for kernel ${kernel_series}"
+    if [ -d "package/smartdns" ] && [ -d "package/luci-app-smartdns" ]; then
+        echo "SmartDNS package sources verified"
+    fi
+
+    echo "Proxy & DNS stack verified for kernel ${kernel_series}"
 }

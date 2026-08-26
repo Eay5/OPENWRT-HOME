@@ -265,22 +265,25 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING y
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA y
               ensure_config CONFIG_PACKAGE_luci-compat y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall y
-              ensure_config CONFIG_PACKAGE_luci-i18n-passwall-zh-cn y
-              ensure_config CONFIG_PACKAGE_luci-app-mosdns y
-              ensure_config CONFIG_PACKAGE_mosdns y
-              ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy y
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn y
+              ensure_config CONFIG_PACKAGE_sing-box y
+              ensure_config CONFIG_PACKAGE_sing-geoip y
+              ensure_config CONFIG_PACKAGE_sing-geosite y
               ensure_config CONFIG_PACKAGE_luci-app-smartdns y
               ensure_config CONFIG_PACKAGE_smartdns y
               ensure_config CONFIG_PACKAGE_smartdns-ui n
               ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
               make defconfig
-              grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config || { echo 'luci-app-passwall was dropped during defconfig'; exit 1; }
-              grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config || { echo 'luci-app-mosdns was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
               ;;
-            passwall|passwall_618|ssr_plus_612)
-              echo "Reapplying forced package toggles for PassWall..."
+            homeproxy|homeproxy_618|passwall|passwall_618|ssr_plus_612)
+              echo "Reapplying forced package toggles for HomeProxy & SmartDNS..."
               ensure_config CONFIG_DEVEL n
               ensure_config CONFIG_CCACHE y
               ensure_config CONFIG_PACKAGE_ksmbd-server n
@@ -303,20 +306,14 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING y
               ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA y
               ensure_config CONFIG_PACKAGE_luci-compat y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall y
-              ensure_config CONFIG_PACKAGE_luci-i18n-passwall-zh-cn y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ChinaDNS_NG y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Hysteria y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Tuic_Client y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadow_TLS y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust y
-              ensure_config CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Libev_Client y
-              ensure_config CONFIG_PACKAGE_chinadns-ng y
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy y
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn y
               ensure_config CONFIG_PACKAGE_sing-box y
-              ensure_config CONFIG_PACKAGE_xray-core y
+              ensure_config CONFIG_PACKAGE_sing-geoip y
+              ensure_config CONFIG_PACKAGE_sing-geosite y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
               ensure_config CONFIG_PACKAGE_libpcre2 y
               ensure_config CONFIG_PACKAGE_coreutils y
               ensure_config CONFIG_PACKAGE_coreutils-base64 y
@@ -325,24 +322,17 @@ jobs:
               ensure_config CONFIG_PACKAGE_xz y
               ensure_config CONFIG_PACKAGE_xz-utils y
               ensure_config CONFIG_PACKAGE_liblzma y
-              ensure_config CONFIG_PACKAGE_luci-app-mosdns y
-              ensure_config CONFIG_PACKAGE_mosdns y
-              ensure_config CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn y
-              ensure_config CONFIG_PACKAGE_v2ray-geoip y
-              ensure_config CONFIG_PACKAGE_v2ray-geosite y
               ensure_config CONFIG_PACKAGE_luci-app-smartdns y
               ensure_config CONFIG_PACKAGE_smartdns y
               ensure_config CONFIG_PACKAGE_smartdns-ui n
-              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
-              ensure_config CONFIG_PACKAGE_lua-neturl y
-              ensure_config CONFIG_PACKAGE_resolveip y
               ensure_config CONFIG_PACKAGE_nping y
               # 中文注释：给 Turbo ACC/TCP 调优提供更多可选拥塞控制算法，默认仍由启动脚本使用 BBR。
               ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
               ensure_config CONFIG_PACKAGE_kmod-tcp-hybla y
               ensure_config CONFIG_PACKAGE_kmod-tcp-scalable y
               make defconfig
-              grep -q '^CONFIG_PACKAGE_luci-app-passwall=y' .config || { echo 'luci-app-passwall was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was dropped during defconfig'; exit 1; }
               ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
               ! grep -q '^CONFIG_PACKAGE_etherwake=y' .config || { echo 'etherwake was unexpectedly enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
@@ -352,7 +342,6 @@ jobs:
               grep -q '^CONFIG_PACKAGE_kmod-tcp-bbr=y' .config || { echo 'kmod-tcp-bbr was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_kmod-tcp-hybla=y' .config || { echo 'kmod-tcp-hybla was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_kmod-tcp-scalable=y' .config || { echo 'kmod-tcp-scalable was not enabled'; exit 1; }
-              grep -q '^CONFIG_PACKAGE_luci-app-mosdns=y' .config || { echo 'luci-app-mosdns was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
               ;;
             *)
@@ -511,24 +500,16 @@ jobs:
           SMARTDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
           SMARTDNS_COMMIT="$(sed -n 's/^PKG_SOURCE_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
 
-          MOSDNS_PKG="$(find_pkg 'mosdns')"
-          MOSDNS_LUCI_PKG="$(find_pkg 'luci-app-mosdns')"
-          MOSDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/mosdns/Makefile 2>/dev/null | tr -d '\r')"
-
-          XRAY_PKG="$(find_pkg 'xray-core')"
+          HOMEPROXY_PKG="$(find_pkg 'luci-app-homeproxy')"
           SINGBOX_PKG="$(find_pkg 'sing-box')"
-          PASSWALL_PKG="$(find_pkg 'luci-app-passwall')"
 
           echo "========================================================="
           echo "📦 核心插件与组件版本明细 (Core Package Versions)"
           echo "========================================================="
           echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG:-未找到包} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
           echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG:-未找到包}"
-          echo "🔹 MosDNS 核心包   : ${MOSDNS_PKG:-未找到包} (Makefile: ${MOSDNS_MAKE_VER:-未知})"
-          echo "🔹 MosDNS LuCI     : ${MOSDNS_LUCI_PKG:-未找到包}"
-          echo "🔹 Xray-core       : ${XRAY_PKG:-未找到包}"
+          echo "🔹 HomeProxy       : ${HOMEPROXY_PKG:-未找到包}"
           echo "🔹 Sing-box        : ${SINGBOX_PKG:-未找到包}"
-          echo "🔹 PassWall        : ${PASSWALL_PKG:-未找到包}"
           echo "========================================================="
 
           {
@@ -544,15 +525,9 @@ jobs:
             echo "  Git Commit   : ${SMARTDNS_COMMIT:-未知}"
             echo "  LuCI 界面包  : ${SMARTDNS_LUCI_PKG:-未找到包}"
             echo ""
-            echo "[MosDNS]"
-            echo "  核心包文件名: ${MOSDNS_PKG:-未找到包}"
-            echo "  Makefile 版本: ${MOSDNS_MAKE_VER:-未知}"
-            echo "  LuCI 界面包  : ${MOSDNS_LUCI_PKG:-未找到包}"
-            echo ""
-            echo "[PassWall / 核心套件]"
-            echo "  Xray-core   : ${XRAY_PKG:-未找到包}"
+            echo "[HomeProxy / Sing-box 核心套件]"
             echo "  Sing-box    : ${SINGBOX_PKG:-未找到包}"
-            echo "  LuCI 界面包  : ${PASSWALL_PKG:-未找到包}"
+            echo "  HomeProxy   : ${HOMEPROXY_PKG:-未找到包}"
             echo "========================================================="
           } > package-versions.txt
 
@@ -562,15 +537,11 @@ jobs:
             echo "| :--- | :--- | :--- |"
             echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
             echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
-            echo "| **MosDNS** | \`${MOSDNS_PKG:-未找到}\` | \`${MOSDNS_MAKE_VER:-未知}\` |"
-            echo "| **MosDNS LuCI** | \`${MOSDNS_LUCI_PKG:-未找到}\` | - |"
-            echo "| **Xray-core** | \`${XRAY_PKG:-未找到}\` | - |"
             echo "| **Sing-box** | \`${SINGBOX_PKG:-未找到}\` | - |"
-            echo "| **PassWall** | \`${PASSWALL_PKG:-未找到}\` | - |"
+            echo "| **HomeProxy** | \`${HOMEPROXY_PKG:-未找到}\` | - |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER:-未知}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"
-          echo "MOSDNS_VER_DISPLAY=${MOSDNS_PKG:-${MOSDNS_MAKE_VER:-未知}}" >> "$GITHUB_ENV"
 
       - name: Upload package versions artifact
         if: env.status == 'success' && !cancelled()

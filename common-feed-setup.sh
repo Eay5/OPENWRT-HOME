@@ -1,19 +1,12 @@
 #!/bin/bash
 
-add_or_replace_feed() {
-    local name="$1"
-    local url="$2"
-
-    sed -i "\|^src-git ${name} |d" feeds.conf.default
-    sed -i "1i src-git ${name} ${url}" feeds.conf.default
-}
-
 setup_common_feeds() {
     echo "Adding custom feeds..."
 
-    # Clean old helloworld feed and conflicting passwall feeds
+    # Clean old helloworld, passwall, mosdns feeds if present
     sed -i '\|^src-git helloworld |d' feeds.conf.default 2>/dev/null || true
     sed -i '\|^src-git passwall |d' feeds.conf.default 2>/dev/null || true
+    sed -i '\|^src-git mosdns |d' feeds.conf.default 2>/dev/null || true
 
     echo "Updated feeds.conf.default:"
     cat feeds.conf.default
@@ -22,21 +15,23 @@ setup_common_feeds() {
 
     echo "Pinning third-party package sources..."
 
-    # 移除 openwrt feeds 自带的过时核心库与旧版 luci-app-passwall，按官方公告由 passwall 官方仓库接管
-    rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,v2ray-plugin,xray-plugin,geoview,shadow-tls,mosdns} 2>/dev/null || true
+    # 彻底清理旧版 passwall 与 mosdns 残留，避免包名和依赖冲突
     rm -rf feeds/luci/applications/luci-app-passwall package/feeds/luci/luci-app-passwall 2>/dev/null || true
-    rm -rf package/passwall-packages package/passwall-luci
-    git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
-    git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall-luci
+    rm -rf feeds/packages/net/{xray-core,chinadns-ng,dns2socks,ipt2socks,microsocks,naiveproxy,shadow-tls,mosdns} 2>/dev/null || true
+    rm -rf feeds/luci/applications/luci-app-mosdns package/feeds/luci/luci-app-mosdns 2>/dev/null || true
+    rm -rf feeds/*/luci-app-mosdns feeds/*/*/luci-app-mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
+    rm -rf feeds/*/mosdns feeds/*/*/mosdns package/feeds/*/mosdns package/feeds/*/*/mosdns 2>/dev/null || true
+    rm -rf package/passwall-packages package/passwall-luci package/mosdns package/v2ray-geodata 2>/dev/null || true
 
-    # 移除 passwall-packages 中与独立源码仓库重叠的重复包，防止编译时报 duplicate package 冲突
-    rm -rf package/passwall-packages/smartdns package/passwall-packages/luci-app-smartdns package/passwall-packages/mosdns package/passwall-packages/luci-app-mosdns package/passwall-packages/v2ray-geodata package/passwall-packages/v2ray-rules-dat 2>/dev/null || true
+    # 拉取 ImmortalWrt 官方最新 HomeProxy 源码
+    rm -rf feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy package/homeproxy 2>/dev/null || true
+    git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
 
     # Clean conflicting feeds and pull official pymumu/smartdns latest source
-    rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns
-    rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns
+    rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
+    rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns 2>/dev/null || true
     rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns feeds/*/*/luci-app-smartdns feeds/*/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/*/luci-app-smartdns package/feeds/*/*/smartdns 2>/dev/null || true
-    rm -rf package/smartdns package/luci-app-smartdns
+    rm -rf package/smartdns package/luci-app-smartdns 2>/dev/null || true
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
 
@@ -63,14 +58,6 @@ setup_common_feeds() {
     sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
     sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
 
-    # Clean conflicting MosDNS and pull sbwml v5 branch with geodata
-    rm -rf feeds/luci/applications/luci-app-mosdns package/feeds/luci/luci-app-mosdns
-    rm -rf feeds/packages/net/mosdns package/feeds/packages/mosdns
-    rm -rf feeds/*/luci-app-mosdns feeds/*/*/luci-app-mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
-    rm -rf feeds/*/mosdns feeds/*/*/mosdns package/feeds/*/mosdns package/feeds/*/*/mosdns package/mosdns package/v2ray-geodata 2>/dev/null || true
-    git clone --depth 1 -b v5 https://github.com/sbwml/luci-app-mosdns package/mosdns
-    git clone --depth 1 https://github.com/sbwml/v2ray-geodata package/v2ray-geodata
-
     # 动态获取 upstream sbwml/packages_lang_golang 最新分支，保持实时编译最新版本
     local golang_branch=""
     golang_branch=$(git ls-remote --heads https://github.com/sbwml/packages_lang_golang.git 2>/dev/null | grep -o 'refs/heads/[0-9]\+\.x' | sed 's#refs/heads/##' | sort -V | tail -n 1 || true)
@@ -91,24 +78,11 @@ setup_common_feeds() {
         fi
     done
 
-    # 动态获取 upstream XTLS/Xray-core 最新 Release 版本，保持实时编译最新核心
-    local xray_tag=""
-    xray_tag=$(git ls-remote --tags --refs https://github.com/XTLS/Xray-core.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
-    if [ -n "${xray_tag}" ]; then
-        for xray_mk in package/passwall-packages/xray-core/Makefile feeds/packages/net/xray-core/Makefile package/xray-core/Makefile; do
-            if [ -f "$xray_mk" ]; then
-                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${xray_tag}/g" "$xray_mk"
-                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$xray_mk"
-            fi
-        done
-        echo "Xray-core tracking upstream latest release: v${xray_tag}"
-    fi
-
-    # 动态获取 upstream SagerNet/sing-box 最新 Release 版本，保持实时编译最新核心
+    # 动态获取 upstream SagerNet/sing-box 最新 Release 版本，保持实时编译 HomeProxy 核心
     local singbox_tag=""
     singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
     if [ -n "${singbox_tag}" ]; then
-        for singbox_mk in package/passwall-packages/sing-box/Makefile feeds/packages/net/sing-box/Makefile package/sing-box/Makefile; do
+        for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile package/sing-box/Makefile; do
             if [ -f "$singbox_mk" ]; then
                 sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
                 sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"
@@ -117,10 +91,6 @@ setup_common_feeds() {
         done
         echo "Sing-box tracking upstream latest release: v${singbox_tag}"
     fi
-
-    # 动态获取 Loyalsoldier/v2ray-rules-dat 实时最新规则库
-    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/v2ray-geodata/Makefile 2>/dev/null || true
-    echo "GeoData rules library tracking upstream latest daily release"
 
     echo "Feed cleanup and pinning completed."
 }

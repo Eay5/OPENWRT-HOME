@@ -177,8 +177,8 @@ detect_performance_defaults() {
 }
 
 detect_proxy_stack() {
-    if config_is_enabled CONFIG_PACKAGE_luci-app-passwall; then
-        echo "PassWall"
+    if config_is_enabled CONFIG_PACKAGE_luci-app-homeproxy; then
+        echo "HomeProxy (Sing-box)"
     else
         echo "not detected"
     fi
@@ -187,8 +187,7 @@ detect_proxy_stack() {
 detect_enabled_apps() {
     local apps=()
 
-    config_is_enabled CONFIG_PACKAGE_luci-app-passwall && apps+=("PassWall")
-    config_is_enabled CONFIG_PACKAGE_luci-app-mosdns && apps+=("MosDNS")
+    config_is_enabled CONFIG_PACKAGE_luci-app-homeproxy && apps+=("HomeProxy")
     config_is_enabled CONFIG_PACKAGE_luci-app-smartdns && apps+=("SmartDNS")
     config_is_enabled CONFIG_PACKAGE_luci-app-turboacc && apps+=("Turbo ACC")
     config_is_enabled CONFIG_PACKAGE_luci-app-sqm && apps+=("SQM (CAKE)")
