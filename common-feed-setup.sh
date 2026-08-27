@@ -27,6 +27,17 @@ setup_common_feeds() {
     rm -rf feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy package/homeproxy 2>/dev/null || true
     git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
 
+    # 补齐 HomeProxy 缺失的 ucode-mod-math 依赖 (修复 generate_client.uc 引入 import { isnan } from 'math' 的报错)
+    if [ -f package/homeproxy/Makefile ]; then
+        if ! grep -q 'ucode-mod-math' package/homeproxy/Makefile; then
+            sed -i '/+ucode-mod-digest/a \\t+ucode-mod-math \\' package/homeproxy/Makefile 2>/dev/null || true
+        fi
+    fi
+
+    # 适配最新版 sing-box (>=1.13.0)：移除已废弃的旧版 inbounds 嗅探字段，彻底解决新版 sing-box FATAL decode config 报错
+    find package/homeproxy -name "generate_client.uc" -exec sed -i '/sniff_override_destination/d' {} + 2>/dev/null || true
+    find package/homeproxy -name "generate_client.uc" -exec sed -i '/\bsniff:/d' {} + 2>/dev/null || true
+
     # Clean conflicting feeds and pull official pymumu/smartdns latest source
     rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
     rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns 2>/dev/null || true
@@ -78,9 +89,17 @@ setup_common_feeds() {
         fi
     done
 
-    # 动态获取 upstream SagerNet/sing-box 最新 Release 版本，保持实时编译 HomeProxy 核心
+    # 动态获取 upstream SagerNet/sing-box 最新正式稳定版本 (严格过滤三段式纯数字标签，100% 排除 alpha/beta/rc 测试版)
     local singbox_tag=""
-    singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null | grep -oE 'refs/tags/v[0-9.]+$' | sed 's#refs/tags/v##' | sort -V | tail -n 1 || true)
+    singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null \
+        | grep -oE 'refs/tags/v[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+        | sed 's#refs/tags/v##' \
+        | sort -V \
+        | tail -n 1 || true)
+
+    # 兜底安全稳定版本
+    singbox_tag="${singbox_tag:-1.13.19}"
+
     if [ -n "${singbox_tag}" ]; then
         for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile package/sing-box/Makefile; do
             if [ -f "$singbox_mk" ]; then
@@ -89,7 +108,7 @@ setup_common_feeds() {
                 sed -i '/GO_PKG_BUILD_VARS/ s/$/ GOEXPERIMENT=none/' "$singbox_mk" 2>/dev/null || true
             fi
         done
-        echo "Sing-box tracking upstream latest release: v${singbox_tag}"
+        echo "Sing-box tracking upstream latest STABLE release: v${singbox_tag}"
     fi
 
     echo "Feed cleanup and pinning completed."

@@ -21,6 +21,13 @@ verify_proxy_stack() {
         exit 1
     fi
 
+    if grep -q '^CONFIG_PACKAGE_ucode-mod-math=y' .config; then
+        echo "ucode-mod-math enabled in .config"
+    else
+        echo "ERROR: ucode-mod-math is disabled in .config (required by HomeProxy)"
+        exit 1
+    fi
+
     if [ -d "package/homeproxy" ] || [ -d "feeds/luci/applications/luci-app-homeproxy" ] || [ -d "package/feeds/luci/luci-app-homeproxy" ]; then
         echo "HomeProxy package source verified"
     else
