@@ -17,7 +17,6 @@ setup_common_feeds() {
 
     # 彻底清理旧版 passwall 与 mosdns 残留，避免包名和依赖冲突
     rm -rf feeds/luci/applications/luci-app-passwall package/feeds/luci/luci-app-passwall 2>/dev/null || true
-    rm -rf feeds/packages/net/{xray-core,chinadns-ng,dns2socks,ipt2socks,microsocks,naiveproxy,shadow-tls,mosdns} 2>/dev/null || true
     rm -rf feeds/luci/applications/luci-app-mosdns package/feeds/luci/luci-app-mosdns 2>/dev/null || true
     rm -rf feeds/*/luci-app-mosdns feeds/*/*/luci-app-mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
     rm -rf feeds/*/mosdns feeds/*/*/mosdns package/feeds/*/mosdns package/feeds/*/*/mosdns 2>/dev/null || true
@@ -27,10 +26,11 @@ setup_common_feeds() {
     rm -rf feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy package/homeproxy 2>/dev/null || true
     git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
 
-    # 补齐 HomeProxy 缺失的 ucode-mod-math 依赖 (修复 generate_client.uc 引入 import { isnan } from 'math' 的报错)
+    # 修复 HomeProxy Makefile 依赖与路径 (补齐缺失的 ucode-mod-math 依赖，并保证 PKG_NAME 结构完整)
     if [ -f package/homeproxy/Makefile ]; then
+        sed -i 's|include \.\./\.\./luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|g' package/homeproxy/Makefile 2>/dev/null || true
         if ! grep -q 'ucode-mod-math' package/homeproxy/Makefile; then
-            sed -i '/+ucode-mod-digest/a \\t+ucode-mod-math \\' package/homeproxy/Makefile 2>/dev/null || true
+            sed -i 's/+ucode-mod-digest.*$/+ucode-mod-digest \\\n\t+ucode-mod-math/' package/homeproxy/Makefile 2>/dev/null || true
         fi
     fi
 

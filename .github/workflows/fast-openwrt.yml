@@ -115,6 +115,7 @@ jobs:
           "$GITHUB_WORKSPACE/${{ steps.target.outputs.p1_sh }}"
           ./scripts/feeds install -a -f
           rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true
+          rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy package/feeds/*/*/luci-app-homeproxy 2>/dev/null || true
           rm -rf package/feeds/packages/mosdns package/feeds/luci/luci-app-mosdns package/feeds/*/mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
 
       - name: Load custom config & sync

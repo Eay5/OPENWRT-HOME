@@ -216,6 +216,11 @@ jobs:
             rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true
           fi
 
+          if [ -f "package/homeproxy/Makefile" ] || [ -d "package/homeproxy" ]; then
+            echo "Using locally pinned HomeProxy packages from package/."
+            rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy package/feeds/*/*/luci-app-homeproxy 2>/dev/null || true
+          fi
+
           if [ -d "package/mosdns" ] || [ -f "package/mosdns/Makefile" ]; then
             echo "Using locally pinned MosDNS packages from package/."
             rm -rf package/feeds/packages/mosdns package/feeds/luci/luci-app-mosdns package/feeds/*/mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
