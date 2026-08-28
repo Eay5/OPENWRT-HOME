@@ -112,7 +112,25 @@ load_tcp_congestion_modules() {
 
 # 调整网络栈参数，解决物理机高 PPS 或多队列网卡下包处理预算偏小的问题。
 apply_sysctl_tweaks() {
+	local hash_file
+
 	load_tcp_congestion_modules
+
+	# 调大系统全局与进程打开文件句柄数限制，杜绝高并发代理/DNS丢连接
+	sysctl -w fs.file-max=2097152 >/dev/null 2>&1 || true
+	sysctl -w fs.nr_open=2097152 >/dev/null 2>&1 || true
+	ulimit -n 1048576 2>/dev/null || true
+
+	# 调大 Conntrack Hash 桶深至 262144 (对应 104 万最大连接，保证 1:4 黄金哈希命中率，消除 CPU 查表瓶颈)
+	for hash_file in /sys/module/nf_conntrack/parameters/hashsize /proc/sys/net/netfilter/nf_conntrack_buckets; do
+		[ -f "$hash_file" ] || continue
+		echo 262144 >"$hash_file" 2>/dev/null || true
+	done
+
+	# 调大 ARP / 邻居表容量，彻底防止大局域网/多设备/VM/容器环境下的邻居表溢出丢包
+	sysctl -w net.ipv4.neigh.default.gc_thresh1=2048 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.neigh.default.gc_thresh2=4096 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.neigh.default.gc_thresh3=8192 >/dev/null 2>&1 || true
 
 	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
 	sysctl -w net.core.somaxconn=8192 >/dev/null 2>&1 || true
@@ -123,7 +141,7 @@ apply_sysctl_tweaks() {
 	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_notsent_lowat=16384 >/dev/null 2>&1 || true
-	sysctl -w net.ipv4.tcp_max_syn_backlog=8192 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_syn_backlog=16384 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_keepalive_time=300 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_max_backlog=16384 >/dev/null 2>&1 || true
@@ -171,6 +189,9 @@ apply_nic_hardware_tuning() {
 
 		# 开启硬件卸载与 UDP GRO 加速
 		ethtool -K "$dev" rx on tx on tso on gso on gro on rx-udp-gro-forwarding on >/dev/null 2>&1 || true
+
+		# 开启自适应中断合并 (Adaptive IRQ Coalescing)，在高吞吐时大幅降低软中断 CPU 占用
+		ethtool -C "$dev" adaptive-rx on adaptive-tx on >/dev/null 2>&1 || true
 	done
 }
 

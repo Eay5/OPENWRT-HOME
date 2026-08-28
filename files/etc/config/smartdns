@@ -13,7 +13,9 @@ config smartdns
 	option serve_expired '1'
 	option serve_expired_ttl '86400'
 	option serve_expired_reply_ttl '3'
-	option cache_size '32768'
+	option speed_check_mode 'tcp:443,tcp:80,ping'
+	option cache_size '131072'
+	option cache_file '/tmp/smartdns.cache'
 	option cache_persist '1'
 	option resolve_local_hostnames '1'
 	option force_https_soa '1'
@@ -67,7 +69,7 @@ config server
 	option blacklist_ip '0'
 
 # ==============================================================================
-# 2. 腾讯公共 DNS (DNSPod - 腾讯/微信/王者荣耀生态最佳)
+# 2. 腾讯公共 DNS (DNSPod - 腾讯/微信/王者荣耀生态最佳，含 DoT 加密防劫持)
 # ==============================================================================
 config server
 	option enabled '1'
@@ -93,8 +95,17 @@ config server
 	option server_group 'china'
 	option blacklist_ip '0'
 
+config server
+	option enabled '1'
+	option name 'Tencent-DoT'
+	option type 'tls'
+	option ip '1.12.12.12'
+	option port '853'
+	option server_group 'china'
+	option blacklist_ip '0'
+
 # ==============================================================================
-# 3. 阿里公共 DNS (AliDNS - 淘宝/优酷/高德/阿里云生态最佳)
+# 3. 阿里公共 DNS (AliDNS - 淘宝/优酷/高德/阿里云生态最佳，含 DoT 加密防劫持)
 # ==============================================================================
 config server
 	option enabled '1'
@@ -117,6 +128,15 @@ config server
 	option name 'AliDNS-TCP'
 	option type 'tcp'
 	option ip '223.5.5.5'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'AliDNS-DoT'
+	option type 'tls'
+	option ip '223.5.5.5'
+	option port '853'
 	option server_group 'china'
 	option blacklist_ip '0'
 

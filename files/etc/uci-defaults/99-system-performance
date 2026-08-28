@@ -49,6 +49,7 @@ net.ipv4.tcp_slow_start_after_idle = 0
 net.ipv4.tcp_notsent_lowat = 16384
 net.ipv4.tcp_mtu_probing = 1
 net.ipv4.tcp_adv_win_scale = 1
+net.ipv4.tcp_max_syn_backlog = 16384
 
 # 3. Quick socket reuse & Keepalive cleanup (PT/BT & Proxy Connection Reclaim)
 net.ipv4.tcp_tw_reuse = 1
@@ -80,7 +81,14 @@ net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
 net.netfilter.nf_conntrack_udp_timeout = 30
 net.netfilter.nf_conntrack_udp_timeout_stream = 120
 
-# 6. Virtual Memory, VFS & DMA Atomic Reservation (Prevents packet drops during high bursts)
+# 6. ARP / Neighbor Table Scaling (Prevents overflow in VM/Docker/Dense LAN)
+net.ipv4.neigh.default.gc_thresh1 = 2048
+net.ipv4.neigh.default.gc_thresh2 = 4096
+net.ipv4.neigh.default.gc_thresh3 = 8192
+
+# 7. File Descriptors & Memory / DMA Tuning (Prevents packet drops during high bursts)
+fs.file-max = 2097152
+fs.nr_open = 2097152
 vm.swappiness = 10
 vm.vfs_cache_pressure = 50
 vm.min_free_kbytes = 65536
@@ -89,8 +97,11 @@ vm.dirty_background_ratio = 5
 EOF
 
 # 7. HomeProxy & Bypass Gateway Default Tuning
-# Dnsmasq: 允许作为旁路由 DNS 服务器，关闭 localservice 丢包限制，过滤 IPv6 AAAA 记录，增大 DNS 缓存
+# Dnsmasq: 彻底接驳 SmartDNS (127.0.0.1#6053)，关闭 localservice 丢包限制，过滤 IPv6 AAAA 记录，增大 DNS 缓存
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
+	uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
+	uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#6053'
+	uci -q set dhcp.@dnsmasq[0].noresolv='1'
 	uci -q set dhcp.@dnsmasq[0].localservice='0'
 	uci -q set dhcp.@dnsmasq[0].rebind_protection='0'
 	uci -q set dhcp.@dnsmasq[0].filter_aaaa='1'
@@ -110,10 +121,10 @@ if uci -q get network.wan6 >/dev/null 2>&1; then
 	uci -q commit network
 fi
 
-# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、防污染 DNS）
+# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、防污染 DNS，国内 DNS 复用 SmartDNS 6053 毫秒级缓存）
 if uci -q get homeproxy.config >/dev/null 2>&1; then
 	uci -q set homeproxy.config.dns_server='8.8.8.8'
-	uci -q set homeproxy.config.china_dns_server='223.5.5.5'
+	uci -q set homeproxy.config.china_dns_server='127.0.0.1:6053'
 	uci -q set homeproxy.config.routing_mode='bypass_mainland_china'
 	uci -q set homeproxy.config.proxy_mode='tun'
 	uci -q set homeproxy.config.routing_port='all'
@@ -131,7 +142,7 @@ if uci -q get firewall.lan >/dev/null 2>&1; then
 	uci -q commit firewall
 fi
 
-# 8. SmartDNS Performance Tuning
+# 8. SmartDNS Full-RAM Performance Tuning (13.1万条纯内存极速响应)
 if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].enabled='1'
 	uci -q set smartdns.@smartdns[0].port='6053'
@@ -139,8 +150,21 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].dualstack_ip_selection='1'
 	uci -q set smartdns.@smartdns[0].prefetch_domain='1'
 	uci -q set smartdns.@smartdns[0].serve_expired='1'
-	uci -q set smartdns.@smartdns[0].cache_size='32768'
+	uci -q set smartdns.@smartdns[0].serve_expired_ttl='86400'
+	uci -q set smartdns.@smartdns[0].serve_expired_reply_ttl='3'
+	uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80,ping'
+	uci -q set smartdns.@smartdns[0].cache_size='131072'
+	uci -q set smartdns.@smartdns[0].cache_file='/tmp/smartdns.cache'
+	uci -q set smartdns.@smartdns[0].cache_persist='1'
+	uci -q set smartdns.@smartdns[0].force_https_soa='1'
+	uci -q set smartdns.@smartdns[0].rr_ttl_min='300'
+	uci -q set smartdns.@smartdns[0].rr_ttl_max='86400'
 	uci -q commit smartdns
+fi
+
+# 9. 开启开机热点域名内存预热服务 (DNS Pre-warming)
+if [ -x /etc/init.d/dns-preload ]; then
+	/etc/init.d/dns-preload enable >/dev/null 2>&1 || true
 fi
 
 # Clean non-existent snapshot package repos (helloworld, video, passwall, mosdns)
