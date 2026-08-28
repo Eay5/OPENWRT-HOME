@@ -94,6 +94,11 @@ vm.vfs_cache_pressure = 50
 vm.min_free_kbytes = 65536
 vm.dirty_ratio = 10
 vm.dirty_background_ratio = 5
+
+# 8. IPv6 Global Disable (全局彻底禁用 IPv6，规避双栈 DNS 污染与旁路泄露)
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
 
 # 7. HomeProxy & Bypass Gateway Default Tuning
@@ -109,22 +114,47 @@ if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q commit dhcp
 fi
 
-# 禁用 LAN 口 IPv6 路由通告 (RA) 与 DHCPv6 分发，禁用 WAN6（纯 IPv4 极速环境，彻底杜绝 IPv6 旁路干扰）
+# 全局彻底禁用 IPv6 网络接口与 ULA 前缀 (纯 IPv4 极速环境，彻底杜绝 IPv6 旁路干扰)
+uci -q del network.globals.ula_prefix 2>/dev/null || true
+uci -q del network.wan6 2>/dev/null || true
+if uci -q get network.lan >/dev/null 2>&1; then
+	uci -q set network.lan.ipv6='0'
+	uci -q del network.lan.ip6assign 2>/dev/null || true
+	uci -q del network.lan.ip6hint 2>/dev/null || true
+	uci -q set network.lan.delegate='0'
+fi
+if uci -q get network.wan >/dev/null 2>&1; then
+	uci -q set network.wan.ipv6='0'
+	uci -q set network.wan.delegate='0'
+fi
+uci -q commit network
+
+# 禁用 LAN / WAN 口 IPv6 路由通告 (RA) 与 DHCPv6 分发，禁用 odhcpd 服务
 if uci -q get dhcp.lan >/dev/null 2>&1; then
 	uci -q set dhcp.lan.dhcpv6='disabled'
 	uci -q set dhcp.lan.ra='disabled'
 	uci -q set dhcp.lan.ndp='disabled'
-	uci -q commit dhcp
+	uci -q del dhcp.lan.dns 2>/dev/null || true
 fi
-if uci -q get network.wan6 >/dev/null 2>&1; then
-	uci -q set network.wan6.disabled='1'
-	uci -q commit network
+if uci -q get dhcp.wan >/dev/null 2>&1; then
+	uci -q set dhcp.wan.dhcpv6='disabled'
+	uci -q set dhcp.wan.ra='disabled'
+	uci -q set dhcp.wan.ndp='disabled'
+fi
+if uci -q get dhcp.odhcpd >/dev/null 2>&1; then
+	uci -q set dhcp.odhcpd.maindhcp='0'
+fi
+uci -q commit dhcp
+
+if [ -x /etc/init.d/odhcpd ]; then
+	/etc/init.d/odhcpd disable >/dev/null 2>&1 || true
+	/etc/init.d/odhcpd stop >/dev/null 2>&1 || true
 fi
 
-# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、防污染 DNS，国内 DNS 复用 SmartDNS 6053 毫秒级缓存）
+# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、防污染 DNS，国内 DNS 接驳 SmartDNS UDP 6053 毫秒级极速缓存）
 if uci -q get homeproxy.config >/dev/null 2>&1; then
 	uci -q set homeproxy.config.dns_server='8.8.8.8'
-	uci -q set homeproxy.config.china_dns_server='127.0.0.1:6053'
+	uci -q set homeproxy.config.china_dns_server='udp://127.0.0.1:6053'
 	uci -q set homeproxy.config.routing_mode='bypass_mainland_china'
 	uci -q set homeproxy.config.proxy_mode='tun'
 	uci -q set homeproxy.config.routing_port='all'
@@ -142,12 +172,14 @@ if uci -q get firewall.lan >/dev/null 2>&1; then
 	uci -q commit firewall
 fi
 
-# 8. SmartDNS Full-RAM Performance Tuning (13.1万条纯内存极速响应)
+# 8. SmartDNS Full-RAM Performance Tuning (13.1万条纯内存极速响应，彻底关闭 IPv6 与双栈测速)
 if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].enabled='1'
 	uci -q set smartdns.@smartdns[0].port='6053'
 	uci -q set smartdns.@smartdns[0].tcp_server='1'
-	uci -q set smartdns.@smartdns[0].dualstack_ip_selection='1'
+	uci -q set smartdns.@smartdns[0].ipv6_server='0'
+	uci -q set smartdns.@smartdns[0].dualstack_ip_selection='0'
+	uci -q set smartdns.@smartdns[0].force_aaaa_soa='1'
 	uci -q set smartdns.@smartdns[0].prefetch_domain='1'
 	uci -q set smartdns.@smartdns[0].serve_expired='1'
 	uci -q set smartdns.@smartdns[0].serve_expired_ttl='86400'
@@ -159,6 +191,10 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].force_https_soa='1'
 	uci -q set smartdns.@smartdns[0].rr_ttl_min='300'
 	uci -q set smartdns.@smartdns[0].rr_ttl_max='86400'
+	uci -q set smartdns.@smartdns[0].seconddns_enabled='0'
+	uci -q del smartdns.@smartdns[0].seconddns_port 2>/dev/null || true
+	uci -q del smartdns.@smartdns[0].seconddns_tcp_server 2>/dev/null || true
+	uci -q del smartdns.@smartdns[0].seconddns_force_https_soa 2>/dev/null || true
 	uci -q commit smartdns
 fi
 

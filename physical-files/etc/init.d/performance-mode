@@ -150,6 +150,11 @@ apply_sysctl_tweaks() {
 	sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
 	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
 	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
+
+	# 全局彻底禁用 IPv6
+	sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv6.conf.lo.disable_ipv6=1 >/dev/null 2>&1 || true
 }
 
 # 提前把默认 IRQ 亲和范围放开到全部核心，避免多队列网卡的中断长时间偏在 CPU0。
