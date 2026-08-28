@@ -17,104 +17,21 @@ start() {
 		done
 
 		# ======================================================================
-		# 开发者生态 & 常用热点核心域名清单（开机纯内存秒级注水）
+		# 国内高频核心域名 & 镜像加速站清单（开机纯内存秒级注水，100% 纯净直连）
 		# ======================================================================
 
-		# 1. GitHub & 源码仓库生态
-		github_domains="github.com \
-		api.github.com \
-		raw.githubusercontent.com \
-		objects.githubusercontent.com \
-		github.githubassets.com \
-		avatars.githubusercontent.com \
-		codeload.github.com \
-		github-releases.githubusercontent.com \
-		github-cloud.s3.amazonaws.com \
-		gist.github.com \
-		gitee.com \
-		gitlab.com"
-
-		# 2. Node.js / 前端 / 包管理器 / CDN
-		nodejs_domains="nodejs.org \
-		npmjs.com \
-		registry.npmjs.org \
+		# 1. 常用国内镜像源与代码托管
+		mirror_domains="gitee.com \
 		registry.npmmirror.com \
-		yarnpkg.com \
-		pnpm.io \
-		deno.land \
-		bun.sh \
-		jsdelivr.net \
-		cdn.jsdelivr.net \
-		unpkg.com \
-		cdnjs.cloudflare.com"
-
-		# 3. Unity & 游戏开发引擎 / 资源商店
-		unity_domains="unity.com \
-		unity3d.com \
-		assetstore.unity.com \
-		packages.unity.com \
-		services.unity.com \
-		api.unity.com \
-		identity.unity.com \
-		license.unity3d.com \
-		download.unity3d.com \
-		unrealengine.com \
-		epicgames.com"
-
-		# 4. Python & AI 深度学习生态 (PyPI / Conda / PyTorch / 清华阿里镜像源)
-		python_domains="python.org \
-		www.python.org \
-		docs.python.org \
-		pypi.org \
-		files.pythonhosted.org \
-		pypi.python.org \
-		pypi.tuna.tsinghua.edu.cn \
 		mirrors.tuna.tsinghua.edu.cn \
 		mirrors.aliyun.com \
 		mirrors.ustc.edu.cn \
 		pypi.doubanio.com \
-		anaconda.org \
-		conda.anaconda.org \
-		repo.anaconda.com \
-		pytorch.org \
-		download.pytorch.org \
-		tensorflow.org \
-		huggingface.co"
-
-		# 5. Docker & 容器镜像仓库生态 (Docker Hub / GHCR / GCR / K8s / 镜像加速)
-		docker_domains="docker.com \
-		www.docker.com \
-		docker.io \
-		hub.docker.com \
-		registry-1.docker.io \
-		production.cloudflare.docker.com \
-		auth.docker.io \
-		registry.docker.io \
-		ghcr.io \
-		pkg-containers.githubusercontent.com \
-		gcr.io \
-		k8s.gcr.io \
-		registry.k8s.io \
-		quay.io \
-		mcr.microsoft.com \
-		dockerproxy.net \
+		goproxy.cn \
 		dockerproxy.cn \
 		mirror.baidubce.com"
 
-		# 6. 其他主流编程语言与开发社区 (Go / Rust / StackOverflow / MDN)
-		devtools_domains="crates.io \
-		rust-lang.org \
-		golang.org \
-		pkg.go.dev \
-		goproxy.cn \
-		goproxy.io \
-		stackoverflow.com \
-		developer.mozilla.org \
-		v2ex.com \
-		juejin.cn \
-		segmentfault.com"
-
-		# 7. 国内高频生活与主流云生态 (微信/阿里/京东/抖音/B站/百度/苹果/微软)
+		# 2. 国内高频生活与主流云生态 (微信/阿里/京东/抖音/B站/百度/网易/美团/苹果/微软)
 		daily_domains="qq.com weixin.qq.com wx.qq.com qpic.cn qlogo.cn gtimg.cn \
 		taobao.com alipay.com tmall.com alicdn.com aliyun.com \
 		jd.com 360buyimg.com jcloud.com \
@@ -125,9 +42,10 @@ start() {
 		sina.com.cn weibo.com xiaohongshu.com \
 		meituan.com dianping.com ele.me \
 		apple.com icloud.com apple-dns.net \
-		microsoft.com live.com office.com"
+		microsoft.com live.com office.com \
+		v2ex.com juejin.cn segmentfault.com"
 
-		all_domains="${github_domains} ${nodejs_domains} ${unity_domains} ${python_domains} ${docker_domains} ${devtools_domains} ${daily_domains}"
+		all_domains="${mirror_domains} ${daily_domains}"
 
 		# 并发静默预热，将解析结果直接注满 SmartDNS 纯内存 Hash 表
 		for domain in $all_domains; do
