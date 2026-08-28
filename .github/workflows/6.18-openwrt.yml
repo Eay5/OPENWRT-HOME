@@ -13,7 +13,10 @@ on:
         required: false
         default: "ubuntu-24.04"
   schedule:
-    - cron: "0 19 * * *"
+    - cron: "0 18 * * *" # 北京时间 每天凌晨 02:00 (UTC 18:00)
+    - cron: "0 0 * * *"  # 北京时间 每天上午 08:00 (UTC 00:00)
+    - cron: "0 4 * * *"  # 北京时间 每天中午 12:00 (UTC 04:00)
+    - cron: "0 6 * * *"  # 北京时间 每天下午 14:00 (UTC 06:00)
   watch:
     types:
       - started
