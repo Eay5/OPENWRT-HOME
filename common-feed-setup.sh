@@ -60,7 +60,11 @@ setup_common_feeds() {
 
     if [ -n "${smartdns_commit}" ]; then
         sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${smartdns_commit}/g" package/smartdns/Makefile
-        [ -n "${smartdns_ver}" ] && sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
+        if [ -n "${smartdns_ver}" ]; then
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
+        fi
         echo "SmartDNS tracking upstream master: Commit=${smartdns_commit}, Version=${smartdns_ver:-latest}"
     fi
 
