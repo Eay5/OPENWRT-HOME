@@ -102,10 +102,10 @@ net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
 
 # 7. HomeProxy & Bypass Gateway Default Tuning
-# Dnsmasq: 接驳 SmartDNS (127.0.0.1#6053)，保持动态 min_cache_ttl 为 0，保留 WAN 上游容灾，关闭 localservice 丢包限制，过滤 IPv6 AAAA 记录，设置 10000 缓存
+# Dnsmasq: 接驳 HomeProxy Sing-Box DNS (127.0.0.1#5333) 实现智能国内外分流，保持动态 min_cache_ttl 为 0，保留 WAN 上游容灾，关闭 localservice 丢包限制，过滤 IPv6 AAAA 记录，设置 10000 缓存
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
-	uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#6053'
+	uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#5333'
 	uci -q del dhcp.@dnsmasq[0].noresolv 2>/dev/null || true
 	uci -q set dhcp.@dnsmasq[0].min_cache_ttl='0'
 	uci -q set dhcp.@dnsmasq[0].localservice='0'
@@ -152,9 +152,9 @@ if [ -x /etc/init.d/odhcpd ]; then
 	/etc/init.d/odhcpd stop >/dev/null 2>&1 || true
 fi
 
-# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、国外 DNS 采用 DoH 防污染加密通道，国内 DNS 接驳 SmartDNS 6053 毫秒级缓存）
+# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、国外 DNS 采用 tcp://8.8.8.8:53，国内 DNS 接驳 SmartDNS 6053 毫秒级缓存）
 if uci -q get homeproxy.config >/dev/null 2>&1; then
-	uci -q set homeproxy.config.dns_server='https://dns.google/dns-query'
+	uci -q set homeproxy.config.dns_server='tcp://8.8.8.8:53'
 	uci -q set homeproxy.config.china_dns_server='udp://127.0.0.1:6053'
 	uci -q set homeproxy.config.routing_mode='bypass_mainland_china'
 	uci -q set homeproxy.config.proxy_mode='tun'
