@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/common-proxy-verification.sh"
 
-target_kernel_series="6.18"
+target_kernel_series="6.12"
 target_default_ip="192.168.0.233"
 target_hostname="EAY"
 

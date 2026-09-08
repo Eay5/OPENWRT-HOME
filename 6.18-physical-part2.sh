@@ -67,6 +67,7 @@ detect_kernel_version() {
     [ -n "$patchver" ] || patchver="$target_kernel_series"
 
     kernel_file="include/kernel-${patchver}"
+    [ ! -f "$kernel_file" ] && kernel_file="target/linux/generic/kernel-${patchver}"
     kernel_pattern="${patchver//./\\.}"
     kernel_version=""
 

@@ -49,12 +49,14 @@
 
 ## 📦 构建版本说明
 
-本仓库通过 GitHub Actions 提供两种针对性优化的构建变体：
+本仓库通过 GitHub Actions 提供两种内核系列、各涵盖虚拟机与物理机优化的构建变体：
 
-| 版本代号 | 目标场景 | 包含核心驱动 / 特性 |
-| :--- | :--- | :--- |
-| **`6.18`** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125)<br>📖 [Unraid 虚拟机直通调优指南](file:///c:/Users/eay/Desktop/OPENWRT-HOME/UNRAID-VM-GUIDE.md) |
-| **`6.18-physical`** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
+| 版本代号 | 内核系列 | 目标场景 | 包含核心驱动 / 特性 |
+| :--- | :--- | :--- | :--- |
+| **`6.18`** | **Linux 6.18** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125)<br>📖 [Unraid 虚拟机直通调优指南](file:///c:/Users/eay/Desktop/OPENWRT-HOME/UNRAID-VM-GUIDE.md) |
+| **`6.18-physical`** | **Linux 6.18** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
+| **`6.12`** | **Linux 6.12 LTS** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | 极致稳定 LTS 内核基线，搭配全套 Virtio 虚拟化驱动与 Intel/Realtek 常见网卡驱动 |
+| **`6.12-physical`** | **Linux 6.12 LTS** | **物理机 / 工控机直装** | 极致稳定 LTS 内核基线，搭配 Intel CPU 微码、硬件监控、Intel/Realtek 2.5G 网卡驱动及多网口首启自动划分 |
 
 ---
 
@@ -105,7 +107,7 @@ apk info <package_name>
 1. Fork 本仓库并进入 GitHub 仓库页面；
 2. 导航至 **Actions** 标签页；
 3. 选择 **Fast ImmortalWrt Build (Release Toolchain Cache)** 工作流；
-4. 点击右侧 **Run workflow** 下拉菜单，选择目标版本（`6.18` 或 `6.18-physical`），点击运行即可全自动输出固件。
+4. 点击右侧 **Run workflow** 下拉菜单，选择目标版本（`6.18`、`6.18-physical`、`6.12` 或 `6.12-physical`），点击运行即可全自动输出固件。
 
 ---
 

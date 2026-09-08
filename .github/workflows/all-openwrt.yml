@@ -31,6 +31,8 @@ jobs:
           workflows=(
             "6.18-openwrt.yml"
             "6.18-physical-openwrt.yml"
+            "6.12-openwrt.yml"
+            "6.12-physical-openwrt.yml"
           )
 
           runner_args=()
@@ -53,3 +55,5 @@ jobs:
           echo "Triggered workflows:"
           echo "  - 6.18-openwrt.yml"
           echo "  - 6.18-physical-openwrt.yml"
+          echo "  - 6.12-openwrt.yml"
+          echo "  - 6.12-physical-openwrt.yml"

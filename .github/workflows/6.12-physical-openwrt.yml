@@ -1,0 +1,42 @@
+name: Build 6.12 ImmortalWrt (x86 Physical + Intel/RTL 2.5G)
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: SSH connection to Actions
+        required: false
+        default: "false"
+      runner:
+        description: Runner label, for example ubuntu-24.04 or self-hosted
+        required: false
+        default: "ubuntu-24.04"
+  # 自动触发入口：错开触发，避开整点拥堵与常规版构建抢占。
+  schedule:
+    - cron: "0 18 * * *" # 北京时间 每天凌晨 02:00 (UTC 18:00)
+    - cron: "0 0 * * *"  # 北京时间 每天上午 08:00 (UTC 00:00)
+    - cron: "0 4 * * *"  # 北京时间 每天中午 12:00 (UTC 04:00)
+    - cron: "0 6 * * *"  # 北京时间 每天下午 14:00 (UTC 06:00)
+    - cron: "0 9 * * *"  # 北京时间 每天下午 17:00 (UTC 09:00)
+  watch:
+    types:
+      - started
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
+      enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
+      config_file: 6.12-physical.config
+      diy_p1_sh: 6.12-part1.sh
+      diy_p2_sh: 6.12-physical-part2.sh
+      kernel_series: "6.12"
+      firmware_artifact_prefix: ImmortalWrt-6.12-x86-physical-intel-rtl25g
+      bin_artifact_prefix: ImmortalWrt_bin
+      release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
+      extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns
+      config_sync_mode: homeproxy
+      repo_branch: openwrt-25.12
