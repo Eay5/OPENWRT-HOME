@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/common-proxy-verification.sh"
 
 target_kernel_series="6.18"
-target_default_ip="192.168.0.133"
+target_default_ip="192.168.0.233"
 target_hostname="EAY"
 
 # 安装 physical 构建专用覆盖文件。
@@ -229,15 +229,13 @@ detect_hardware_management() {
     join_by_comma "${items[@]}"
 }
 
-# 检测物理机磁盘管理能力，直接对应 SMART、硬盘温度和休眠配置页面。
+# 检测物理机磁盘管理能力，直接对应 SMART 和硬盘温度页面。
 detect_storage_management() {
     local items=()
 
     config_is_enabled CONFIG_PACKAGE_smartmontools && items+=("SMART")
     config_is_enabled CONFIG_PACKAGE_smartmontools-drivedb && items+=("SMART drive DB")
     config_is_enabled CONFIG_PACKAGE_kmod-hwmon-drivetemp && items+=("drive temperature")
-    config_is_enabled CONFIG_PACKAGE_hd-idle && items+=("hd-idle")
-    config_is_enabled CONFIG_PACKAGE_luci-app-hd-idle && items+=("LuCI hd-idle")
 
     join_by_comma "${items[@]}"
 }
@@ -245,7 +243,7 @@ detect_storage_management() {
 # 检测首启网口划分规则是否已经注入到 physical 固件覆盖层。
 detect_firstboot_network_layout() {
     if [ -f files/etc/board.d/99-default_network ]; then
-        echo "single NIC -> LAN DHCP; multi NIC -> eth0 WAN + others LAN"
+        echo "single NIC -> LAN static (${target_default_ip}); multi NIC -> eth0 WAN + others LAN"
     else
         echo "not installed"
     fi
@@ -263,6 +261,13 @@ sed -i "s/hostname='ImmortalWrt'/hostname='${target_hostname}'/g" package/base-f
 sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
 sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" feeds/luci/modules/luci-base/root/etc/config/luci 2>/dev/null || true
 sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" package/feeds/luci/luci-base/root/etc/config/luci 2>/dev/null || true
+
+# 彻底移除 hd-idle 硬盘休眠相关包，禁止编译并禁止安装其 apk
+sed -i '/CONFIG_PACKAGE_.*hd-idle/d' .config 2>/dev/null || true
+echo "# CONFIG_PACKAGE_hd-idle is not set" >> .config
+echo "# CONFIG_PACKAGE_luci-app-hd-idle is not set" >> .config
+echo "# CONFIG_PACKAGE_luci-i18n-hd-idle-zh-cn is not set" >> .config
+
 install_physical_overlay_files
 
 echo "Basic settings applied."

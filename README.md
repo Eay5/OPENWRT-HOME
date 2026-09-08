@@ -38,7 +38,7 @@
 
 | 属性 | 默认值 |
 | :--- | :--- |
-| **后台管理地址** | `192.168.0.133` |
+| **后台管理地址** | `192.168.0.233` |
 | **默认主机名** | `EAY` |
 | **登录用户名** | `root` |
 | **登录密码** | `无`（首次登录直接回车即可） |
@@ -54,7 +54,7 @@
 | 版本代号 | 目标场景 | 包含核心驱动 / 特性 |
 | :--- | :--- | :--- |
 | **`6.18`** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125)<br>📖 [Unraid 虚拟机直通调优指南](file:///c:/Users/eay/Desktop/OPENWRT-HOME/UNRAID-VM-GUIDE.md) |
-| **`6.18-physical`** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` + `hd-idle` 硬盘休眠与健康管理、首启多网口智能角色自动划分 |
+| **`6.18-physical`** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
 
 ---
 

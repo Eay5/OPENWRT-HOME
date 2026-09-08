@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # x86 物理机首启网口角色生成规则。
-# 1. 只有一个网口时，把 eth0 作为 LAN，并改成 DHCP，方便旁路由或先接入上级网络。
+# 1. 只有一个网口时，把 eth0 作为 LAN，保留静态 IP (192.168.0.233)。
 # 2. 有多个网口时，把 eth0 作为 WAN，其余 eth* 全部并入 LAN。
 
 . /lib/functions/uci-defaults.sh
@@ -15,7 +15,7 @@ ethnum="$(ls /sys/class/net/ 2>/dev/null | grep -c '^eth[0-9]\+$' || true)"
 [ "${ethnum:-0}" -eq 0 ] && exit 0
 
 if [ "${ethnum}" -eq 1 ]; then
-    ucidef_set_interface_lan 'eth0' 'dhcp'
+    ucidef_set_interface_lan 'eth0'
 else
     [ -d /sys/class/net/eth0 ] && ucidef_set_interface_wan 'eth0'
 

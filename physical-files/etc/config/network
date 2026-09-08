@@ -1,0 +1,26 @@
+
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config globals 'globals'
+	option dhcp_default_duid '000431fbfe7d97915347a107a73ffac334ad'
+	option packet_steering '1'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth0'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ipaddr '192.168.0.233'
+	option netmask '255.255.255.0'
+	option gateway '192.168.0.1'
+	list dns '192.168.0.1'
+	option ipv6 '0'
+	option delegate '0'
+
+
