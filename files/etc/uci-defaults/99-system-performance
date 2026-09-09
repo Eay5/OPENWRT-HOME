@@ -8,14 +8,8 @@ fi
 
 uci -q set network.globals.packet_steering='1'
 
-# 确保 LAN 接口固定为静态 IP 192.168.0.233，配置默认网关与 DNS，并彻底关闭 IPv6
+# 彻底关闭 IPv6
 if uci -q get network.lan >/dev/null 2>&1; then
-	uci -q set network.lan.proto='static'
-	uci -q set network.lan.ipaddr='192.168.0.233'
-	uci -q set network.lan.netmask='255.255.255.0'
-	uci -q set network.lan.gateway='192.168.0.1'
-	uci -q del network.lan.dns 2>/dev/null || true
-	uci -q add_list network.lan.dns='192.168.0.1'
 	uci -q set network.lan.ipv6='0'
 	uci -q set network.lan.delegate='0'
 fi
