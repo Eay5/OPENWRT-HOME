@@ -1,6 +1,7 @@
 #!/bin/sh
 
-set -eu
+# OpenWrt uci-defaults 首次启动配置脚本
+# 注意：避免使用 set -e / set -u，防止个别非关键配置异常中断脚本执行导致系统每次重启都重复执行该脚本。
 
 if ! uci -q show network.globals >/dev/null 2>&1; then
 	uci set network.globals='globals'
@@ -48,10 +49,10 @@ if [ -x /etc/init.d/irqbalance ]; then
 	/etc/init.d/irqbalance restart >/dev/null 2>&1 || /etc/init.d/irqbalance start >/dev/null 2>&1 || true
 fi
 
-# Apply kernel 6.18 sysctl performance optimizations
+# Apply kernel 6.12 / 6.18 sysctl performance optimizations
 cat << 'EOF' > /etc/sysctl.d/99-performance.conf
 # ==============================================================================
-# Linux 6.18 Kernel & Soft Router Performance Tuning
+# Linux 6.12 / 6.18 Kernel & Soft Router Performance Tuning
 # ==============================================================================
 
 # 1. TCP BBR & Queue discipline

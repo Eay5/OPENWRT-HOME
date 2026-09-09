@@ -63,7 +63,10 @@ jobs:
         run: |
           echo "=== 1. Freeing disk space ==="
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache
-          sudo docker image prune --all --force 2>/dev/null || true
+          sudo rm -rf /usr/local/share/powershell /usr/share/swift /opt/microsoft /usr/lib/jvm
+          sudo systemctl stop docker 2>/dev/null || true
+          sudo rm -rf /var/lib/docker 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
           df -hT
 
           echo "=== 2. Creating 6G Swap space to avoid GCC 14 OOM ==="

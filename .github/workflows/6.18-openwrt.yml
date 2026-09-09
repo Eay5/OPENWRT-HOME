@@ -38,3 +38,4 @@ jobs:
       release_title_template: ImmortalWrt Linux-{{kernel}} X86-64 Build {{build_time}}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns
       config_sync_mode: homeproxy
+      repo_branch: master

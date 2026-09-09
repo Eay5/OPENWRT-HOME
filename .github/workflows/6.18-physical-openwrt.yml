@@ -39,3 +39,4 @@ jobs:
       release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns
       config_sync_mode: homeproxy
+      repo_branch: master

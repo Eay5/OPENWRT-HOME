@@ -137,7 +137,10 @@ jobs:
         run: |
           echo "=== 1. Freeing disk space ==="
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache
-          sudo docker image prune --all --force 2>/dev/null || true
+          sudo rm -rf /usr/local/share/powershell /usr/share/swift /opt/microsoft /usr/lib/jvm
+          sudo systemctl stop docker 2>/dev/null || true
+          sudo rm -rf /var/lib/docker 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
           df -hT
 
           echo "=== 2. Creating 6G Swap space to avoid GCC 14 OOM ==="
@@ -391,6 +394,10 @@ jobs:
             make toolchain/install -j1 V=s 2>&1 | tee -a toolchain_install.log
           fi
 
+          echo "Freeing disk space consumed by intermediate toolchain objects..."
+          find build_dir/toolchain-* -type f \( -name "*.o" -o -name "*.la" -o -name "*.lo" \) -delete 2>/dev/null || true
+          df -hT
+
       - name: Upload toolchain logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -429,7 +436,11 @@ jobs:
       - name: Compile firmware
         id: compile
         run: |
+          set -o pipefail
           cd openwrt
+          echo "=== Pre-compile Disk Space ==="
+          df -hT .
+
           echo "Starting build with $(nproc) threads"
           if make -j"$(nproc)" V=s 2>&1 | tee build.log; then
             echo "Build succeeded"
@@ -437,8 +448,13 @@ jobs:
             echo "Single-thread build retry succeeded"
           else
             echo "Build failed"
+            echo "=== Disk Space on Failure ==="
+            df -hT .
             exit 1
           fi
+
+          echo "=== Post-compile Disk Space ==="
+          df -hT .
 
           echo "Checking generated firmware:"
           ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
