@@ -52,7 +52,7 @@
 
 ## 三、PCIe 网卡直通配置流程
 
-若准备将独立网卡（如 Intel i225/i226 2.5G、Intel i210/i350 千兆、Realtek 8125 或万兆网卡）完全直通给虚拟机：
+若准备将独立网卡（如 Intel i225/i226 2.5G、Intel i210/i350 千兆、Realtek 8125/8126 (5G) 或万兆网卡）完全直通给虚拟机：
 
 ### 1. 开启 IOMMU 与 PCIe ACS 覆盖（若单口无法独立勾选）
 1. 进入 Unraid **Settings -> VM Manager**。

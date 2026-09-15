@@ -204,6 +204,7 @@ detect_nic_drivers() {
     config_is_enabled CONFIG_PACKAGE_kmod-igb && drivers+=("Intel igb")
     config_is_enabled CONFIG_PACKAGE_kmod-igc && drivers+=("Intel igc 2.5G")
     config_is_enabled CONFIG_PACKAGE_kmod-r8125 && drivers+=("Realtek r8125 2.5G")
+    config_is_enabled CONFIG_PACKAGE_kmod-r8126 && drivers+=("Realtek r8126 5G")
     config_is_enabled CONFIG_PACKAGE_kmod-r8169 && drivers+=("Realtek r8169")
     config_is_enabled CONFIG_PACKAGE_kmod-virtio-net && drivers+=("Virtio net")
 

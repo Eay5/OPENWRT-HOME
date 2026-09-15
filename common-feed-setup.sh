@@ -22,6 +22,16 @@ setup_common_feeds() {
     rm -rf feeds/*/mosdns feeds/*/*/mosdns package/feeds/*/mosdns package/feeds/*/*/mosdns 2>/dev/null || true
     rm -rf package/passwall-packages package/passwall-luci package/mosdns package/v2ray-geodata 2>/dev/null || true
 
+    # 确保 Realtek r8126 (5G) 网卡驱动包存在 (若官方源码树未收录则拉取 sbwml 独立包兜底)
+    if [ ! -d "package/kernel/r8126" ] && [ ! -d "package/emortal/r8126" ] && [ ! -d "package/network/utils/r8126" ]; then
+        echo "Official r8126 driver not found in tree, pulling sbwml/package_kernel_r8126..."
+        rm -rf package/kernel/r8126 2>/dev/null || true
+        git clone --depth 1 https://github.com/sbwml/package_kernel_r8126.git package/kernel/r8126
+        echo "Pulled r8126 5G driver from sbwml/package_kernel_r8126."
+    else
+        echo "Official r8126 driver detected in source tree."
+    fi
+
     # 拉取 ImmortalWrt 官方最新 HomeProxy 源码
     rm -rf feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy package/homeproxy 2>/dev/null || true
     git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy

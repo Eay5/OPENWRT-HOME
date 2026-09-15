@@ -53,10 +53,10 @@
 
 | 版本代号 | 内核系列 | 目标场景 | 包含核心驱动 / 特性 |
 | :--- | :--- | :--- | :--- |
-| **`6.18`** | **Linux 6.18** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125)<br>📖 [Unraid 虚拟机直通调优指南](file:///c:/Users/eay/Desktop/OPENWRT-HOME/UNRAID-VM-GUIDE.md) |
-| **`6.18-physical`** | **Linux 6.18** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
-| **`6.12`** | **Linux 6.12 LTS** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | 极致稳定 LTS 内核基线，搭配全套 Virtio 虚拟化驱动与 Intel/Realtek 常见网卡驱动 |
-| **`6.12-physical`** | **Linux 6.12 LTS** | **物理机 / 工控机直装** | 极致稳定 LTS 内核基线，搭配 Intel CPU 微码、硬件监控、Intel/Realtek 2.5G 网卡驱动及多网口首启自动划分 |
+| **`6.18`** | **Linux 6.18** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125/r8126 5G)<br>📖 [Unraid 虚拟机直通调优指南](UNRAID-VM-GUIDE.md) |
+| **`6.18-physical`** | **Linux 6.18** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G/r8126 5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
+| **`6.12`** | **Linux 6.12 LTS** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | 极致稳定 LTS 内核基线，搭配全套 Virtio 虚拟化驱动与 Intel/Realtek (含 8125/8126) 网卡驱动 |
+| **`6.12-physical`** | **Linux 6.12 LTS** | **物理机 / 工控机直装** | 极致稳定 LTS 内核基线，搭配 Intel CPU 微码、硬件监控、Intel/Realtek (2.5G/5G) 网卡驱动及多网口首启自动划分 |
 
 ---
 
