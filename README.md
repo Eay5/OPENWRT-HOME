@@ -57,12 +57,14 @@
 | **`6.18-physical`** | **Linux 6.18** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G/r8126 5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
 | **`6.12`** | **Linux 6.12 LTS** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | 极致稳定 LTS 内核基线，搭配全套 Virtio 虚拟化驱动与 Intel/Realtek (含 8125/8126) 网卡驱动 |
 | **`6.12-physical`** | **Linux 6.12 LTS** | **物理机 / 工控机直装** | 极致稳定 LTS 内核基线，搭配 Intel CPU 微码、硬件监控、Intel/Realtek (2.5G/5G) 网卡驱动及多网口首启自动划分 |
+| **`6.12-lucky` (LUCKY)** | **Linux 6.12 LTS** | **反代 / 穿透 / 外网入站专属网关** | 专为**外网访问内网服务**打造：仅保留最新 **Lucky 大吉**（动态追踪官方 Release），彻底剔除 HomeProxy、SmartDNS、SQM、UPnP 等；100万级高并发 Conntrack 连接跟踪、TCP BBR+FQ 优化、硬件 AES-NI 加密加速、IPv6 双栈穿透支持 |
 
 ---
 
 ## 🛠️ 插件与上游来源
 
 * **基础固件源码**：[ImmortalWrt](https://github.com/immortalwrt/immortalwrt)
+* **动态内网穿透/反代**：[Lucky 大吉 (gdy666)](https://github.com/gdy666/luci-app-lucky)
 * **科学代理套件**：[HomeProxy (immortalwrt)](https://github.com/immortalwrt/homeproxy)
 * **代理底层内核**：[Sing-box (SagerNet)](https://github.com/SagerNet/sing-box)
 * **本地加速 DNS**：[SmartDNS (pymumu)](https://github.com/pymumu/smartdns)

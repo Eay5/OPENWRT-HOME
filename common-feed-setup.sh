@@ -125,5 +125,25 @@ setup_common_feeds() {
         echo "Sing-box tracking upstream latest STABLE release: v${singbox_tag}"
     fi
 
+    # 动态获取 upstream gdy666/luci-app-lucky 最新官方源码与稳定二进制 Release 版本
+    rm -rf feeds/luci/applications/luci-app-lucky package/feeds/luci/luci-app-lucky 2>/dev/null || true
+    rm -rf feeds/*/luci-app-lucky package/feeds/*/luci-app-lucky 2>/dev/null || true
+    rm -rf package/lucky 2>/dev/null || true
+    git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/lucky
+
+    local lucky_tag=""
+    lucky_tag=$(git ls-remote --tags --refs https://github.com/gdy666/lucky.git 2>/dev/null \
+        | grep -oE 'refs/tags/v[0-9.]+$' \
+        | sed 's#refs/tags/v##' \
+        | sort -V \
+        | tail -n 1 || true)
+
+    if [ -n "${lucky_tag}" ]; then
+        if [ -f package/lucky/lucky/Makefile ]; then
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${lucky_tag}/g" package/lucky/lucky/Makefile
+            echo "Lucky tracking upstream latest release: v${lucky_tag}"
+        fi
+    fi
+
     echo "Feed cleanup and pinning completed."
 }

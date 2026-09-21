@@ -48,3 +48,55 @@ verify_proxy_stack() {
 
     echo "Proxy & DNS stack verified for kernel ${kernel_series}"
 }
+
+verify_lucky_stack() {
+    local kernel_series="$1"
+
+    echo ""
+    echo "=== Verifying LUCKY dedicated package stack ==="
+
+    if grep -q '^CONFIG_PACKAGE_lucky=y' .config; then
+        echo "Lucky core enabled in .config"
+    else
+        echo "ERROR: lucky is disabled in .config"
+        exit 1
+    fi
+
+    if grep -q '^CONFIG_PACKAGE_luci-app-lucky=y' .config; then
+        echo "luci-app-lucky enabled in .config"
+    else
+        echo "ERROR: luci-app-lucky is disabled in .config"
+        exit 1
+    fi
+
+    if [ -d "package/lucky" ]; then
+        echo "Lucky package source verified in package/lucky"
+    else
+        echo "ERROR: Lucky package source not found in package/lucky"
+        exit 1
+    fi
+
+    # 验证被删除的组件已彻底关闭，保证固件纯净
+    local forbidden_pkgs=(
+        "CONFIG_PACKAGE_luci-app-homeproxy"
+        "CONFIG_PACKAGE_sing-box"
+        "CONFIG_PACKAGE_smartdns"
+        "CONFIG_PACKAGE_luci-app-smartdns"
+        "CONFIG_PACKAGE_luci-app-sqm"
+        "CONFIG_PACKAGE_sqm-scripts"
+        "CONFIG_PACKAGE_luci-app-upnp"
+        "CONFIG_PACKAGE_miniupnpd"
+        "CONFIG_PACKAGE_luci-app-wol"
+        "CONFIG_PACKAGE_etherwake"
+    )
+
+    for pkg in "${forbidden_pkgs[@]}"; do
+        if grep -q "^${pkg}=y" .config; then
+            echo "ERROR: ${pkg} should be disabled in LUCKY build, but is enabled!"
+            exit 1
+        fi
+    done
+
+    echo "LUCKY stack verified successfully: Lucky is enabled, unwanted services removed."
+}
+

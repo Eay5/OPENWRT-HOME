@@ -1,0 +1,41 @@
+name: Build 6.12 ImmortalWrt LUCKY
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: SSH connection to Actions
+        required: false
+        default: "false"
+      runner:
+        description: Runner label, for example ubuntu-24.04 or self-hosted
+        required: false
+        default: "ubuntu-24.04"
+  schedule:
+    - cron: "40 18 * * *" # 北京时间 每天凌晨 02:40 (UTC 18:40)
+    - cron: "40 0 * * *"  # 北京时间 每天上午 08:40 (UTC 00:40)
+    - cron: "40 4 * * *"  # 北京时间 每天中午 12:40 (UTC 04:40)
+    - cron: "40 6 * * *"  # 北京时间 每天下午 14:40 (UTC 06:40)
+    - cron: "40 9 * * *"  # 北京时间 每天下午 17:40 (UTC 09:40)
+  watch:
+    types:
+      - started
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
+      enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
+      config_file: 6.12-lucky.config
+      diy_p1_sh: 6.12-lucky-part1.sh
+      diy_p2_sh: 6.12-lucky-part2.sh
+      kernel_series: "6.12"
+      firmware_artifact_prefix: ImmortalWrt-6.12-LUCKY
+      bin_artifact_prefix: ImmortalWrt_bin
+      release_title_template: ImmortalWrt {{kernel}} LUCKY Build {{build_time}}
+      extra_feed_packages: lucky luci-app-lucky
+      config_sync_mode: lucky
+      repo_branch: openwrt-25.12

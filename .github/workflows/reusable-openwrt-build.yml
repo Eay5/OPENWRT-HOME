@@ -249,6 +249,11 @@ jobs:
             rm -rf package/feeds/packages/mosdns package/feeds/luci/luci-app-mosdns package/feeds/*/mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
           fi
 
+          if [ -d "package/lucky" ] || [ -f "package/lucky/lucky/Makefile" ]; then
+            echo "Using locally pinned Lucky packages from package/."
+            rm -rf package/feeds/packages/lucky package/feeds/luci/luci-app-lucky package/feeds/*/lucky package/feeds/*/luci-app-lucky package/feeds/*/*/lucky package/feeds/*/*/luci-app-lucky 2>/dev/null || true
+          fi
+
           if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
             ./scripts/feeds install -f ${EXTRA_FEED_PACKAGES}
           fi
@@ -372,6 +377,71 @@ jobs:
               grep -q '^CONFIG_PACKAGE_kmod-tcp-hybla=y' .config || { echo 'kmod-tcp-hybla was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_kmod-tcp-scalable=y' .config || { echo 'kmod-tcp-scalable was not enabled'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
+              ;;
+            lucky)
+              echo "Reapplying forced package toggles for dedicated LUCKY build..."
+              ensure_config CONFIG_DEVEL n
+              ensure_config CONFIG_CCACHE y
+              ensure_config CONFIG_PACKAGE_ksmbd-server n
+              ensure_config CONFIG_PACKAGE_ksmbd-utils n
+              ensure_config CONFIG_PACKAGE_luci-app-ksmbd n
+              ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
+              ensure_config CONFIG_PACKAGE_autosamba n
+              ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+              ensure_config CONFIG_PACKAGE_luci-app-wol n
+              ensure_config CONFIG_PACKAGE_etherwake n
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy n
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn n
+              ensure_config CONFIG_PACKAGE_sing-box n
+              ensure_config CONFIG_PACKAGE_sing-geoip n
+              ensure_config CONFIG_PACKAGE_sing-geosite n
+              ensure_config CONFIG_PACKAGE_ucode-mod-math n
+              ensure_config CONFIG_PACKAGE_smartdns n
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns n
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-sqm n
+              ensure_config CONFIG_PACKAGE_luci-i18n-sqm-zh-cn n
+              ensure_config CONFIG_PACKAGE_sqm-scripts n
+              ensure_config CONFIG_PACKAGE_kmod-sched-cake n
+              ensure_config CONFIG_PACKAGE_kmod-sched-core n
+              ensure_config CONFIG_PACKAGE_miniupnpd n
+              ensure_config CONFIG_PACKAGE_luci-app-upnp n
+              ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn n
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-compat y
+              ensure_config CONFIG_PACKAGE_lucky y
+              ensure_config CONFIG_PACKAGE_luci-app-lucky y
+              ensure_config CONFIG_PACKAGE_luci-i18n-lucky-zh-cn y
+              ensure_config CONFIG_PACKAGE_ca-bundle y
+              ensure_config CONFIG_PACKAGE_ca-certificates y
+              ensure_config CONFIG_PACKAGE_curl y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aes y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-x86 y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
+              ensure_config CONFIG_PACKAGE_kmod-nft-offload y
+              ensure_config CONFIG_PACKAGE_kmod-nft-nat y
+              ensure_config CONFIG_PACKAGE_iptables-nft y
+              ensure_config CONFIG_PACKAGE_ip6tables-nft y
+              make defconfig
+              grep -q '^CONFIG_PACKAGE_lucky=y' .config || { echo 'lucky was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-lucky=y' .config || { echo 'luci-app-lucky was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_iptables-nft=y' .config || { echo 'iptables-nft was dropped during defconfig'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_smartdns=y' .config || { echo 'smartdns was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-sqm=y' .config || { echo 'luci-app-sqm was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-upnp=y' .config || { echo 'luci-app-upnp was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_miniupnpd=y' .config || { echo 'miniupnpd was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
               ;;
             *)
               echo "Unknown config sync mode: ${CONFIG_SYNC_MODE}" >&2

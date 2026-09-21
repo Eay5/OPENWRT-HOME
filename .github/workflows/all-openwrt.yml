@@ -33,6 +33,7 @@ jobs:
             "6.18-physical-openwrt.yml"
             "6.12-openwrt.yml"
             "6.12-physical-openwrt.yml"
+            "6.12-lucky-openwrt.yml"
           )
 
           runner_args=()
@@ -57,3 +58,4 @@ jobs:
           echo "  - 6.18-physical-openwrt.yml"
           echo "  - 6.12-openwrt.yml"
           echo "  - 6.12-physical-openwrt.yml"
+          echo "  - 6.12-lucky-openwrt.yml"
