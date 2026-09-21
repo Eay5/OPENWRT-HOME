@@ -122,6 +122,20 @@ apply_sysctl_tweaks() {
 	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
 	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
 
+	# 旁路由防分流失效：彻底关闭 ICMP 重定向发送与接收，杜绝终端绕过旁路由
+	sysctl -w net.ipv4.conf.all.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.all.accept_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.accept_redirects=0 >/dev/null 2>&1 || true
+
+	# 旁路由非对称路由优化：放宽反向路径过滤，杜绝单臂进出与回包被静默丢弃
+	sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true
+
+	# 开启 Linux 6.12 / 6.18 原生 UDP GRO 转发加速与核心路由转发
+	sysctl -w net.ipv4.udp_gro_forwarding=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+
 	# 全局彻底禁用 IPv6
 	sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
