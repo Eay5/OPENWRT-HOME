@@ -175,14 +175,24 @@ net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 16384
 net.core.netdev_max_backlog = 32768
 
-# 6. 动态 TCP 缓冲区与大套接字缓冲（极大提升外网拉取内网大文件带宽利用率）
+# 6. 动态 TCP 缓冲区与大套接字缓冲（极大提升外网大文件双向拉取/上传带宽利用率）
 net.ipv4.tcp_rmem = 4096 87380 33554432
 net.ipv4.tcp_wmem = 4096 65536 33554432
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
 net.core.rmem_max = 33554432
 net.core.wmem_max = 33554432
 
-# 7. FileBrowser 大文件传输专属优化 (解决断流、超时与MTU黑洞卡死)
-# 自动探测路径 MTU，杜绝因 PPPoE 1492 与内网 1500 不匹配导致大文件点击下载 0KB 转圈卡死
+# 外网高速上传防拥堵：调大 NAPI 轮询与协议栈数据包递交预算，杜绝突发接收丢包
+net.core.netdev_budget = 600
+net.core.netdev_budget_usecs = 8000
+
+# 平衡虚拟内存脏页回写，防止大文件持续上传内网落地时 I/O 阻塞系统
+vm.dirty_ratio = 20
+vm.dirty_background_ratio = 5
+
+# 7. FileBrowser 大文件双向传输专属优化 (解决断流、超时与MTU黑洞卡死)
+# 自动探测路径 MTU，杜绝因 PPPoE 1492 与内网 1500 不匹配导致大文件点击下载/上传 0KB 转圈卡死
 net.ipv4.tcp_mtu_probing = 1
 net.ipv4.tcp_base_mss = 1024
 
@@ -194,7 +204,7 @@ net.ipv4.tcp_keepalive_time = 300
 net.ipv4.tcp_keepalive_intvl = 15
 net.ipv4.tcp_keepalive_probes = 5
 
-# 扩充系统全局文件句柄至 200 万，完美支撑多线程（如 IDM 32 线程分块并发下载）
+# 扩充系统全局文件句柄至 200 万，完美支撑多线程（如 IDM 32 线程分块并发下载/上传）
 fs.file-max = 2097152
 fs.nr_open = 2097152
 
@@ -244,13 +254,18 @@ fi
 # 5. 调大进程打开文件句柄上限，多线程下载大文件不报错
 ulimit -n 1048576 2>/dev/null || true
 
-# 6. 网卡硬件大包发送/接收切片加速 (TSO/GSO/GRO)，大文件外网跑满时 CPU 占用降低 70%
+# 6. 网卡硬件大包发送/接收切片加速与硬件接收缓冲扩容 (TSO/GSO/GRO & RX/TX Ring Buffer)
 command -v ethtool >/dev/null 2>&1 && {
     for dev in $(ls /sys/class/net 2>/dev/null); do
         case "$dev" in
             lo|veth*|br-*|docker*) continue ;;
         esac
-        ethtool -K "$dev" tso on gso on gro on >/dev/null 2>&1 || true
+        # 扩充网卡硬件环形缓冲区至 4096，大文件上传洪峰灌入 0 丢包
+        ethtool -G "$dev" rx 4096 tx 4096 >/dev/null 2>&1 || ethtool -G "$dev" rx 2048 tx 2048 >/dev/null 2>&1 || true
+        # 开启网卡硬件切片卸载与大包合并
+        ethtool -K "$dev" rx on tx on tso on gso on gro on rx-udp-gro-forwarding on >/dev/null 2>&1 || true
+        # 开启自适应中断合并，大文件高速上传时防止 CPU0 软中断跑满 100%
+        ethtool -C "$dev" adaptive-rx on adaptive-tx on >/dev/null 2>&1 || true
     done
 }
 exit 0
