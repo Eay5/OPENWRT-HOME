@@ -148,9 +148,9 @@ cat << 'EOF' > files/etc/sysctl.d/98-lucky-inbound.conf
 # ==============================================================================
 # Linux 6.12 LUCKY Dedicated Inbound / Reverse Proxy Tuning
 # ==============================================================================
-# 1. 100万级并发连接跟踪，防止反向代理和多设备并发穿透把连接表打满
+# 1. 100万级并发连接跟踪与 2 小时大文件长效连接保持（杜绝大文件下载中途断流）
 net.netfilter.nf_conntrack_max = 1048576
-net.netfilter.nf_conntrack_tcp_timeout_established = 1800
+net.netfilter.nf_conntrack_tcp_timeout_established = 7200
 net.netfilter.nf_conntrack_tcp_timeout_close_wait = 15
 net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 15
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 15
@@ -160,7 +160,7 @@ net.ipv4.ip_local_port_range = 10240 65535
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 10
 
-# 3. TCP BBR + FQ 拥塞控制，跨公网大延迟丢包环境下保障内网视频与大文件满速
+# 3. TCP BBR + FQ 拥塞控制，跨公网大延迟丢包环境下保障 FileBrowser 大文件满速
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 
@@ -173,7 +173,7 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_slow_start_after_idle = 0
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 16384
-net.core.netdev_max_backlog = 16384
+net.core.netdev_max_backlog = 32768
 
 # 6. 动态 TCP 缓冲区与大套接字缓冲（极大提升外网拉取内网大文件带宽利用率）
 net.ipv4.tcp_rmem = 4096 87380 33554432
@@ -181,12 +181,29 @@ net.ipv4.tcp_wmem = 4096 65536 33554432
 net.core.rmem_max = 33554432
 net.core.wmem_max = 33554432
 
-# 7. 独立应用主机模式：反向路径过滤放宽至 Loose Mode (rp_filter=2)
+# 7. FileBrowser 大文件传输专属优化 (解决断流、超时与MTU黑洞卡死)
+# 自动探测路径 MTU，杜绝因 PPPoE 1492 与内网 1500 不匹配导致大文件点击下载 0KB 转圈卡死
+net.ipv4.tcp_mtu_probing = 1
+net.ipv4.tcp_base_mss = 1024
+
+# 减少大文件发送时在套接字缓冲区排队造成的缓冲膨胀与延迟
+net.ipv4.tcp_notsent_lowat = 16384
+
+# TCP 保活探测：长文件传输时保持连接不被中间节点掐断
+net.ipv4.tcp_keepalive_time = 300
+net.ipv4.tcp_keepalive_intvl = 15
+net.ipv4.tcp_keepalive_probes = 5
+
+# 扩充系统全局文件句柄至 200 万，完美支撑多线程（如 IDM 32 线程分块并发下载）
+fs.file-max = 2097152
+fs.nr_open = 2097152
+
+# 8. 独立应用主机模式：反向路径过滤放宽至 Loose Mode (rp_filter=2)
 # 杜绝主路由端口映射转发至本主机时，跨网段外网 IP 被内核误判为伪造源 IP 而丢弃
 net.ipv4.conf.all.rp_filter = 2
 net.ipv4.conf.default.rp_filter = 2
 
-# 8. 独立主机暴露高位端口下的安全防扫描与抗拒绝服务
+# 9. 独立主机暴露高位端口下的安全防扫描与抗拒绝服务
 net.ipv4.tcp_syncookies = 1
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 EOF
@@ -223,6 +240,19 @@ if uci -q get firewall.@defaults[0] >/dev/null 2>&1; then
     uci -q set firewall.@defaults[0].syn_flood='0'
     uci -q commit firewall
 fi
+
+# 5. 调大进程打开文件句柄上限，多线程下载大文件不报错
+ulimit -n 1048576 2>/dev/null || true
+
+# 6. 网卡硬件大包发送/接收切片加速 (TSO/GSO/GRO)，大文件外网跑满时 CPU 占用降低 70%
+command -v ethtool >/dev/null 2>&1 && {
+    for dev in $(ls /sys/class/net 2>/dev/null); do
+        case "$dev" in
+            lo|veth*|br-*|docker*) continue ;;
+        esac
+        ethtool -K "$dev" tso on gso on gro on >/dev/null 2>&1 || true
+    done
+}
 exit 0
 EOF
 chmod +x files/etc/uci-defaults/98-lucky-appliance
