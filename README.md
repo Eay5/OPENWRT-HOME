@@ -67,7 +67,7 @@
 * **动态内网穿透/反代**：[Lucky 大吉 (gdy666)](https://github.com/gdy666/luci-app-lucky)
 * **科学代理套件**：[HomeProxy (immortalwrt)](https://github.com/immortalwrt/homeproxy)
 * **代理底层内核**：[Sing-box (SagerNet)](https://github.com/SagerNet/sing-box)
-* **本地加速 DNS**：[SmartDNS (pymumu)](https://github.com/pymumu/smartdns)
+* **本地加速 DNS**：[SmartDNS (PikuZheng)](https://github.com/PikuZheng/smartdns) / [pymumu](https://github.com/pymumu/smartdns)
 * **LuCI 主题套件**：[Argon Theme (jerrykuku)](https://github.com/jerrykuku/luci-theme-argon)
 * **Golang 构建环境**：[Go 27.x (sbwml)](https://github.com/sbwml/packages_lang_golang)
 * **Actions 构建脚本**：[P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt)

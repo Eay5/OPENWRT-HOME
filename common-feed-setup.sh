@@ -48,7 +48,7 @@ setup_common_feeds() {
     find package/homeproxy -name "generate_client.uc" -exec sed -i '/sniff_override_destination/d' {} + 2>/dev/null || true
     find package/homeproxy -name "generate_client.uc" -exec sed -i '/\bsniff:/d' {} + 2>/dev/null || true
 
-    # Clean conflicting feeds and pull official pymumu/smartdns latest source
+    # Clean conflicting feeds and pull SmartDNS package source
     rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
     rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns 2>/dev/null || true
     rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns feeds/*/*/luci-app-smartdns feeds/*/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/*/luci-app-smartdns package/feeds/*/*/smartdns 2>/dev/null || true
@@ -56,27 +56,42 @@ setup_common_feeds() {
     git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
     git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
 
-    # 动态获取 upstream pymumu/smartdns 最新 master commit 与最新 release 标签，保持实时编译最新版本
+    # 切换上游为社区活跃增强分支 PikuZheng/smartdns (解决 HTTP/2 泄漏、musl 内存碎片化、高并发崩溃及 OpenSSL 3.5.8 适配)
+    sed -i 's#https://www.github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
+    sed -i 's#https://github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
+
+    # 动态获取 upstream PikuZheng/smartdns 最新稳定 release 标签与 master commit
     local smartdns_commit=""
     local smartdns_tag=""
     local smartdns_ver=""
 
-    smartdns_commit=$(git ls-remote https://github.com/pymumu/smartdns.git refs/heads/master 2>/dev/null | cut -f1 || true)
-    smartdns_tag=$(git ls-remote --tags --refs https://github.com/pymumu/smartdns.git 2>/dev/null | grep -oE 'refs/tags/Release[0-9.]+$' | sed 's#refs/tags/##' | sort -V | tail -n 1 || true)
+    smartdns_tag=$(git ls-remote --tags --refs https://github.com/PikuZheng/smartdns.git 2>/dev/null \
+        | grep -v 'canary' \
+        | grep -oE 'refs/tags/1\.[0-9]+\.v[0-9.]+' \
+        | sed 's#refs/tags/##' \
+        | sort -V \
+        | tail -n 1 || true)
 
+    smartdns_ver="${smartdns_tag:-1.2026.v48.4.2}"
+
+    # 优先匹配对应标签的 commit hash，若未匹配则取 master 分支最新 commit
     if [ -n "${smartdns_tag}" ]; then
-        smartdns_ver="1.$(date +%Y).${smartdns_tag#Release}"
+        smartdns_commit=$(git ls-remote --tags https://github.com/PikuZheng/smartdns.git "refs/tags/${smartdns_tag}" 2>/dev/null | cut -f1 | head -n 1 || true)
+        [ -z "${smartdns_commit}" ] && smartdns_commit=$(git ls-remote --tags https://github.com/PikuZheng/smartdns.git "refs/tags/${smartdns_tag}_with_ui" 2>/dev/null | cut -f1 | head -n 1 || true)
     fi
 
-    if [ -n "${smartdns_commit}" ]; then
-        sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${smartdns_commit}/g" package/smartdns/Makefile
-        if [ -n "${smartdns_ver}" ]; then
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
-            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
-        fi
-        echo "SmartDNS tracking upstream master: Commit=${smartdns_commit}, Version=${smartdns_ver:-latest}"
+    if [ -z "${smartdns_commit}" ]; then
+        smartdns_commit=$(git ls-remote https://github.com/PikuZheng/smartdns.git refs/heads/master 2>/dev/null | cut -f1 || true)
     fi
+
+    # 兜底已知最稳定发行版 commit (1.2026.v48.4.2)
+    smartdns_commit="${smartdns_commit:-395ea7e05619ed030c4898467d56e59445ffb84e}"
+
+    sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${smartdns_commit}/g" package/smartdns/Makefile
+    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
+    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
+    sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
+    echo "SmartDNS tracking PikuZheng upstream: Version=${smartdns_ver}, Commit=${smartdns_commit}"
 
     sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
     sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
