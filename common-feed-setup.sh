@@ -73,6 +73,10 @@ setup_common_feeds() {
         | tail -n 1 || true)
 
     smartdns_ver="${smartdns_tag:-1.2026.v48.4.2}"
+    # 彻底去除版本号中的字母 'v'（1.2026.v48.4.2 -> 1.2026.48.4.2）
+    # OpenWrt 24+ 采用 apk 包管理器，apk mkpkg 严格要求版本号必须为数字点分规范，不能含有 'v'，否则报 package version is invalid 错误导致打包中断
+    smartdns_ver="${smartdns_ver//.v/.}"
+    smartdns_ver="${smartdns_ver#v}"
 
     # 优先匹配对应标签的 commit hash，若未匹配则取 master 分支最新 commit
     if [ -n "${smartdns_tag}" ]; then
@@ -91,7 +95,7 @@ setup_common_feeds() {
     sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
     sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
     sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
-    echo "SmartDNS tracking PikuZheng upstream: Version=${smartdns_ver}, Commit=${smartdns_commit}"
+    echo "SmartDNS tracking PikuZheng upstream: Version=${smartdns_ver} (tag=${smartdns_tag:-default}), Commit=${smartdns_commit}"
 
     sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
     sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
