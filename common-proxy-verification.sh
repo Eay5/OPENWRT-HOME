@@ -7,6 +7,9 @@ verify_proxy_stack() {
     echo ""
     echo "=== Verifying required proxy and DNS packages ==="
 
+    # 清理 miniupnpd 2.3.11 冲突旧补丁，确保编译顺利进行
+    rm -rf feeds/packages/net/miniupnpd/patches package/feeds/packages/miniupnpd/patches 2>/dev/null || true
+
     if grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config; then
         echo "HomeProxy enabled in .config"
     else

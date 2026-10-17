@@ -234,6 +234,9 @@ jobs:
           cd openwrt
           ./scripts/feeds install -a -f
 
+          # 修复 miniupnpd 2.3.11 编译补丁冲突
+          rm -rf package/feeds/packages/miniupnpd/patches feeds/packages/net/miniupnpd/patches 2>/dev/null || true
+
           if [ -f "package/smartdns/Makefile" ] || [ -d "package/smartdns" ]; then
             echo "Using locally pinned SmartDNS packages from package/."
             rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true

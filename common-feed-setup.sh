@@ -22,6 +22,12 @@ setup_common_feeds() {
     rm -rf feeds/*/mosdns feeds/*/*/mosdns package/feeds/*/mosdns package/feeds/*/*/mosdns 2>/dev/null || true
     rm -rf package/passwall-packages package/passwall-luci package/mosdns package/v2ray-geodata 2>/dev/null || true
 
+    # 修复 miniupnpd 2.3.11 编译失败问题：
+    # 上游 packages 仓库升级 miniupnpd 至 2.3.11 后，残留了已在 2.3.11 官方源码中吸收合并的历史补丁（如 020-descr-filter-fix.patch 等），
+    # 导致 OpenWrt 打补丁阶段报 5 out of 7 hunks FAILED 中断构建。
+    # 官方 OpenWrt 2.3.11 为原生零补丁干净编译，清理残留补丁目录以保证顺利编译
+    rm -rf feeds/packages/net/miniupnpd/patches package/feeds/packages/miniupnpd/patches 2>/dev/null || true
+
     # 确保 Realtek r8126 (5G) 网卡驱动包存在 (若官方源码树未收录则拉取 sbwml 独立包兜底)
     if [ ! -d "package/kernel/r8126" ] && [ ! -d "package/emortal/r8126" ] && [ ! -d "package/network/utils/r8126" ]; then
         echo "Official r8126 driver not found in tree, pulling sbwml/package_kernel_r8126..."
