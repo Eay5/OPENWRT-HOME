@@ -155,6 +155,11 @@ jobs:
           ./scripts/feeds install -a -f
           rm -rf package/feeds/packages/miniupnpd/patches feeds/packages/net/miniupnpd/patches 2>/dev/null || true
           rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+          rm -rf package/feeds/luci/luci-theme-argon feeds/luci/themes/luci-theme-argon 2>/dev/null || true
+          if [ -d "package/luci-theme-argon" ]; then
+            echo "Using locally pinned Argon 3.0 package from package/luci-theme-argon."
+            find package/luci-theme-argon -type f -name "footer*.ut" -exec sed -i -E 's/\{# vPKG_VERSION #\}/v3.0.0/g' {} + 2>/dev/null || true
+          fi
           rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true
           rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy package/feeds/*/*/luci-app-homeproxy 2>/dev/null || true
           rm -rf package/feeds/packages/mosdns package/feeds/luci/luci-app-mosdns package/feeds/*/mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
