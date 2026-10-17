@@ -237,6 +237,9 @@ jobs:
           # 修复 miniupnpd 2.3.11 编译补丁冲突
           rm -rf package/feeds/packages/miniupnpd/patches feeds/packages/net/miniupnpd/patches 2>/dev/null || true
 
+          # 修复 luci-theme-argon 3.0 与独立旧版 luci-app-argon-config 冲突
+          rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+
           if [ -f "package/smartdns/Makefile" ] || [ -d "package/smartdns" ]; then
             echo "Using locally pinned SmartDNS packages from package/."
             rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true
@@ -295,6 +298,7 @@ jobs:
               ensure_config CONFIG_LUCI_LANG_zh_CN y
               ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
               ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-app-turboacc y
@@ -336,6 +340,7 @@ jobs:
               ensure_config CONFIG_LUCI_LANG_zh_CN y
               ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
               ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-app-turboacc y
@@ -418,6 +423,7 @@ jobs:
               ensure_config CONFIG_LUCI_LANG_zh_CN y
               ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
               ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
               ensure_config CONFIG_PACKAGE_luci-compat y
               ensure_config CONFIG_PACKAGE_lucky y

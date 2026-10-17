@@ -10,6 +10,11 @@ verify_proxy_stack() {
     # 清理 miniupnpd 2.3.11 冲突旧补丁，确保编译顺利进行
     rm -rf feeds/packages/net/miniupnpd/patches package/feeds/packages/miniupnpd/patches 2>/dev/null || true
 
+    # 清理旧版 luci-app-argon-config 残留，避免与 luci-theme-argon 3.0 产生安装包文件覆盖冲突
+    rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+    sed -i '/CONFIG_PACKAGE_luci-app-argon-config=/d' .config 2>/dev/null || true
+    echo "# CONFIG_PACKAGE_luci-app-argon-config is not set" >> .config
+
     if grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config; then
         echo "HomeProxy enabled in .config"
     else
@@ -57,6 +62,11 @@ verify_lucky_stack() {
 
     echo ""
     echo "=== Verifying LUCKY dedicated package stack ==="
+
+    # 清理旧版 luci-app-argon-config 残留，避免与 luci-theme-argon 3.0 产生安装包文件覆盖冲突
+    rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+    sed -i '/CONFIG_PACKAGE_luci-app-argon-config=/d' .config 2>/dev/null || true
+    echo "# CONFIG_PACKAGE_luci-app-argon-config is not set" >> .config
 
     if grep -q '^CONFIG_PACKAGE_lucky=y' .config; then
         echo "Lucky core enabled in .config"

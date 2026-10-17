@@ -25,8 +25,9 @@ pin_618_package_sources() {
     rm -rf package/feeds/luci/luci-theme-argon
     rm -rf package/luci-theme-argon
     rm -rf package/luci-app-argon-config
+    rm -rf feeds/luci/applications/luci-app-argon-config
+    rm -rf package/feeds/luci/luci-app-argon-config
     clone_package_repo "https://github.com/jerrykuku/luci-theme-argon.git" "package/luci-theme-argon"
-    clone_package_repo "https://github.com/jerrykuku/luci-app-argon-config.git" "package/luci-app-argon-config"
 
     echo "6.18 package sources pinned."
 }

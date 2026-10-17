@@ -28,6 +28,12 @@ setup_common_feeds() {
     # 官方 OpenWrt 2.3.11 为原生零补丁干净编译，清理残留补丁目录以保证顺利编译
     rm -rf feeds/packages/net/miniupnpd/patches package/feeds/packages/miniupnpd/patches 2>/dev/null || true
 
+    # 修复 luci-theme-argon 3.0 冲突：
+    # jerrykuku/luci-theme-argon 于 2026-10-16 升级至 3.0，已将 Argon Config 页面与配置原生集成进主题包。
+    # 若同时存在旧版独立的 luci-app-argon-config，会导致打包 rootfs 时报文件覆盖冲突（trying to overwrite etc/config/argon...）。
+    # 清理独立的 luci-app-argon-config 源码和 feed 软链接
+    rm -rf package/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/feeds/luci/luci-app-argon-config 2>/dev/null || true
+
     # 确保 Realtek r8126 (5G) 网卡驱动包存在 (若官方源码树未收录则拉取 sbwml 独立包兜底)
     if [ ! -d "package/kernel/r8126" ] && [ ! -d "package/emortal/r8126" ] && [ ! -d "package/network/utils/r8126" ]; then
         echo "Official r8126 driver not found in tree, pulling sbwml/package_kernel_r8126..."

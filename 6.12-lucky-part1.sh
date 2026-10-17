@@ -25,8 +25,9 @@ pin_lucky_package_sources() {
     rm -rf package/feeds/luci/luci-theme-argon
     rm -rf package/luci-theme-argon
     rm -rf package/luci-app-argon-config
+    rm -rf feeds/luci/applications/luci-app-argon-config
+    rm -rf package/feeds/luci/luci-app-argon-config
     clone_package_repo "https://github.com/jerrykuku/luci-theme-argon.git" "package/luci-theme-argon"
-    clone_package_repo "https://github.com/jerrykuku/luci-app-argon-config.git" "package/luci-app-argon-config"
 
     # 清理非必须插件以加快构建并确保纯净
     rm -rf package/homeproxy feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy 2>/dev/null || true
