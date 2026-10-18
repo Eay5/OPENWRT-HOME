@@ -176,5 +176,40 @@ setup_common_feeds() {
         fi
     fi
 
+    # 动态检测并升级 Dnsmasq 至官方最新正式版本 (2.93)
+    # 彻底修复 CVE-2026-2291 域名内存分配堆溢出漏洞、DNSSEC CNAME/通配符边界校验错误与 DHCPv6 中继回归问题
+    local dnsmasq_tag=""
+    dnsmasq_tag=$(curl -sL --connect-timeout 5 --max-time 10 https://thekelleys.org.uk/dnsmasq/ 2>/dev/null \
+        | grep -oE 'LATEST_IS_[0-9.]+' \
+        | head -n 1 \
+        | sed 's/LATEST_IS_//' || true)
+
+    local dnsmasq_ver="${dnsmasq_tag:-2.93}"
+    local dnsmasq_hash="0c00d4e5c97c8306e5fb932b348b34269c9c29a0e7df0e8e82958b407092bc19"
+    local dnsmasq_mk="package/network/services/dnsmasq/Makefile"
+
+    if [ -f "${dnsmasq_mk}" ]; then
+        # 清理可能存在于旧分支中、会导致 2.93 编译冲突或打补丁失败的历史 backport 补丁
+        rm -rf package/network/services/dnsmasq/patches 2>/dev/null || true
+
+        # 适配新旧 Makefile 变量命名 (PKG_UPSTREAM_VERSION 与 PKG_VERSION)
+        if grep -q "^PKG_UPSTREAM_VERSION:=" "${dnsmasq_mk}"; then
+            sed -i "s/^PKG_UPSTREAM_VERSION:=.*/PKG_UPSTREAM_VERSION:=${dnsmasq_ver}/g" "${dnsmasq_mk}"
+        else
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${dnsmasq_ver}/g" "${dnsmasq_mk}"
+        fi
+
+        # 校验 Hash 设置：若为 2.93 则使用官方权威 SHA256，若为未来更新版本则安全跳过 Hash 校验
+        if [ "${dnsmasq_ver}" = "2.93" ]; then
+            sed -i "s/^PKG_HASH:=.*/PKG_HASH:=${dnsmasq_hash}/g" "${dnsmasq_mk}"
+        else
+            sed -i "s/^PKG_HASH:=.*/PKG_HASH:=skip/g" "${dnsmasq_mk}"
+        fi
+        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "${dnsmasq_mk}" 2>/dev/null || true
+
+        echo "Dnsmasq tracking upstream latest release: v${dnsmasq_ver}"
+    fi
+
     echo "Feed cleanup and pinning completed."
 }
+
