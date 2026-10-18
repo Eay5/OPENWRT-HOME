@@ -333,6 +333,22 @@ if [ -x /etc/init.d/dns-preload ]; then
 	/etc/init.d/dns-preload enable >/dev/null 2>&1 || true
 fi
 
+# 10. UPnP IGD & PCP/NAT-PMP 游戏与打洞高阶调优 (支持二级路由穿透/IGDv1主机兼容/千兆带宽广播/租约驻留内存)
+if uci -q get upnpd.config >/dev/null 2>&1; then
+	uci -q set upnpd.config.enabled='1'
+	uci -q set upnpd.config.enable_upnp='1'
+	uci -q set upnpd.config.enable_natpmp='1'
+	uci -q set upnpd.config.secure_mode='1'
+	uci -q set upnpd.config.igdv1='1'
+	uci -q set upnpd.config.ext_ip_reserved_ignore='1'
+	uci -q set upnpd.config.download='125000'
+	uci -q set upnpd.config.upload='62500'
+	uci -q set upnpd.config.upnp_lease_file='/var/run/miniupnpd.leases'
+	uci -q set upnpd.config.clean_ruleset_interval='600'
+	uci -q set upnpd.config.clean_ruleset_threshold='20'
+	uci -q commit upnpd
+fi
+
 # Clean non-existent snapshot package repos (helloworld, video, passwall, mosdns)
 sed -i '/helloworld/d;/video/d;/passwall/d;/mosdns/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
 
