@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/common-proxy-verification.sh"
 
 target_kernel_series="6.12"
-target_default_ip="192.168.0.233"
+target_default_ip="192.168.0.245"
 target_hostname="EAY-LUCKY"
 
 config_is_enabled() {
@@ -77,9 +77,14 @@ detect_kernel_version() {
 }
 
 detect_default_ip() {
-    local ip
+    local ip=""
 
-    ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | head -n 1 || true)"
+    if [ -f "files/etc/config/network" ]; then
+        ip="$(sed -n "s/.*option ipaddr '\([^']*\)'.*/\1/p" files/etc/config/network 2>/dev/null | head -n 1)"
+    fi
+    if [ -z "$ip" ]; then
+        ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | head -n 1 || true)"
+    fi
     echo "${ip:-unknown}"
 }
 
@@ -132,6 +137,17 @@ echo "Applying basic settings for 6.12 LUCKY..."
 
 sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
 sed -i "s/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${target_kernel_series}/g" target/linux/x86/Makefile
+
+# 同步更新覆盖目录 files/etc/config/network 中的默认 IP (如果存在覆盖配置)
+if [ -f "files/etc/config/network" ]; then
+    sed -i "s/option ipaddr .*/option ipaddr '${target_default_ip}'/g" files/etc/config/network
+fi
+
+# 清理从通用 files/ 继承的非 LUCKY 专有插件配置 (如 SmartDNS、UPnP、软路由分流脚本等)
+rm -f files/etc/uci-defaults/99-system-performance 2>/dev/null || true
+rm -f files/etc/init.d/dns-preload 2>/dev/null || true
+rm -f files/etc/config/smartdns 2>/dev/null || true
+rm -f files/etc/config/upnpd 2>/dev/null || true
 
 # 清空默认密码
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
@@ -221,6 +237,12 @@ EOF
 # 注入独立应用主机防火墙与服务默认设置
 cat << 'EOF' > files/etc/uci-defaults/98-lucky-appliance
 #!/bin/sh
+# 0. 锁定 LAN 接口 IP 为 192.168.0.245 (独立 LUCKY 反代与穿透应用主机)
+if uci -q get network.lan >/dev/null 2>&1; then
+    uci -q set network.lan.ipaddr='192.168.0.245'
+    uci -q commit network
+fi
+
 # 1. 独立主机纯净模式：彻底关闭本机的 DHCP 服务，严禁抢答局域网主路由的 DHCP 分配导致冲突
 if uci -q get dhcp.lan >/dev/null 2>&1; then
     uci -q set dhcp.lan.ignore='1'
