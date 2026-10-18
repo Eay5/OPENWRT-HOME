@@ -29,7 +29,7 @@
 
 4. **现代化代理与加速 DNS 栈**
    - **HomeProxy (Sing-box 原生架构)**：ImmortalWrt 官方新一代透明代理套件，深度集成 Firewall4 (nftables) 与 Linux 6.x 高性能内核；出厂内置 `block-quic` 核心路由拦截与 TLS 握手修复，彻底根除 Google/YouTube 协议不受支持与握手异常。
-   - **SmartDNS 极速加速引擎**（端口 6053）：预置 41 个海内外顶级公共、骨干运营商（电信/联通/移动）与 DoT 加密 DNS 并发测速，开启 0ms 乐观缓存、13.1 万条纯内存持久缓存与 AAAA 拦截。
+   - **SmartDNS 极速加速引擎**（端口 6053）：预置国内顶尖科技大厂（阿里/腾讯/字节/百度/360/114/CNNIC/OneDNS）与海外顶尖科技公司（Google/Cloudflare/Quad9/Cisco/AdGuard）DNS 矩阵，彻底剔除运营商劫持 DNS，开启 0ms 乐观缓存、26.2 万条纯内存持久缓存与 AAAA 拦截。
    - **全局彻底禁用 IPv6**：全链路关闭内核 sysctl、DHCPv6、路由通告 RA、wan6 接口与 AAAA 解析，打造纯 IPv4 极速低延迟网络，彻底杜绝 IPv6 旁路泄露与 DNS 污染。
 
 ---

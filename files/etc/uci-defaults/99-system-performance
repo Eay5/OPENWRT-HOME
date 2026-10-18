@@ -240,7 +240,7 @@ if uci -q get homeproxy.config >/dev/null 2>&1; then
 		fi
 	}
 
-	# 1. 本地极速与国内主流大厂 DNS
+	# 1. 【国内顶尖科技公司公共 DNS】(纯科技大厂/无运营商劫持，用于直连/国内解析)
 	add_hp_dns "dns_smartdns_local" "本地 SmartDNS (127.0.0.1:6053)" "udp://127.0.0.1:6053"
 	add_hp_dns "dns_alidns_udp"     "阿里公共 DNS (223.5.5.5 UDP)"   "udp://223.5.5.5:53"
 	add_hp_dns "dns_alidns_doh"     "阿里 DoH (223.5.5.5 HTTPS)"     "https://223.5.5.5/dns-query"
@@ -251,16 +251,12 @@ if uci -q get homeproxy.config >/dev/null 2>&1; then
 	add_hp_dns "dns_bytedance_udp"  "火山引擎/字节 (180.184.1.1 UDP)" "udp://180.184.1.1:53"
 	add_hp_dns "dns_bytedance_dot"  "火山引擎/字节 (180.184.1.1 TLS)" "tls://180.184.1.1:853"
 	add_hp_dns "dns_baidu_udp"      "百度公共 DNS (180.76.76.76 UDP)" "udp://180.76.76.76:53"
+	add_hp_dns "dns_360_udp"        "360 安全 DNS (101.226.4.6 UDP)" "udp://101.226.4.6:53"
 	add_hp_dns "dns_114_udp"        "114DNS 纯净版 (114.114.114.114)" "udp://114.114.114.114:53"
 	add_hp_dns "dns_cnnic_udp"      "CNNIC 国家域名中心 (1.2.4.8)"    "udp://1.2.4.8:53"
 	add_hp_dns "dns_onedns_udp"     "OneDNS 微步安全 (117.50.22.22)"  "udp://117.50.22.22:53"
 
-	# 2. 三大运营商骨干公共 DNS
-	add_hp_dns "dns_telecom_hb"     "中国电信骨干 (202.103.24.68)"    "udp://202.103.24.68:53"
-	add_hp_dns "dns_unicom_pub"     "中国联通公共 (116.116.116.116)"  "udp://116.116.116.116:53"
-	add_hp_dns "dns_cmcc_gd"        "中国移动骨干 (120.196.165.7)"    "udp://120.196.165.7:53"
-
-	# 3. 海外与防污染高信誉 DNS 矩阵 (采用纯 IP 避免引导死锁)
+	# 2. 【海外知名科技公司公共 DNS】(纯 IP 免死锁 DoH/DoT/TCP，用于节点代理/防污染解析)
 	add_hp_dns "dns_google_doh"     "Google DoH (8.8.8.8 HTTPS)"     "https://8.8.8.8/dns-query"
 	add_hp_dns "dns_google_dot"     "Google DoT (8.8.8.8 TLS)"       "tls://8.8.8.8:853"
 	add_hp_dns "dns_google_tcp"     "Google DNS (8.8.8.8 TCP)"       "tcp://8.8.8.8:53"

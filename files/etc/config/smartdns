@@ -44,71 +44,10 @@ config ip-rule
 	option enabled '1'
 
 # ==============================================================================
-# 1. 本地运营商 DNS（湖北电信 - 物理距离最近，本地 CDN 精准秒开）
+# 【国内科技公司顶级公共 DNS 矩阵】(server_group 'china'，纯科技大厂无运营商劫持)
 # ==============================================================================
-config server
-	option enabled '1'
-	option name 'HB-Telecom-1'
-	option type 'udp'
-	option ip '202.103.24.68'
-	option server_group 'china'
-	option blacklist_ip '0'
 
-config server
-	option enabled '1'
-	option name 'HB-Telecom-2'
-	option type 'udp'
-	option ip '202.103.44.150'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'HB-Telecom-3'
-	option type 'udp'
-	option ip '202.103.0.117'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 2. 腾讯公共 DNS (DNSPod - 腾讯/微信/王者荣耀生态最佳，含 DoT 加密防劫持)
-# ==============================================================================
-config server
-	option enabled '1'
-	option name 'Tencent-1'
-	option type 'udp'
-	option ip '119.29.29.29'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'Tencent-2'
-	option type 'udp'
-	option ip '119.28.28.28'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'Tencent-TCP'
-	option type 'tcp'
-	option ip '119.29.29.29'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'Tencent-DoT'
-	option type 'tls'
-	option ip '1.12.12.12'
-	option port '853'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 3. 阿里公共 DNS (AliDNS - 淘宝/优酷/高德/阿里云生态最佳，含 DoT 加密防劫持)
-# ==============================================================================
+# 1. 阿里巴巴 (AliDNS - 淘宝/天猫/阿里云/优酷/高德生态最佳)
 config server
 	option enabled '1'
 	option name 'AliDNS-1'
@@ -142,9 +81,41 @@ config server
 	option server_group 'china'
 	option blacklist_ip '0'
 
-# ==============================================================================
-# 4. 字节跳动 / 火山引擎 DNS (抖音/今日头条/西瓜视频专属加速)
-# ==============================================================================
+# 2. 腾讯科技 (DNSPod - 微信/QQ/腾讯视频/腾讯游戏王者荣耀生态最佳)
+config server
+	option enabled '1'
+	option name 'Tencent-1'
+	option type 'udp'
+	option ip '119.29.29.29'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Tencent-2'
+	option type 'udp'
+	option ip '119.28.28.28'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Tencent-TCP'
+	option type 'tcp'
+	option ip '119.29.29.29'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Tencent-DoT'
+	option type 'tls'
+	option ip '1.12.12.12'
+	option port '853'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+# 3. 字节跳动 / 火山引擎 (抖音/今日头条/西瓜视频/飞书生态加速)
 config server
 	option enabled '1'
 	option name 'Bytedance-1'
@@ -161,9 +132,16 @@ config server
 	option server_group 'china'
 	option blacklist_ip '0'
 
-# ==============================================================================
-# 5. 百度公共 DNS (Baidu - 百度搜索/爱奇艺加速)
-# ==============================================================================
+config server
+	option enabled '1'
+	option name 'Bytedance-DoT'
+	option type 'tls'
+	option ip '180.184.1.1'
+	option port '853'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+# 4. 百度科技 (Baidu DNS - 百度搜索/爱奇艺/百度网盘专属加速)
 config server
 	option enabled '1'
 	option name 'Baidu-DNS'
@@ -172,12 +150,10 @@ config server
 	option server_group 'china'
 	option blacklist_ip '0'
 
-# ==============================================================================
-# 6. 360 安全 DNS (电信/移动/联通多线覆盖)
-# ==============================================================================
+# 5. 360 安全科技 (360 DNS - 国内安全大厂安全防护)
 config server
 	option enabled '1'
-	option name '360-Telecom-1'
+	option name '360-Safe-1'
 	option type 'udp'
 	option ip '101.226.4.6'
 	option server_group 'china'
@@ -185,31 +161,13 @@ config server
 
 config server
 	option enabled '1'
-	option name '360-Telecom-2'
+	option name '360-Safe-2'
 	option type 'udp'
 	option ip '218.30.118.6'
 	option server_group 'china'
 	option blacklist_ip '0'
 
-config server
-	option enabled '1'
-	option name '360-Unicom-1'
-	option type 'udp'
-	option ip '123.125.81.6'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name '360-Unicom-2'
-	option type 'udp'
-	option ip '140.207.198.6'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 7. 114DNS (南京信风 - 老牌纯净公共 DNS)
-# ==============================================================================
+# 6. 南京信风科技 (114DNS - 纯净无劫持公共 DNS)
 config server
 	option enabled '1'
 	option name '114DNS-1'
@@ -226,9 +184,24 @@ config server
 	option server_group 'china'
 	option blacklist_ip '0'
 
-# ==============================================================================
-# 8. CNNIC DNS (国家互联网信息中心公共 DNS)
-# ==============================================================================
+# 7. 微步在线安全科技 (OneDNS - 专业企业级安全阻断威胁)
+config server
+	option enabled '1'
+	option name 'OneDNS-1'
+	option type 'udp'
+	option ip '117.50.22.22'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'OneDNS-2'
+	option type 'udp'
+	option ip '52.80.66.66'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+# 8. 中国互联网络信息中心 (CNNIC DNS - 国家顶级权威中立 DNS)
 config server
 	option enabled '1'
 	option name 'CNNIC-1'
@@ -247,101 +220,18 @@ config server
 
 config server
 	option enabled '1'
-	option name 'Beijing-DNS'
+	option name 'CNNIC-Beijing'
 	option type 'udp'
 	option ip '1.8.8.8'
 	option server_group 'china'
 	option blacklist_ip '0'
 
 # ==============================================================================
-# 9. OneDNS (微步在线 - 纯净安全 DNS)
+# 【海外顶尖科技公司公共 DNS 矩阵】(server_group 'overseas')
+# 严格物理隔离 (exclude_default_group 1)，杜绝直连 GFW 抢答投毒
 # ==============================================================================
-config server
-	option enabled '1'
-	option name 'OneDNS-1'
-	option type 'udp'
-	option ip '117.50.22.22'
-	option server_group 'china'
-	option blacklist_ip '0'
 
-config server
-	option enabled '1'
-	option name 'OneDNS-2'
-	option type 'udp'
-	option ip '52.80.66.66'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 10. 中国移动全国核心骨干 DNS (广东/北京/江苏移动)
-# ==============================================================================
-config server
-	option enabled '1'
-	option name 'CMCC-Guangdong'
-	option type 'udp'
-	option ip '120.196.165.7'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'CMCC-Beijing'
-	option type 'udp'
-	option ip '211.136.192.6'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'CMCC-Jiangsu'
-	option type 'udp'
-	option ip '221.130.33.52'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 11. 中国联通全国核心骨干 DNS (联通公共/北京联通/上海联通)
-# ==============================================================================
-config server
-	option enabled '1'
-	option name 'Unicom-Public'
-	option type 'udp'
-	option ip '116.116.116.116'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'Unicom-Beijing'
-	option type 'udp'
-	option ip '202.106.0.20'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-config server
-	option enabled '1'
-	option name 'Unicom-Shanghai'
-	option type 'udp'
-	option ip '210.22.70.3'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 12. 字节跳动火山引擎 DoT (DoT 853 加密极速解析)
-# ==============================================================================
-config server
-	option enabled '1'
-	option name 'Bytedance-DoT'
-	option type 'tls'
-	option ip '180.184.1.1'
-	option port '853'
-	option server_group 'china'
-	option blacklist_ip '0'
-
-# ==============================================================================
-# 13. 海外/国际顶级高信誉 DNS 矩阵 (Google / Cloudflare / Quad9 / OpenDNS)
-# 显式排除在默认组外 (exclude_default_group 1)，严格物理隔离，杜绝 GFW 抢答投毒
-# ==============================================================================
+# 1. 谷歌科技 (Alphabet / Google Public DNS)
 config server
 	option enabled '1'
 	option name 'Google-DNS-1'
@@ -379,6 +269,7 @@ config server
 	option exclude_default_group '1'
 	option blacklist_ip '0'
 
+# 2. Cloudflare 科技 (全球最大 Anycast 网络服务商)
 config server
 	option enabled '1'
 	option name 'Cloudflare-1'
@@ -416,6 +307,7 @@ config server
 	option exclude_default_group '1'
 	option blacklist_ip '0'
 
+# 3. Quad9 基金会 (IBM / 全球网络联盟高安全 DNS)
 config server
 	option enabled '1'
 	option name 'Quad9-DNS'
@@ -435,6 +327,7 @@ config server
 	option exclude_default_group '1'
 	option blacklist_ip '0'
 
+# 4. 思科系统 (Cisco / OpenDNS)
 config server
 	option enabled '1'
 	option name 'OpenDNS-1'
@@ -453,6 +346,7 @@ config server
 	option exclude_default_group '1'
 	option blacklist_ip '0'
 
+# 5. AdGuard Software (全球顶级过滤与纯净 DNS)
 config server
 	option enabled '1'
 	option name 'AdGuard-DNS'
@@ -461,5 +355,3 @@ config server
 	option server_group 'overseas'
 	option exclude_default_group '1'
 	option blacklist_ip '0'
-
-
