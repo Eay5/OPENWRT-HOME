@@ -296,7 +296,7 @@ if ! uci -q get firewall.block_quic >/dev/null 2>&1; then
 	uci -q commit firewall
 fi
 
-# 8. SmartDNS Full-RAM Performance Tuning (13.1万条纯内存极速响应，彻底关闭 IPv6 与双栈测速)
+# 8. SmartDNS Full-RAM Performance Tuning (26.2万条纯内存极速响应，48小时乐观缓存，彻底隔离海外防投毒)
 if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].enabled='1'
 	uci -q set smartdns.@smartdns[0].port='6053'
@@ -306,10 +306,10 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].force_aaaa_soa='1'
 	uci -q set smartdns.@smartdns[0].prefetch_domain='1'
 	uci -q set smartdns.@smartdns[0].serve_expired='1'
-	uci -q set smartdns.@smartdns[0].serve_expired_ttl='86400'
+	uci -q set smartdns.@smartdns[0].serve_expired_ttl='172800'
 	uci -q set smartdns.@smartdns[0].serve_expired_reply_ttl='3'
-	uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80,ping'
-	uci -q set smartdns.@smartdns[0].cache_size='131072'
+	uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80'
+	uci -q set smartdns.@smartdns[0].cache_size='262144'
 	uci -q set smartdns.@smartdns[0].cache_file='/tmp/smartdns.cache'
 	uci -q set smartdns.@smartdns[0].cache_persist='1'
 	uci -q set smartdns.@smartdns[0].force_https_soa='1'
@@ -319,6 +319,16 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q del smartdns.@smartdns[0].seconddns_port 2>/dev/null || true
 	uci -q del smartdns.@smartdns[0].seconddns_tcp_server 2>/dev/null || true
 	uci -q del smartdns.@smartdns[0].seconddns_force_https_soa 2>/dev/null || true
+
+	# 确保所有 overseas 组的海外 DNS 绝对排除在默认组外，杜绝直连 GFW 抢答投毒
+	local s_idx=0
+	while uci -q get smartdns.@server[$s_idx] >/dev/null 2>&1; do
+		if [ "$(uci -q get smartdns.@server[$s_idx].server_group)" = "overseas" ]; then
+			uci -q set smartdns.@server[$s_idx].exclude_default_group='1'
+		fi
+		s_idx=$((s_idx + 1))
+	done
+
 	uci -q commit smartdns
 fi
 

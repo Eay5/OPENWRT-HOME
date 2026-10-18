@@ -33,16 +33,19 @@ start() {
 
 		# 2. 国内高频生活与主流云生态 (微信/阿里/京东/抖音/B站/百度/网易/美团/苹果/微软)
 		daily_domains="qq.com weixin.qq.com wx.qq.com qpic.cn qlogo.cn gtimg.cn \
-		taobao.com alipay.com tmall.com alicdn.com aliyun.com \
+		taobao.com alipay.com tmall.com alicdn.com aliyun.com alipayobjects.com tenpay.com \
 		jd.com 360buyimg.com jcloud.com \
 		douyin.com bytedance.com byteimg.com pstatp.com \
-		bilibili.com hdslb.com bilivideo.com \
+		bilibili.com hdslb.com bilivideo.com biligame.com \
 		baidu.com bdimg.com bdstatic.com \
-		zhihu.com zhimg.com 163.com 126.net netease.com \
+		zhihu.com zhimg.com 163.com 126.net netease.com music.163.com \
 		sina.com.cn weibo.com xiaohongshu.com \
 		meituan.com dianping.com ele.me \
-		apple.com icloud.com apple-dns.net \
+		iqiyi.com youku.com y.qq.com \
+		apple.com icloud.com apple-dns.net init.push.apple.com \
 		microsoft.com live.com office.com \
+		xiaomi.com mi.com miui.com huawei.com vmall.com honor.cn oppo.com vivo.com \
+		game.qq.com miHoYo.com speedtest.cn \
 		v2ex.com juejin.cn segmentfault.com"
 
 		all_domains="${mirror_domains} ${daily_domains}"
