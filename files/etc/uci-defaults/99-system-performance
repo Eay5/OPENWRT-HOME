@@ -66,6 +66,8 @@ net.ipv4.tcp_notsent_lowat = 16384
 net.ipv4.tcp_mtu_probing = 1
 net.ipv4.tcp_adv_win_scale = 1
 net.ipv4.tcp_max_syn_backlog = 16384
+net.ipv4.tcp_comp_sack = 1
+net.ipv4.tcp_moderate_rcvbuf = 1
 
 # 3. Quick socket reuse & Keepalive cleanup (PT/BT & Proxy Connection Reclaim)
 net.ipv4.tcp_tw_reuse = 1
@@ -87,6 +89,7 @@ net.core.netdev_max_backlog = 16384
 net.core.netdev_budget = 600
 net.core.netdev_budget_usecs = 8000
 net.core.somaxconn = 8192
+net.core.gro_normal_batch = 8
 
 # 5. Conntrack NAT Table Scaling & Timeout Optimization (104万并发)
 net.netfilter.nf_conntrack_max = 1048576
@@ -189,9 +192,10 @@ if [ -x /etc/init.d/odhcpd ]; then
 	/etc/init.d/odhcpd stop >/dev/null 2>&1 || true
 fi
 
-# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、国外 DNS 采用 DoH https://dns.google/dns-query，国内 DNS 接驳 SmartDNS 6053 毫秒级缓存）
+# HomeProxy 出厂最佳预设（TUN 模式、大陆白名单、全端口代理、国外 DNS 采用免死锁纯 IP 加密通道，国内 DNS 接驳 SmartDNS 6053 毫秒级极速缓存）
 if uci -q get homeproxy.config >/dev/null 2>&1; then
-	uci -q set homeproxy.config.dns_server='https://dns.google/dns-query'
+	# 优化国外 DNS：采用纯 IP 格式的多重免死锁 DoH (8.8.8.8)，彻底消除冷启动与域名解析循环死锁
+	uci -q set homeproxy.config.dns_server='https://8.8.8.8/dns-query'
 	uci -q set homeproxy.config.china_dns_server='udp://127.0.0.1:6053'
 	uci -q set homeproxy.config.routing_mode='bypass_mainland_china'
 	uci -q set homeproxy.config.proxy_mode='tun'
@@ -199,10 +203,75 @@ if uci -q get homeproxy.config >/dev/null 2>&1; then
 	uci -q set homeproxy.config.ipv6_support='0'
 	uci -q commit homeproxy
 fi
+
 if uci -q get homeproxy.routing >/dev/null 2>&1; then
-	uci -q set homeproxy.routing.sniff_override='1'
+	# 关闭嗅探覆写 (sniff_override=0)：彻底解决 Google/YouTube 握手时的 ERR_SSL_VERSION_OR_CIPHER_MISMATCH (协议不受支持)
+	uci -q set homeproxy.routing.sniff_override='0'
 	uci -q set homeproxy.routing.default_outbound='direct-out'
 	uci -q set homeproxy.routing.default_outbound_dns='default-dns'
+	uci -q commit homeproxy
+fi
+
+# 在 HomeProxy 核心路由层注入阻断 QUIC (UDP 443) 规则，强制全网设备 0 延迟秒切极速稳定的 TCP (TLS 1.3)
+if uci -q get homeproxy.routing >/dev/null 2>&1; then
+	if ! uci -q show homeproxy 2>/dev/null | grep -q "block-quic"; then
+		uci -q add homeproxy routing_rule >/dev/null 2>&1 || true
+		uci -q set homeproxy.@routing_rule[-1].label='block-quic'
+		uci -q set homeproxy.@routing_rule[-1].enabled='1'
+		uci -q set homeproxy.@routing_rule[-1].mode='default'
+		uci -q set homeproxy.@routing_rule[-1].network='udp'
+		uci -q add_list homeproxy.@routing_rule[-1].port='443'
+		uci -q set homeproxy.@routing_rule[-1].outbound='block-out'
+		uci -q commit homeproxy
+	fi
+fi
+
+# ==============================================================================
+# 为 HomeProxy 内置全套海内外顶级 DNS 服务器库 (海内外大厂/骨干运营商/DoH/DoT全覆盖)
+# ==============================================================================
+if uci -q get homeproxy.config >/dev/null 2>&1; then
+	add_hp_dns() {
+		local id="$1" label="$2" addr="$3"
+		if ! uci -q get homeproxy."$id" >/dev/null 2>&1; then
+			uci -q set homeproxy."$id"="dns_server"
+			uci -q set homeproxy."$id".label="$label"
+			uci -q set homeproxy."$id".enabled="1"
+			uci -q set homeproxy."$id".address="$addr"
+		fi
+	}
+
+	# 1. 本地极速与国内主流大厂 DNS
+	add_hp_dns "dns_smartdns_local" "本地 SmartDNS (127.0.0.1:6053)" "udp://127.0.0.1:6053"
+	add_hp_dns "dns_alidns_udp"     "阿里公共 DNS (223.5.5.5 UDP)"   "udp://223.5.5.5:53"
+	add_hp_dns "dns_alidns_doh"     "阿里 DoH (223.5.5.5 HTTPS)"     "https://223.5.5.5/dns-query"
+	add_hp_dns "dns_alidns_dot"     "阿里 DoT (223.5.5.5 TLS)"       "tls://223.5.5.5:853"
+	add_hp_dns "dns_tencent_udp"    "腾讯 DNSPod (119.29.29.29 UDP)" "udp://119.29.29.29:53"
+	add_hp_dns "dns_tencent_doh"    "腾讯 DoH (1.12.12.12 HTTPS)"    "https://1.12.12.12/dns-query"
+	add_hp_dns "dns_tencent_dot"    "腾讯 DoT (1.12.12.12 TLS)"      "tls://1.12.12.12:853"
+	add_hp_dns "dns_bytedance_udp"  "火山引擎/字节 (180.184.1.1 UDP)" "udp://180.184.1.1:53"
+	add_hp_dns "dns_bytedance_dot"  "火山引擎/字节 (180.184.1.1 TLS)" "tls://180.184.1.1:853"
+	add_hp_dns "dns_baidu_udp"      "百度公共 DNS (180.76.76.76 UDP)" "udp://180.76.76.76:53"
+	add_hp_dns "dns_114_udp"        "114DNS 纯净版 (114.114.114.114)" "udp://114.114.114.114:53"
+	add_hp_dns "dns_cnnic_udp"      "CNNIC 国家域名中心 (1.2.4.8)"    "udp://1.2.4.8:53"
+	add_hp_dns "dns_onedns_udp"     "OneDNS 微步安全 (117.50.22.22)"  "udp://117.50.22.22:53"
+
+	# 2. 三大运营商骨干公共 DNS
+	add_hp_dns "dns_telecom_hb"     "中国电信骨干 (202.103.24.68)"    "udp://202.103.24.68:53"
+	add_hp_dns "dns_unicom_pub"     "中国联通公共 (116.116.116.116)"  "udp://116.116.116.116:53"
+	add_hp_dns "dns_cmcc_gd"        "中国移动骨干 (120.196.165.7)"    "udp://120.196.165.7:53"
+
+	# 3. 海外与防污染高信誉 DNS 矩阵 (采用纯 IP 避免引导死锁)
+	add_hp_dns "dns_google_doh"     "Google DoH (8.8.8.8 HTTPS)"     "https://8.8.8.8/dns-query"
+	add_hp_dns "dns_google_dot"     "Google DoT (8.8.8.8 TLS)"       "tls://8.8.8.8:853"
+	add_hp_dns "dns_google_tcp"     "Google DNS (8.8.8.8 TCP)"       "tcp://8.8.8.8:53"
+	add_hp_dns "dns_cloudflare_doh" "Cloudflare DoH (1.1.1.1 HTTPS)" "https://1.1.1.1/dns-query"
+	add_hp_dns "dns_cloudflare_dot" "Cloudflare DoT (1.1.1.1 TLS)"   "tls://1.1.1.1:853"
+	add_hp_dns "dns_cloudflare_tcp" "Cloudflare DNS (1.1.1.1 TCP)"   "tcp://1.1.1.1:53"
+	add_hp_dns "dns_quad9_doh"      "Quad9 安全 DoH (9.9.9.9 HTTPS)"  "https://9.9.9.9/dns-query"
+	add_hp_dns "dns_quad9_dot"      "Quad9 安全 DoT (9.9.9.9 TLS)"    "tls://9.9.9.9:853"
+	add_hp_dns "dns_opendns_udp"    "Cisco OpenDNS (208.67.222.222)" "udp://208.67.222.222:53"
+	add_hp_dns "dns_adguard_doh"    "AdGuard 纯净 DoH (94.140.14.14)" "https://94.140.14.14/dns-query"
+
 	uci -q commit homeproxy
 fi
 

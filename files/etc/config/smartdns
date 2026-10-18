@@ -271,3 +271,180 @@ config server
 	option ip '52.80.66.66'
 	option server_group 'china'
 	option blacklist_ip '0'
+
+# ==============================================================================
+# 10. 中国移动全国核心骨干 DNS (广东/北京/江苏移动)
+# ==============================================================================
+config server
+	option enabled '1'
+	option name 'CMCC-Guangdong'
+	option type 'udp'
+	option ip '120.196.165.7'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'CMCC-Beijing'
+	option type 'udp'
+	option ip '211.136.192.6'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'CMCC-Jiangsu'
+	option type 'udp'
+	option ip '221.130.33.52'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+# ==============================================================================
+# 11. 中国联通全国核心骨干 DNS (联通公共/北京联通/上海联通)
+# ==============================================================================
+config server
+	option enabled '1'
+	option name 'Unicom-Public'
+	option type 'udp'
+	option ip '116.116.116.116'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Unicom-Beijing'
+	option type 'udp'
+	option ip '202.106.0.20'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Unicom-Shanghai'
+	option type 'udp'
+	option ip '210.22.70.3'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+# ==============================================================================
+# 12. 字节跳动火山引擎 DoT (DoT 853 加密极速解析)
+# ==============================================================================
+config server
+	option enabled '1'
+	option name 'Bytedance-DoT'
+	option type 'tls'
+	option ip '180.184.1.1'
+	option port '853'
+	option server_group 'china'
+	option blacklist_ip '0'
+
+# ==============================================================================
+# 13. 海外/国际顶级高信誉 DNS 矩阵 (Google / Cloudflare / Quad9 / OpenDNS)
+# ==============================================================================
+config server
+	option enabled '1'
+	option name 'Google-DNS-1'
+	option type 'udp'
+	option ip '8.8.8.8'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Google-DNS-2'
+	option type 'udp'
+	option ip '8.8.4.4'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Google-TCP'
+	option type 'tcp'
+	option ip '8.8.8.8'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Google-DoT'
+	option type 'tls'
+	option ip '8.8.8.8'
+	option port '853'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Cloudflare-1'
+	option type 'udp'
+	option ip '1.1.1.1'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Cloudflare-2'
+	option type 'udp'
+	option ip '1.0.0.1'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Cloudflare-TCP'
+	option type 'tcp'
+	option ip '1.1.1.1'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Cloudflare-DoT'
+	option type 'tls'
+	option ip '1.1.1.1'
+	option port '853'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Quad9-DNS'
+	option type 'udp'
+	option ip '9.9.9.9'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'Quad9-DoT'
+	option type 'tls'
+	option ip '9.9.9.9'
+	option port '853'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'OpenDNS-1'
+	option type 'udp'
+	option ip '208.67.222.222'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'OpenDNS-2'
+	option type 'udp'
+	option ip '208.67.220.220'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+
+config server
+	option enabled '1'
+	option name 'AdGuard-DNS'
+	option type 'udp'
+	option ip '94.140.14.14'
+	option server_group 'overseas'
+	option blacklist_ip '0'
+

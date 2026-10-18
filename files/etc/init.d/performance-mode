@@ -113,11 +113,14 @@ apply_sysctl_tweaks() {
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_notsent_lowat=16384 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_max_syn_backlog=16384 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_comp_sack=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_moderate_rcvbuf=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_keepalive_time=300 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_max_backlog=16384 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
 	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
+	sysctl -w net.core.gro_normal_batch=8 >/dev/null 2>&1 || true
 	sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
 	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
 	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
@@ -171,6 +174,12 @@ apply_nic_hardware_tuning() {
 
 		# 开启自适应中断合并 (Adaptive IRQ Coalescing)，在高吞吐时大幅降低软中断 CPU 占用
 		ethtool -C "$dev" adaptive-rx on adaptive-tx on >/dev/null 2>&1 || true
+
+		# 扩充网卡发送队列长度至 4096，根除突发高并发时的 tx drop 排队溢出丢包
+		ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
+
+		# 开启 Linux 6.12 / 6.18 原生 BIG TCP 超大数据包聚合 (512KB)，提升 2.5G/5G/10G 吞吐并削减 CPU 软中断
+		ip link set dev "$dev" gro_max_size 524288 gso_max_size 524288 >/dev/null 2>&1 || true
 	done
 }
 

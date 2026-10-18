@@ -168,7 +168,6 @@ detect_enabled_apps() {
     config_is_enabled CONFIG_PACKAGE_luci-app-homeproxy && apps+=("HomeProxy")
     config_is_enabled CONFIG_PACKAGE_luci-app-smartdns && apps+=("SmartDNS")
     config_is_enabled CONFIG_PACKAGE_luci-app-turboacc && apps+=("Turbo ACC")
-    config_is_enabled CONFIG_PACKAGE_luci-app-sqm && apps+=("SQM (CAKE)")
 
     join_by_comma "${apps[@]}"
 }
