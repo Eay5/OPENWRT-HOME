@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/common-proxy-verification.sh"
 
-target_kernel_series="6.12"
+target_kernel_series="6.18"
 target_default_ip="192.168.0.245"
 target_hostname="EAY-LUCKY"
 
@@ -133,7 +133,7 @@ detect_enabled_apps() {
     join_by_comma "${apps[@]}"
 }
 
-echo "Applying basic settings for 6.12 LUCKY..."
+echo "Applying basic settings for 6.18 LUCKY..."
 
 sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
 sed -i "s/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${target_kernel_series}/g" target/linux/x86/Makefile
@@ -162,7 +162,7 @@ mkdir -p files/etc/sysctl.d files/etc/uci-defaults
 
 cat << 'EOF' > files/etc/sysctl.d/98-lucky-inbound.conf
 # ==============================================================================
-# Linux 6.12 LUCKY Dedicated Inbound / Reverse Proxy Tuning
+# Linux 6.18 LUCKY Dedicated Inbound / Reverse Proxy Tuning
 # ==============================================================================
 # 1. 100万级并发连接跟踪与 2 小时大文件长效连接保持（杜绝大文件下载中途断流）
 net.netfilter.nf_conntrack_max = 1048576
@@ -180,7 +180,7 @@ net.ipv4.tcp_fin_timeout = 10
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 
-# 4. Linux 6.12 原生 UDP GRO 转发加速（加速 QUIC / HTTP3 / STUN 穿透）
+# 4. Linux 6.18 原生 UDP GRO 转发加速（加速 QUIC / HTTP3 / STUN 穿透）
 net.ipv4.udp_gro_forwarding = 1
 net.ipv4.ip_forward = 1
 

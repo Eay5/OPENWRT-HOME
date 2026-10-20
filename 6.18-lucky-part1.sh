@@ -19,7 +19,7 @@ clone_package_repo() {
 }
 
 pin_lucky_package_sources() {
-    echo "Pinning 6.12 LUCKY package sources..."
+    echo "Pinning 6.18 LUCKY package sources..."
 
     rm -rf feeds/luci/themes/luci-theme-argon
     rm -rf package/feeds/luci/luci-theme-argon
@@ -34,10 +34,10 @@ pin_lucky_package_sources() {
     rm -rf package/homeproxy feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy 2>/dev/null || true
     rm -rf package/smartdns package/luci-app-smartdns feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
 
-    echo "6.12 LUCKY package sources pinned."
+    echo "6.18 LUCKY package sources pinned."
 }
 
 setup_common_feeds
 pin_lucky_package_sources
 
-echo "Part 1 feed preparation for 6.12 LUCKY completed."
+echo "Part 1 feed preparation for 6.18 LUCKY completed."

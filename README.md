@@ -38,8 +38,8 @@
 
 | 属性 | 默认值 |
 | :--- | :--- |
-| **后台管理地址** | `192.168.0.233`（`6.12-lucky` 专属应用网关为 `192.168.0.245`） |
-| **默认主机名** | `EAY`（`6.12-lucky` 为 `EAY-LUCKY`） |
+| **后台管理地址** | `192.168.0.233`（`6.18-lucky` 专属应用网关为 `192.168.0.245`） |
+| **默认主机名** | `EAY`（`6.18-lucky` 为 `EAY-LUCKY`） |
 | **登录用户名** | `root` |
 | **登录密码** | `无`（首次登录直接回车即可） |
 | **默认主题** | `Argon` (jerrykuku) |
@@ -55,7 +55,7 @@
 | :--- | :--- | :--- | :--- |
 | **`6.18`** | **Linux 6.18** | **虚拟化 / 软路由**<br>(PVE / ESXi / Hyper-V / Unraid) | Virtio (Net/Blk/SCSI/Balloon/RNG/Console)、VMXNET3、Intel (e1000/e1000e/igb/igc/ixgbe)、Realtek (r8169/r8125/r8126 5G)<br>📖 [Unraid 虚拟机直通调优指南](UNRAID-VM-GUIDE.md) |
 | **`6.18-physical`** | **Linux 6.18** | **物理机 / 工控机直装** | Intel 全系网卡 (e1000/e1000e/igb/igc 2.5G)、Realtek (r8169/r8125 2.5G/r8126 5G)、Intel CPU 微码、`autocore` 硬件监控、`smartmontools` 硬盘健康管理、首启多网口智能角色自动划分 |
-| **`6.12-lucky` (LUCKY)** | **Linux 6.12 LTS** | **反代 / 穿透 / 外网入站专属网关** | 默认后台 IP 为 `192.168.0.245`；专为**外网访问内网服务**打造：仅保留最新 **Lucky 大吉**（动态追踪官方 Release），彻底剔除 HomeProxy、SmartDNS、SQM、UPnP 等；100万级高并发 Conntrack 连接跟踪、TCP BBR+FQ 优化、硬件 AES-NI 加密加速、IPv6 双栈穿透支持 |
+| **`6.18-lucky` (LUCKY)** | **Linux 6.18** | **反代 / 穿透 / 外网入站专属网关** | 默认后台 IP 为 `192.168.0.245`；专为**外网访问内网服务**打造：仅保留最新 **Lucky 大吉**（动态追踪官方 Release），彻底剔除 HomeProxy、SmartDNS、SQM、UPnP 等；100万级高并发 Conntrack 连接跟踪、TCP BBR+FQ 优化、硬件 AES-NI 加密加速、IPv6 双栈穿透支持 |
 
 ---
 
