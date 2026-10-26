@@ -237,12 +237,6 @@ EOF
 # 注入独立应用主机防火墙与服务默认设置
 cat << 'EOF' > files/etc/uci-defaults/98-lucky-appliance
 #!/bin/sh
-# 0. 锁定 LAN 接口 IP 为 192.168.0.245 (独立 LUCKY 反代与穿透应用主机)
-if uci -q get network.lan >/dev/null 2>&1; then
-    uci -q set network.lan.ipaddr='192.168.0.245'
-    uci -q commit network
-fi
-
 # 1. 独立主机纯净模式：彻底关闭本机的 DHCP 服务，严禁抢答局域网主路由的 DHCP 分配导致冲突
 if uci -q get dhcp.lan >/dev/null 2>&1; then
     uci -q set dhcp.lan.ignore='1'
