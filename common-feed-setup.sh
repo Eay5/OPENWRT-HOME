@@ -28,6 +28,17 @@ setup_common_feeds() {
     # 官方 OpenWrt 2.3.11 为原生零补丁干净编译，清理残留补丁目录以保证顺利编译
     rm -rf feeds/packages/net/miniupnpd/patches package/feeds/packages/miniupnpd/patches 2>/dev/null || true
 
+    # 修复 firewall4 FullCone NAT 补丁失败问题：
+    # 2026-10-26 上游 OpenWrt/firewall4 合并 commit bac1d65 ("Do not emit helper jump without helper modules")，
+    # 将 root/usr/share/ucode/fw4.uc 中的 zone.dflags.helper = true 改为 false。
+    # ImmortalWrt 同步上游后未及时更新 001-firewall4-add-support-for-fullcone-nat.patch，导致第 8 个 Hunk 冲突拒绝。
+    # 此处自动适配最新的 helper 赋值逻辑，确保 FullCone NAT 补丁 100% 干净应用。
+    local fw4_patch="package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch"
+    if [ -f "$fw4_patch" ]; then
+        sed -i 's/zone\.dflags\.helper = true;/zone.dflags.helper = false;/g' "$fw4_patch" 2>/dev/null || true
+        echo "Patched firewall4 fullcone patch for helper module update compatibility."
+    fi
+
     # 修复 luci-theme-argon 3.0 冲突与版本覆盖：
     # jerrykuku/luci-theme-argon 于 2026-10-16 升级至 3.0，已将 Argon Config 页面与配置原生集成进主题包。
     # 彻底清理官方 feed 自带的旧版 luci-theme-argon 与独立的 luci-app-argon-config，确保 100% 采用本地 package/luci-theme-argon 3.0

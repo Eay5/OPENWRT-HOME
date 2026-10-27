@@ -237,6 +237,9 @@ jobs:
           # 修复 miniupnpd 2.3.11 编译补丁冲突
           rm -rf package/feeds/packages/miniupnpd/patches feeds/packages/net/miniupnpd/patches 2>/dev/null || true
 
+          # 修复 firewall4 FullCone NAT 补丁与上游 commit bac1d65 冲突
+          sed -i 's/zone\.dflags\.helper = true;/zone.dflags.helper = false;/g' package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch 2>/dev/null || true
+
           # 修复 luci-theme-argon 3.0 与独立旧版 luci-app-argon-config 冲突及 feed 覆盖
           rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
           rm -rf package/feeds/luci/luci-theme-argon feeds/luci/themes/luci-theme-argon 2>/dev/null || true
