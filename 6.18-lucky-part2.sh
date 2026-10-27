@@ -157,6 +157,20 @@ sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files
 sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" feeds/luci/modules/luci-base/root/etc/config/luci 2>/dev/null || true
 sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" package/feeds/luci/luci-base/root/etc/config/luci 2>/dev/null || true
 
+# 固化系统默认时区为中国上海时间 (CST-8, Asia/Shanghai) 与国内高速 NTP 授时服务
+sed -i "s/timezone='UTC'/timezone='CST-8'/g" package/base-files/files/bin/config_generate
+sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/base-files/files/bin/config_generate
+sed -i "s/'0.openwrt.pool.ntp.org'/'ntp.aliyun.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'1.openwrt.pool.ntp.org'/'time1.cloud.tencent.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'2.openwrt.pool.ntp.org'/'time.apple.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'3.openwrt.pool.ntp.org'/'time.windows.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/timezone='UTC'/timezone='CST-8'/g" package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+
+# 启用亚洲时区数据包支持
+echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
+echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
+
 # 注入针对外网访问内网服务的专属内核与网络优化
 mkdir -p files/etc/sysctl.d files/etc/uci-defaults
 
@@ -267,7 +281,25 @@ if uci -q get firewall.@defaults[0] >/dev/null 2>&1; then
     uci -q commit firewall
 fi
 
-# 5. 调大进程打开文件句柄上限，多线程下载大文件不报错
+# 5. 设置系统时区为中国上海时间 (CST-8, Asia/Shanghai) 并配置国内高可用 NTP 授时服务
+if uci -q get system.@system[0] >/dev/null 2>&1; then
+    uci -q set system.@system[0].timezone='CST-8'
+    uci -q set system.@system[0].zonename='Asia/Shanghai'
+    uci -q commit system
+fi
+
+if uci -q get system.ntp >/dev/null 2>&1; then
+    uci -q del system.ntp.server 2>/dev/null || true
+    uci -q add_list system.ntp.server='ntp.aliyun.com'
+    uci -q add_list system.ntp.server='time1.cloud.tencent.com'
+    uci -q add_list system.ntp.server='time.apple.com'
+    uci -q add_list system.ntp.server='time.windows.com'
+    uci -q commit system
+fi
+
+echo "CST-8" > /etc/TZ 2>/dev/null || true
+
+# 6. 调大进程打开文件句柄上限，多线程下载大文件不报错
 ulimit -n 1048576 2>/dev/null || true
 
 # 6. 网卡硬件大包发送/接收切片加速与硬件接收缓冲扩容 (TSO/GSO/GRO & RX/TX Ring Buffer)

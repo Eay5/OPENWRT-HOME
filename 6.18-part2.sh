@@ -185,6 +185,20 @@ sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files
 sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" feeds/luci/modules/luci-base/root/etc/config/luci 2>/dev/null || true
 sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" package/feeds/luci/luci-base/root/etc/config/luci 2>/dev/null || true
 
+# 固化系统默认时区为中国上海时间 (CST-8, Asia/Shanghai) 与国内高速 NTP 授时服务
+sed -i "s/timezone='UTC'/timezone='CST-8'/g" package/base-files/files/bin/config_generate
+sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/base-files/files/bin/config_generate
+sed -i "s/'0.openwrt.pool.ntp.org'/'ntp.aliyun.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'1.openwrt.pool.ntp.org'/'time1.cloud.tencent.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'2.openwrt.pool.ntp.org'/'time.apple.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'3.openwrt.pool.ntp.org'/'time.windows.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/timezone='UTC'/timezone='CST-8'/g" package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+
+# 启用亚洲时区数据包支持
+echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
+echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
+
 echo "Basic settings applied."
 verify_proxy_stack "${target_kernel_series}" "1"
 

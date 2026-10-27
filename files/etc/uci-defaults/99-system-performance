@@ -50,6 +50,24 @@ if uci -q get luci.main >/dev/null 2>&1; then
 	uci -q commit luci
 fi
 
+# 设置系统时区为中国上海时间 (CST-8, Asia/Shanghai) 并配置国内高可用 NTP 授时服务
+if uci -q get system.@system[0] >/dev/null 2>&1; then
+	uci -q set system.@system[0].timezone='CST-8'
+	uci -q set system.@system[0].zonename='Asia/Shanghai'
+	uci -q commit system
+fi
+
+if uci -q get system.ntp >/dev/null 2>&1; then
+	uci -q del system.ntp.server 2>/dev/null || true
+	uci -q add_list system.ntp.server='ntp.aliyun.com'
+	uci -q add_list system.ntp.server='time1.cloud.tencent.com'
+	uci -q add_list system.ntp.server='time.apple.com'
+	uci -q add_list system.ntp.server='time.windows.com'
+	uci -q commit system
+fi
+
+echo "CST-8" > /etc/TZ 2>/dev/null || true
+
 if [ -x /etc/init.d/performance-mode ]; then
 	/etc/init.d/performance-mode enable >/dev/null 2>&1 || true
 	/etc/init.d/performance-mode restart >/dev/null 2>&1 || /etc/init.d/performance-mode start >/dev/null 2>&1 || true
