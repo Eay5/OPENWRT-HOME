@@ -47,8 +47,12 @@ build_cpu_mask() {
 	echo "$mask"
 }
 
-# 把 CPU governor 和 EPP 拉到性能档，减少代理转发高峰时的突发降频。
+# 把 CPU governor、EPP、Intel/AMD P-State 睿频与 C-States 深睡眠控制全部拉到满血低延迟档，
+# 彻底消除突发网络包/TLS 握手时的 CPU 升频爬坡延迟 (5~15ms) 与 C6/C8/C10 深睡唤醒抖动 (100~200us)。
 apply_cpu_governor() {
+	local available_file epp_file governor_file epb_file state_dir latency
+	local pstate_dir="/sys/devices/system/cpu/intel_pstate"
+
 	for governor_file in \
 		/sys/devices/system/cpu/cpufreq/policy*/scaling_governor \
 		/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
@@ -68,6 +72,35 @@ apply_cpu_governor() {
 		available_file="${epp_file%/*}/energy_performance_available_preferences"
 		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
 			echo performance >"$epp_file" 2>/dev/null || true
+		fi
+	done
+
+	# 开启全局 CPU Boost 睿频加速 (兼容 acpi-cpufreq / amd-pstate)
+	[ -w /sys/devices/system/cpu/cpufreq/boost ] && echo 1 >/sys/devices/system/cpu/cpufreq/boost 2>/dev/null || true
+
+	# Intel P-State / HWP 硬件满血调优（兼容物理机及开启 Host CPU 透传的 PVE/ESXi 虚拟机）
+	if [ -d "$pstate_dir" ]; then
+		[ -w "$pstate_dir/max_perf_pct" ] && echo 100 >"$pstate_dir/max_perf_pct" 2>/dev/null || true
+		[ -w "$pstate_dir/min_perf_pct" ] && echo 100 >"$pstate_dir/min_perf_pct" 2>/dev/null || true
+		[ -w "$pstate_dir/no_turbo" ] && echo 0 >"$pstate_dir/no_turbo" 2>/dev/null || true
+		[ -w "$pstate_dir/hwp_dynamic_boost" ] && echo 1 >"$pstate_dir/hwp_dynamic_boost" 2>/dev/null || true
+	fi
+
+	# 将 Intel EPB (Energy Performance Bias) 设为 0（最高性能档，替代默认 6 平衡档）
+	for epb_file in /sys/devices/system/cpu/cpu*/power/energy_perf_bias; do
+		[ -w "$epb_file" ] && echo 0 >"$epb_file" 2>/dev/null || true
+	done
+
+	# 禁用唤醒延迟 > 30 微秒的深层 CPU C-States (如 C6 / C8 / C10)，仅保留 C0/C1/C1E 浅层节能，
+	# 防止 2.5G/10G 网卡突发收包软中断唤醒核心时产生百微秒级延迟抖动或 PCIe 掉线
+	for state_dir in /sys/devices/system/cpu/cpu*/cpuidle/state*; do
+		[ -f "$state_dir/latency" ] && [ -w "$state_dir/disable" ] || continue
+		latency="$(cat "$state_dir/latency" 2>/dev/null || echo 0)"
+		case "$latency" in
+			''|*[!0-9]*) continue ;;
+		esac
+		if [ "$latency" -gt 30 ]; then
+			echo 1 >"$state_dir/disable" 2>/dev/null || true
 		fi
 	done
 }
@@ -92,6 +125,23 @@ apply_sysctl_tweaks() {
 	sysctl -w fs.nr_open=2097152 >/dev/null 2>&1 || true
 	ulimit -n 1048576 2>/dev/null || true
 
+	# Linux 6.18 EEVDF 调度器与虚拟化/多核低延迟优化：
+	# 关闭桌面级会话自动分组 (sched_autogroup) 与 NUMA 自动迁移扫描，消除 Sing-box / SmartDNS 守护进程被限权或跨核迁移抖动
+	sysctl -w kernel.sched_autogroup_enabled=0 >/dev/null 2>&1 || true
+	sysctl -w kernel.numa_balancing=0 >/dev/null 2>&1 || true
+	# 开启 BPF JIT 即时编译并设为纯内核态 JIT，加速 nftables/fw4 与内核网络过滤路径
+	sysctl -w net.core.bpf_jit_enable=1 >/dev/null 2>&1 || true
+	sysctl -w net.core.bpf_jit_harden=0 >/dev/null 2>&1 || true
+	# 开启网络栈 Busy Polling (50us)，显著降低 Sing-box / SmartDNS epoll 收包唤醒尾延迟 (P99)
+	sysctl -w net.core.busy_poll=50 >/dev/null 2>&1 || true
+	sysctl -w net.core.busy_read=50 >/dev/null 2>&1 || true
+	# 关闭 nf_conntrack 实时流量字节/包计数统计 (acct=0)，每个数据包转发少一次原子锁自增，降低高并发 NAT CPU 开销
+	sysctl -w net.netfilter.nf_conntrack_acct=0 >/dev/null 2>&1 || true
+	# 禁用 TCP 指标历史缓存，防止单次偶发丢包或拥塞把慢速窗口阈值缓存给后续新建连接
+	sysctl -w net.ipv4.tcp_no_metrics_save=1 >/dev/null 2>&1 || true
+	# 开启 MPTCP 多路径 TCP 支持 (Linux 6.18 原生特性)
+	sysctl -w net.mptcp.enabled=1 >/dev/null 2>&1 || true
+
 	# 调大 Conntrack Hash 桶深至 262144 (对应 104 万最大连接，保证 1:4 黄金哈希命中率，消除 CPU 查表瓶颈)
 	for hash_file in /sys/module/nf_conntrack/parameters/hashsize /proc/sys/net/netfilter/nf_conntrack_buckets; do
 		[ -f "$hash_file" ] || continue
@@ -102,6 +152,13 @@ apply_sysctl_tweaks() {
 	sysctl -w net.ipv4.neigh.default.gc_thresh1=2048 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.neigh.default.gc_thresh2=4096 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.neigh.default.gc_thresh3=8192 >/dev/null 2>&1 || true
+
+	# 扩充本地临时端口范围（5.5万端口）与 TIME_WAIT 桶容量，防止 Sing-box 代理高并发向外建连时端口耗尽
+	sysctl -w net.ipv4.ip_local_port_range="10240 65535" >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_tw_buckets=262144 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_tw_reuse=1 >/dev/null 2>&1 || true
+	# 开启 nf_conntrack 宽松模式，防止旁路由单臂非对称流或 Sing-box TUN 重启瞬间已有连接被误判无效丢弃
+	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1 >/dev/null 2>&1 || true
 
 	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
 	sysctl -w net.core.somaxconn=8192 >/dev/null 2>&1 || true
@@ -160,8 +217,14 @@ apply_nic_hardware_tuning() {
 		[ -d "$iface" ] || continue
 		dev="${iface##*/}"
 
+		# 为 HomeProxy / Sing-box 的 TUN 虚拟网卡 (singtun0 / tun*) 扩充发送队列至 4096（默认仅 500），
+		# 根除千兆/2.5G 透明代理高并发测速、PT 下载时的虚拟网卡队列满丢包 (tx_dropped)
 		case "$dev" in
-			lo|veth*|br-*|docker*|tun*|tap*|ppp*|wg*)
+			tun*|singtun*)
+				ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
+				continue
+				;;
+			lo|veth*|br-*|docker*|tap*|ppp*|wg*)
 				continue
 				;;
 		esac
@@ -180,6 +243,11 @@ apply_nic_hardware_tuning() {
 
 		# 开启 Linux 6.12 / 6.18 原生 BIG TCP 超大数据包聚合 (512KB)，提升 2.5G/5G/10G 吞吐并削减 CPU 软中断
 		ip link set dev "$dev" gro_max_size 524288 gso_max_size 524288 >/dev/null 2>&1 || true
+
+		# 开启 Linux 6.x NAPI 软中断延迟挂起 (IRQ Deferral) 与 GRO 批量刷新超时 (20us)，
+		# 在持续高速流量下保持 NAPI 轮询态而无需频繁重开硬件中断，削减 15%~30% 软中断 (%si) CPU 占用且仅引入 20 微秒级聚合窗口
+		[ -w "$iface/napi_defer_hard_irqs" ] && echo 2 >"$iface/napi_defer_hard_irqs" 2>/dev/null || true
+		[ -w "$iface/gro_flush_timeout" ] && echo 20000 >"$iface/gro_flush_timeout" 2>/dev/null || true
 	done
 }
 

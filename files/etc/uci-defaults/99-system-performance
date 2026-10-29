@@ -84,13 +84,21 @@ cat << 'EOF' > /etc/sysctl.d/99-performance.conf
 # Linux 6.12 / 6.18 Kernel & Soft Router Performance Tuning
 # ==============================================================================
 
-# 1. TCP BBR & Queue discipline
+# 1. TCP BBR & Queue discipline & Linux 6.18 EEVDF Scheduler / BPF JIT
+kernel.sched_autogroup_enabled = 0
+kernel.numa_balancing = 0
+net.core.bpf_jit_enable = 1
+net.core.bpf_jit_harden = 0
+net.core.busy_poll = 50
+net.core.busy_read = 50
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 
 # 2. TCP Latency & Proxy Stream Tuning (Reduces bufferbloat & TLS handshake latency)
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_no_metrics_save = 1
+net.mptcp.enabled = 1
 net.ipv4.tcp_notsent_lowat = 16384
 net.ipv4.tcp_mtu_probing = 1
 net.ipv4.tcp_adv_win_scale = 1
@@ -99,6 +107,7 @@ net.ipv4.tcp_comp_sack = 1
 net.ipv4.tcp_moderate_rcvbuf = 1
 
 # 3. Quick socket reuse & Keepalive cleanup (PT/BT & Proxy Connection Reclaim)
+net.ipv4.ip_local_port_range = 10240 65535
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 15
 net.ipv4.tcp_keepalive_time = 300
@@ -107,6 +116,8 @@ net.ipv4.tcp_keepalive_probes = 5
 net.ipv4.tcp_max_tw_buckets = 262144
 
 # 4. Large Memory Buffers for 1G / 2.5G / 10G Throughput
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
 net.core.rmem_max = 33554432
 net.core.wmem_max = 33554432
 net.core.optmem_max = 65536
@@ -122,6 +133,8 @@ net.core.gro_normal_batch = 8
 
 # 5. Conntrack NAT Table Scaling & Timeout Optimization (104万并发)
 net.netfilter.nf_conntrack_max = 1048576
+net.netfilter.nf_conntrack_acct = 0
+net.netfilter.nf_conntrack_tcp_be_liberal = 1
 net.netfilter.nf_conntrack_tcp_timeout_established = 7200
 net.netfilter.nf_conntrack_tcp_timeout_close_wait = 15
 net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 30
@@ -165,6 +178,17 @@ net.ipv4.ip_forward = 1
 EOF
 
 # 7. HomeProxy & Bypass Gateway Default Tuning
+# 注册 hotplug 钩子：当 HomeProxy 启动并创建 singtun0 虚拟网卡时，自动将其 txqueuelen 扩充至 4096，消除 TUN 接口突发丢包
+mkdir -p /etc/hotplug.d/iface
+cat << 'HOTPLUG_EOF' > /etc/hotplug.d/iface/99-tun-tuning
+#!/bin/sh
+for dev in /sys/class/net/tun* /sys/class/net/singtun*; do
+	[ -e "$dev" ] || continue
+	ip link set dev "${dev##*/}" txqueuelen 4096 >/dev/null 2>&1 || true
+done
+HOTPLUG_EOF
+chmod +x /etc/hotplug.d/iface/99-tun-tuning
+
 # Dnsmasq: 接驳 HomeProxy Sing-Box DNS (127.0.0.1#5333) 实现智能国内外分流，保持动态 min_cache_ttl 为 0，保留 WAN 上游容灾，关闭 localservice 丢包限制，过滤 IPv6 AAAA 记录，设置 10000 缓存
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
@@ -175,6 +199,7 @@ if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q set dhcp.@dnsmasq[0].rebind_protection='0'
 	uci -q set dhcp.@dnsmasq[0].filter_aaaa='1'
 	uci -q set dhcp.@dnsmasq[0].cachesize='10000'
+	uci -q set dhcp.@dnsmasq[0].dns_forward_max='4096'
 	uci -q commit dhcp
 fi
 
@@ -340,6 +365,7 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].force_https_soa='1'
 	uci -q set smartdns.@smartdns[0].rr_ttl_min='300'
 	uci -q set smartdns.@smartdns[0].rr_ttl_max='86400'
+	uci -q set smartdns.@smartdns[0].max_reply_ip_num='3'
 	uci -q set smartdns.@smartdns[0].seconddns_enabled='0'
 	uci -q del smartdns.@smartdns[0].seconddns_port 2>/dev/null || true
 	uci -q del smartdns.@smartdns[0].seconddns_tcp_server 2>/dev/null || true

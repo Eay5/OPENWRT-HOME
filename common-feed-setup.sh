@@ -135,15 +135,24 @@ setup_common_feeds() {
     git clone --depth 1 -b "${golang_branch}" https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
     echo "Golang tracking upstream latest branch: ${golang_branch}"
 
-    # 针对 Go 27+ 适配补丁：关闭未定稿的 jsonv2 等实验性特性，防止 sing-box / 第三方库发生符号冲突
+    # 针对 Go 27+ 适配补丁与 x86-64-v2 微架构优化：
+    # 1. 关闭未定稿的 jsonv2 等实验性特性，防止 sing-box / 第三方库发生符号冲突
+    # 2. 为 x86_64 目标开启 GOAMD64=v2 指令集加速（启用 SSE4.2 / POPCNT 等硬件指令），提升 Sing-box 代理核心加解密与协议解析吞吐
     if [ -f feeds/packages/lang/golang/golang-build.sh ]; then
-        sed -i '1a export GOEXPERIMENT=none' feeds/packages/lang/golang/golang-build.sh 2>/dev/null || true
+        sed -i '1a export GOEXPERIMENT=none\nexport GOAMD64=v2' feeds/packages/lang/golang/golang-build.sh 2>/dev/null || true
     fi
     for mk in feeds/packages/lang/golang/golang-package.mk feeds/packages/lang/golang/golang-values.mk; do
         if [ -f "$mk" ]; then
-            sed -i 's/GOENV=off/GOENV=off GOEXPERIMENT=none/g' "$mk" 2>/dev/null || true
+            sed -i 's/GOENV=off/GOENV=off GOEXPERIMENT=none GOAMD64=v2/g' "$mk" 2>/dev/null || true
+            sed -i 's/GOAMD64:=v1/GOAMD64:=v2/g' "$mk" 2>/dev/null || true
         fi
     done
+
+    local go_ver_major=""
+    local go_ver_patch=""
+    go_ver_major=$(sed -n 's/^GO_VERSION_MAJOR_MINOR:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r')
+    go_ver_patch=$(sed -n 's/^GO_VERSION_PATCH:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r')
+    echo "Golang compiler pinned to latest upstream: Go ${go_ver_major:-${golang_branch}}.${go_ver_patch:-0} (GOAMD64=v2)"
 
     # 动态获取 upstream SagerNet/sing-box 最新正式稳定版本 (严格过滤三段式纯数字标签，100% 排除 alpha/beta/rc 测试版)
     local singbox_tag=""
@@ -160,11 +169,51 @@ setup_common_feeds() {
         for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile package/sing-box/Makefile; do
             if [ -f "$singbox_mk" ]; then
                 sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
+                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$singbox_mk" 2>/dev/null || true
                 sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"
-                sed -i '/GO_PKG_BUILD_VARS/ s/$/ GOEXPERIMENT=none/' "$singbox_mk" 2>/dev/null || true
+                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$singbox_mk" 2>/dev/null || true
+                sed -i '/GO_PKG_BUILD_VARS/ s/$/ GOEXPERIMENT=none GOAMD64=v2/' "$singbox_mk" 2>/dev/null || true
             fi
         done
-        echo "Sing-box tracking upstream latest STABLE release: v${singbox_tag}"
+        echo "Sing-box tracking upstream latest STABLE release: v${singbox_tag} (GOAMD64=v2)"
+    fi
+
+    # 动态追踪 SagerNet/sing-geoip 与 SagerNet/sing-geosite 最新 Release 规则库，
+    # 确保 HomeProxy 大陆白名单与海外分流规则库 100% 保持最新，减少规则漏判导致的绕路延迟
+    local geoip_tag=""
+    geoip_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-geoip.git 2>/dev/null \
+        | grep -oE 'refs/tags/[0-9]{8,}$' \
+        | sed 's#refs/tags/##' \
+        | sort -V \
+        | tail -n 1 || true)
+    if [ -n "${geoip_tag}" ]; then
+        for geoip_mk in feeds/packages/net/sing-geoip/Makefile package/feeds/packages/sing-geoip/Makefile package/sing-geoip/Makefile; do
+            if [ -f "$geoip_mk" ]; then
+                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${geoip_tag}/g" "$geoip_mk"
+                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$geoip_mk" 2>/dev/null || true
+                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$geoip_mk"
+                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$geoip_mk" 2>/dev/null || true
+            fi
+        done
+        echo "sing-geoip tracking upstream latest release: ${geoip_tag}"
+    fi
+
+    local geosite_tag=""
+    geosite_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-geosite.git 2>/dev/null \
+        | grep -oE 'refs/tags/[0-9]{8,}$' \
+        | sed 's#refs/tags/##' \
+        | sort -V \
+        | tail -n 1 || true)
+    if [ -n "${geosite_tag}" ]; then
+        for geosite_mk in feeds/packages/net/sing-geosite/Makefile package/feeds/packages/sing-geosite/Makefile package/sing-geosite/Makefile; do
+            if [ -f "$geosite_mk" ]; then
+                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${geosite_tag}/g" "$geosite_mk"
+                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$geosite_mk" 2>/dev/null || true
+                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$geosite_mk"
+                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$geosite_mk" 2>/dev/null || true
+            fi
+        done
+        echo "sing-geosite tracking upstream latest release: ${geosite_tag}"
     fi
 
     # 动态获取 upstream gdy666/luci-app-lucky 最新官方源码与稳定二进制 Release 版本

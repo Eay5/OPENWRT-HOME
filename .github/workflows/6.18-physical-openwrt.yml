@@ -19,9 +19,10 @@ on:
     - cron: "45 4 * * *"  # 北京时间 每天中午 12:45 (UTC 04:45)
     - cron: "45 6 * * *"  # 北京时间 每天下午 14:45 (UTC 06:45)
     - cron: "45 9 * * *"  # 北京时间 每天下午 17:45 (UTC 09:45)
-  watch:
-    types:
-      - started
+
+concurrency:
+  group: build-6.18-physical-openwrt
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -37,6 +38,6 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-x86-physical-intel-rtl25g
       bin_artifact_prefix: ImmortalWrt_bin
       release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
-      extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns
+      extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
       config_sync_mode: homeproxy
       repo_branch: master

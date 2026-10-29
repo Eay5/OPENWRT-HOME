@@ -18,9 +18,10 @@ on:
     - cron: "40 4 * * *"  # 北京时间 每天中午 12:40 (UTC 04:40)
     - cron: "40 6 * * *"  # 北京时间 每天下午 14:40 (UTC 06:40)
     - cron: "40 9 * * *"  # 北京时间 每天下午 17:40 (UTC 09:40)
-  watch:
-    types:
-      - started
+
+concurrency:
+  group: build-6.18-lucky-openwrt
+  cancel-in-progress: false
 
 jobs:
   build:
