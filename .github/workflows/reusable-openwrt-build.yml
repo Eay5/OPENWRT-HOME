@@ -322,16 +322,22 @@ jobs:
             rm -rf package/feeds/packages/lucky package/feeds/luci/luci-app-lucky package/feeds/*/lucky package/feeds/*/luci-app-lucky package/feeds/*/*/lucky package/feeds/*/*/luci-app-lucky 2>/dev/null || true
           fi
 
+          if [ -d "package/openwrt-honk" ] || [ -d "package/honk" ]; then
+            echo "Using locally pinned Honk packages from package/openwrt-honk."
+            rm -rf package/feeds/*/honk package/feeds/*/luci-app-honk package/feeds/*/*/honk package/feeds/*/*/luci-app-honk 2>/dev/null || true
+          fi
+
           if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
             ./scripts/feeds install -f ${EXTRA_FEED_PACKAGES}
           fi
 
           # 中文注释：极为关键！./scripts/feeds install -f 会再次把 feeds/luci 或 feeds/packages 里的旧版软链接创建到 package/feeds/ 下，
-          # 必须在它执行之后再次清除同名 feed 软链接，确保 100% 编译我们在 package/ 下拉取的最新版 HomeProxy / SmartDNS / Lucky / Argon！
+          # 必须在它执行之后再次清除同名 feed 软链接，确保 100% 编译我们在 package/ 下拉取的最新版 HomeProxy / SmartDNS / Lucky / Honk / Argon！
           rm -rf package/feeds/luci/luci-app-argon-config package/feeds/luci/luci-theme-argon 2>/dev/null || true
           [ -d "package/smartdns" ] && rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns 2>/dev/null || true
           [ -d "package/homeproxy" ] && rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy 2>/dev/null || true
           [ -d "package/lucky" ] && rm -rf package/feeds/packages/lucky package/feeds/luci/luci-app-lucky package/feeds/*/lucky package/feeds/*/luci-app-lucky 2>/dev/null || true
+          { [ -d "package/openwrt-honk" ] || [ -d "package/honk" ]; } && rm -rf package/feeds/*/honk package/feeds/*/luci-app-honk 2>/dev/null || true
 
       - name: Load custom config
         run: |
@@ -547,6 +553,74 @@ jobs:
               ! grep -q '^CONFIG_PACKAGE_miniupnpd=y' .config || { echo 'miniupnpd was unexpectedly enabled'; exit 1; }
               ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
               ;;
+            honk)
+              echo "Reapplying forced package toggles for HONK (eBPF) build..."
+              ensure_config CONFIG_DEVEL y
+              ensure_config CONFIG_CCACHE y
+              ensure_config CONFIG_TARGET_OPTIONS y
+              ensure_config CONFIG_TARGET_OPTIMIZATION '"-O2 -pipe -march=x86-64-v2"'
+              # 开启内核 BTF 导出，供 honk eBPF CO-RE 重定位
+              ensure_config CONFIG_DEBUG_INFO_BTF y
+              ensure_config CONFIG_PACKAGE_kmod-sched-core y
+              ensure_config CONFIG_PACKAGE_kmod-sched-bpf y
+              ensure_config CONFIG_PACKAGE_kmod-veth y
+              ensure_config CONFIG_PACKAGE_kmod-nft-queue y
+              ensure_config CONFIG_PACKAGE_kmod-nfnetlink-queue y
+              ensure_config CONFIG_PACKAGE_ca-bundle y
+              ensure_config CONFIG_PACKAGE_ip-full y
+              ensure_config CONFIG_PACKAGE_sqlite3-cli y
+              ensure_config CONFIG_PACKAGE_v2ray-geoip y
+              ensure_config CONFIG_PACKAGE_v2ray-geosite y
+              ensure_config CONFIG_PACKAGE_honk y
+              ensure_config CONFIG_PACKAGE_luci-app-honk y
+              # 彻底剔除 HomeProxy 与 sing-box 相关组件
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy n
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn n
+              ensure_config CONFIG_PACKAGE_sing-box n
+              ensure_config CONFIG_PACKAGE_sing-geoip n
+              ensure_config CONFIG_PACKAGE_sing-geosite n
+              ensure_config CONFIG_PACKAGE_ucode-mod-math n
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-wol n
+              ensure_config CONFIG_PACKAGE_etherwake n
+              # 确保 SmartDNS 正常支持
+              ensure_config CONFIG_PACKAGE_smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns y
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
+              # 核心基础与语言包
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-compat y
+              # 硬件加速与网络性能
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aes y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-x86 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aead y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-gcm y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-ghash y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-chacha20poly1305 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha256 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha512 y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-hybla y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-scalable y
+              ensure_config CONFIG_PACKAGE_kmod-nft-offload y
+              make defconfig
+              grep -q '^CONFIG_CCACHE=y' .config || { echo 'CONFIG_CCACHE was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_TARGET_OPTIMIZATION="-O2 -pipe -march=x86-64-v2"' .config || { echo 'CONFIG_TARGET_OPTIMIZATION was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config || { echo 'CONFIG_DEBUG_INFO_BTF was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_honk=y' .config || { echo 'honk was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-honk=y' .config || { echo 'luci-app-honk was dropped during defconfig'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
+              ;;
             *)
               echo "Unknown config sync mode: ${CONFIG_SYNC_MODE}" >&2
               exit 1
@@ -734,6 +808,12 @@ jobs:
           SINGBOX_PKG="$(find_pkg 'sing-box')"
           GEOIP_PKG="$(find_pkg 'sing-geoip')"
           GEOSITE_PKG="$(find_pkg 'sing-geosite')"
+          HONK_PKG="$(find_pkg 'honk-')"
+          [ -z "${HONK_PKG}" ] && HONK_PKG="$(find_pkg 'honk')"
+          HONK_LUCI_PKG="$(find_pkg 'luci-app-honk')"
+          LUCKY_PKG="$(find_pkg 'lucky-')"
+          [ -z "${LUCKY_PKG}" ] && LUCKY_PKG="$(find_pkg 'lucky')"
+          LUCKY_LUCI_PKG="$(find_pkg 'luci-app-lucky')"
           DNSMASQ_PKG="$(find_pkg 'dnsmasq-full')"
           GO_MAKE_VER="$(sed -n 's/^GO_VERSION_MAJOR_MINOR:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r').$(sed -n 's/^GO_VERSION_PATCH:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r')"
 
@@ -744,9 +824,19 @@ jobs:
           echo "🔹 Dnsmasq-full    : ${DNSMASQ_PKG:-未找到包}"
           echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG:-未找到包} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
           echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG:-未找到包}"
-          echo "🔹 HomeProxy       : ${HOMEPROXY_PKG:-未找到包}"
-          echo "🔹 Sing-box        : ${SINGBOX_PKG:-未找到包}"
-          echo "🔹 Sing-geoip/site : ${GEOIP_PKG:-未找到} / ${GEOSITE_PKG:-未找到}"
+          if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
+            echo "🔹 Honk (eBPF)     : ${HONK_PKG:-未找到包}"
+            echo "🔹 Honk LuCI       : ${HONK_LUCI_PKG:-未找到包}"
+          fi
+          if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
+            echo "🔹 Lucky 核心包    : ${LUCKY_PKG:-未找到包}"
+            echo "🔹 Lucky LuCI      : ${LUCKY_LUCI_PKG:-未找到包}"
+          fi
+          if [ -n "${HOMEPROXY_PKG}" ] || [ -n "${SINGBOX_PKG}" ]; then
+            echo "🔹 HomeProxy       : ${HOMEPROXY_PKG:-未找到包}"
+            echo "🔹 Sing-box        : ${SINGBOX_PKG:-未找到包}"
+            echo "🔹 Sing-geoip/site : ${GEOIP_PKG:-未找到} / ${GEOSITE_PKG:-未找到}"
+          fi
           echo "========================================================="
 
           {
@@ -763,12 +853,26 @@ jobs:
             echo "  Makefile 版本: ${SMARTDNS_MAKE_VER:-未知}"
             echo "  Git Commit   : ${SMARTDNS_COMMIT:-未知}"
             echo "  LuCI 界面包  : ${SMARTDNS_LUCI_PKG:-未找到包}"
-            echo ""
-            echo "[HomeProxy / Sing-box 核心套件]"
-            echo "  Sing-box    : ${SINGBOX_PKG:-未找到包}"
-            echo "  HomeProxy   : ${HOMEPROXY_PKG:-未找到包}"
-            echo "  Sing-geoip  : ${GEOIP_PKG:-未找到包}"
-            echo "  Sing-geosite: ${GEOSITE_PKG:-未找到包}"
+            if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
+              echo ""
+              echo "[HONK (eBPF) 核心套件]"
+              echo "  Honk 核心包   : ${HONK_PKG:-未找到包}"
+              echo "  LuCI 界面包   : ${HONK_LUCI_PKG:-未找到包}"
+            fi
+            if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
+              echo ""
+              echo "[Lucky 核心套件]"
+              echo "  Lucky 核心包  : ${LUCKY_PKG:-未找到包}"
+              echo "  LuCI 界面包   : ${LUCKY_LUCI_PKG:-未找到包}"
+            fi
+            if [ -n "${HOMEPROXY_PKG}" ] || [ -n "${SINGBOX_PKG}" ]; then
+              echo ""
+              echo "[HomeProxy / Sing-box 核心套件]"
+              echo "  Sing-box    : ${SINGBOX_PKG:-未找到包}"
+              echo "  HomeProxy   : ${HOMEPROXY_PKG:-未找到包}"
+              echo "  Sing-geoip  : ${GEOIP_PKG:-未找到包}"
+              echo "  Sing-geosite: ${GEOSITE_PKG:-未找到包}"
+            fi
             echo "========================================================="
           } > package-versions.txt
 
@@ -780,9 +884,19 @@ jobs:
             echo "| **Dnsmasq-full** | \`${DNSMASQ_PKG:-未找到}\` | - |"
             echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
             echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
-            echo "| **Sing-box** | \`${SINGBOX_PKG:-未找到}\` | - |"
-            echo "| **HomeProxy** | \`${HOMEPROXY_PKG:-未找到}\` | - |"
-            echo "| **Sing-geoip / geosite** | \`${GEOIP_PKG:-未找到}\` | \`${GEOSITE_PKG:-未找到}\` |"
+            if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
+              echo "| **Honk (eBPF)** | \`${HONK_PKG:-未找到}\` | - |"
+              echo "| **Honk LuCI (Doona)** | \`${HONK_LUCI_PKG:-未找到}\` | - |"
+            fi
+            if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
+              echo "| **Lucky Core** | \`${LUCKY_PKG:-未找到}\` | - |"
+              echo "| **Lucky LuCI** | \`${LUCKY_LUCI_PKG:-未找到}\` | - |"
+            fi
+            if [ -n "${HOMEPROXY_PKG}" ] || [ -n "${SINGBOX_PKG}" ]; then
+              echo "| **Sing-box** | \`${SINGBOX_PKG:-未找到}\` | - |"
+              echo "| **HomeProxy** | \`${HOMEPROXY_PKG:-未找到}\` | - |"
+              echo "| **Sing-geoip / geosite** | \`${GEOIP_PKG:-未找到}\` | \`${GEOSITE_PKG:-未找到}\` |"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER:-未知}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"

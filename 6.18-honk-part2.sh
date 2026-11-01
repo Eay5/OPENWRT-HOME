@@ -1,0 +1,229 @@
+#!/bin/bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/common-proxy-verification.sh"
+
+target_kernel_series="6.18"
+target_default_ip="192.168.0.233"
+target_hostname="EAY-HONK"
+
+config_is_enabled() {
+    local key="$1"
+
+    grep -q "^${key}=y$" .config 2>/dev/null
+}
+
+join_by_comma() {
+    local joined=""
+    local item
+
+    for item in "$@"; do
+        [ -n "$item" ] || continue
+
+        if [ -n "$joined" ]; then
+            joined="${joined}, ${item}"
+        else
+            joined="${item}"
+        fi
+    done
+
+    printf '%s\n' "${joined:-none detected}"
+}
+
+to_title_case() {
+    local value="$1"
+
+    echo "$value" | tr '-' ' ' | awk '{
+        for (i = 1; i <= NF; i++) {
+            $i = toupper(substr($i, 1, 1)) substr($i, 2)
+        }
+        print
+    }'
+}
+
+detect_kernel_version() {
+    local patchver
+    local kernel_file
+    local kernel_pattern
+    local kernel_version
+
+    patchver="$(sed -n 's/^KERNEL_PATCHVER:=//p' target/linux/x86/Makefile | head -n 1 | tr -d '\r')"
+    [ -n "$patchver" ] || patchver="$target_kernel_series"
+
+    kernel_file="include/kernel-${patchver}"
+    [ ! -f "$kernel_file" ] && kernel_file="target/linux/generic/kernel-${patchver}"
+    kernel_pattern="${patchver//./\\.}"
+    kernel_version=""
+
+    if [ -f "$kernel_file" ]; then
+        kernel_version="$(sed -n "s/^LINUX_VERSION-${kernel_pattern}[[:space:]]*[:?]?=[[:space:]]*//p" "$kernel_file" | head -n 1 | tr -d '\r')"
+    fi
+
+    case "$kernel_version" in
+        "")
+            echo "$patchver"
+            ;;
+        .*)
+            echo "${patchver}${kernel_version}"
+            ;;
+        [0-9]*)
+            echo "${patchver}.${kernel_version}"
+            ;;
+        *)
+            echo "$kernel_version"
+            ;;
+    esac
+}
+
+detect_default_ip() {
+    local ip
+
+    ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | head -n 1 || true)"
+    echo "${ip:-unknown}"
+}
+
+detect_hostname() {
+    local hostname
+
+    hostname="$(sed -n "s/.*hostname='\([^']*\)'.*/\1/p" package/base-files/files/bin/config_generate 2>/dev/null | tail -n 1)"
+    echo "${hostname:-unknown}"
+}
+
+detect_theme() {
+    local theme_pkg
+
+    theme_pkg="$(grep -oE '^CONFIG_PACKAGE_luci-theme-[^=]+=y$' .config 2>/dev/null | head -n 1 | sed -E 's/^CONFIG_PACKAGE_(luci-theme-[^=]+)=y$/\1/' || true)"
+
+    if [ -z "$theme_pkg" ] && [ -f feeds/luci/collections/luci/Makefile ]; then
+        theme_pkg="$(grep -oE 'luci-theme-[a-zA-Z0-9_-]+' feeds/luci/collections/luci/Makefile 2>/dev/null | head -n 1 || true)"
+    fi
+
+    if [ -z "$theme_pkg" ]; then
+        echo "unknown"
+        return
+    fi
+
+    to_title_case "${theme_pkg#luci-theme-}"
+}
+
+detect_performance_defaults() {
+    local items=()
+
+    if [ -f files/etc/init.d/performance-mode ]; then
+        items+=("governor/EPP performance")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_irqbalance; then
+        items+=("irqbalance")
+    fi
+
+    if [ -f files/etc/uci-defaults/99-system-performance ] && grep -q "packet_steering='1'" files/etc/uci-defaults/99-system-performance; then
+        items+=("packet steering")
+    fi
+
+    if [ -f files/etc/init.d/performance-mode ] && grep -q 'rps_cpus' files/etc/init.d/performance-mode && grep -q 'xps_cpus' files/etc/init.d/performance-mode; then
+        items+=("RPS/XPS")
+    fi
+
+    if [ -f files/etc/uci-defaults/99-system-performance ] && grep -q "flow_offloading='1'" files/etc/uci-defaults/99-system-performance; then
+        items+=("flow offload")
+    fi
+
+    if [ -f files/etc/init.d/performance-mode ] && grep -q 'rx-udp-gro-forwarding' files/etc/init.d/performance-mode; then
+        items+=("UDP GRO")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_kmod-virtio-rng; then
+        items+=("Virtio-RNG")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-bbr || { [ -f files/etc/init.d/performance-mode ] && grep -q 'tcp_congestion_control=bbr' files/etc/init.d/performance-mode; }; then
+        items+=("BBR")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-hybla; then
+        items+=("Hybla")
+    fi
+
+    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-scalable; then
+        items+=("Scalable")
+    fi
+
+    if config_is_enabled CONFIG_DEBUG_INFO_BTF; then
+        items+=("Kernel BTF")
+    fi
+
+    join_by_comma "${items[@]}"
+}
+
+detect_proxy_stack() {
+    if config_is_enabled CONFIG_PACKAGE_honk && config_is_enabled CONFIG_PACKAGE_luci-app-honk; then
+        echo "HONK (eBPF TC-bpf Engine) + Doona Web UI"
+    else
+        echo "not detected"
+    fi
+}
+
+detect_enabled_apps() {
+    local apps=()
+
+    config_is_enabled CONFIG_PACKAGE_honk && apps+=("Honk")
+    config_is_enabled CONFIG_PACKAGE_luci-app-honk && apps+=("luci-app-honk")
+    config_is_enabled CONFIG_PACKAGE_smartdns && apps+=("SmartDNS")
+    config_is_enabled CONFIG_PACKAGE_luci-app-turboacc && apps+=("Turbo ACC")
+
+    join_by_comma "${apps[@]}"
+}
+
+echo "Applying basic settings for 6.18 HONK..."
+
+sed -i "s/192\\.168\\.1\\.1/${target_default_ip}/g" package/base-files/files/bin/config_generate
+sed -i "s/KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${target_kernel_series}/g" target/linux/x86/Makefile
+
+# Clear default root password (ImmortalWrt default-settings path)
+sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile 2>/dev/null || true
+sed -i "s/hostname='ImmortalWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
+sed -i "s/hostname='OpenWrt'/hostname='${target_hostname}'/g" package/base-files/files/bin/config_generate
+sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" feeds/luci/modules/luci-base/root/etc/config/luci 2>/dev/null || true
+sed -i "s/option lang 'auto'/option lang 'zh_cn'/g" package/feeds/luci/luci-base/root/etc/config/luci 2>/dev/null || true
+
+# 固化系统默认时区为中国上海时间 (CST-8, Asia/Shanghai) 与国内高速 NTP 授时服务
+sed -i "s/timezone='UTC'/timezone='CST-8'/g" package/base-files/files/bin/config_generate
+sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/base-files/files/bin/config_generate
+sed -i "s/'0.openwrt.pool.ntp.org'/'ntp.aliyun.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'1.openwrt.pool.ntp.org'/'time1.cloud.tencent.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'2.openwrt.pool.ntp.org'/'time.apple.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/'3.openwrt.pool.ntp.org'/'time.windows.com'/g" package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i "s/timezone='UTC'/timezone='CST-8'/g" package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+
+# 启用亚洲时区数据包支持
+echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
+echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
+
+echo "Basic settings applied."
+verify_honk_stack "${target_kernel_series}"
+
+kernel_display="$(detect_kernel_version)"
+default_ip_display="$(detect_default_ip)"
+hostname_display="$(detect_hostname)"
+theme_display="$(detect_theme)"
+performance_display="$(detect_performance_defaults)"
+proxy_stack_display="$(detect_proxy_stack)"
+apps_display="$(detect_enabled_apps)"
+
+echo ""
+echo "======================================"
+echo "ImmortalWrt ${kernel_display} HONK (eBPF) configuration complete"
+echo "======================================"
+echo "  - Kernel: ${kernel_display}"
+echo "  - Default IP: ${default_ip_display}"
+echo "  - Hostname: ${hostname_display}"
+echo "  - Theme: ${theme_display}"
+echo "  - Performance defaults: ${performance_display}"
+echo "  - Proxy stack: ${proxy_stack_display}"
+echo "  - Apps: ${apps_display}"
+echo "======================================"
+

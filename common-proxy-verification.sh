@@ -115,3 +115,63 @@ verify_lucky_stack() {
     echo "LUCKY stack verified successfully: Lucky is enabled, unwanted services removed."
 }
 
+verify_honk_stack() {
+    local kernel_series="$1"
+
+    echo ""
+    echo "=== Verifying HONK (eBPF) dedicated package stack ==="
+
+    # 清理旧版 feeds/luci 中的 argon 残留，避免与 package/luci-theme-argon 3.0 产生版本覆盖或冲突
+    rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+    rm -rf package/feeds/luci/luci-theme-argon feeds/luci/themes/luci-theme-argon 2>/dev/null || true
+    sed -i '/CONFIG_PACKAGE_luci-app-argon-config=/d' .config 2>/dev/null || true
+    echo "# CONFIG_PACKAGE_luci-app-argon-config is not set" >> .config
+
+    if grep -q '^CONFIG_PACKAGE_honk=y' .config; then
+        echo "Honk core enabled in .config"
+    else
+        echo "ERROR: honk is disabled in .config"
+        exit 1
+    fi
+
+    if grep -q '^CONFIG_PACKAGE_luci-app-honk=y' .config; then
+        echo "luci-app-honk enabled in .config"
+    else
+        echo "ERROR: luci-app-honk is disabled in .config"
+        exit 1
+    fi
+
+    if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
+        echo "Kernel BTF (CONFIG_DEBUG_INFO_BTF) enabled in .config"
+    else
+        echo "ERROR: CONFIG_DEBUG_INFO_BTF is not enabled in .config (required for Honk eBPF CO-RE)"
+        exit 1
+    fi
+
+    if [ -d "package/openwrt-honk" ] || [ -d "package/honk" ]; then
+        echo "Honk package source verified in package/openwrt-honk"
+    else
+        echo "ERROR: Honk package source not found in package/openwrt-honk"
+        exit 1
+    fi
+
+    # 验证被删除的 HomeProxy 和 Sing-box 已彻底关闭
+    local forbidden_pkgs=(
+        "CONFIG_PACKAGE_luci-app-homeproxy"
+        "CONFIG_PACKAGE_sing-box"
+        "CONFIG_PACKAGE_sing-geoip"
+        "CONFIG_PACKAGE_sing-geosite"
+        "CONFIG_PACKAGE_ucode-mod-math"
+        "CONFIG_PACKAGE_luci-app-wol"
+        "CONFIG_PACKAGE_etherwake"
+    )
+
+    for pkg in "${forbidden_pkgs[@]}"; do
+        if grep -q "^${pkg}=y" .config; then
+            echo "ERROR: ${pkg} should be disabled in HONK build, but is enabled!"
+            exit 1
+        fi
+    done
+
+    echo "HONK stack verified successfully: Honk & BTF are enabled, HomeProxy/Sing-box removed."
+}
