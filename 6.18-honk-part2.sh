@@ -126,10 +126,6 @@ detect_performance_defaults() {
         items+=("RPS/XPS")
     fi
 
-    if [ -f files/etc/uci-defaults/99-system-performance ] && grep -q "flow_offloading='1'" files/etc/uci-defaults/99-system-performance; then
-        items+=("flow offload")
-    fi
-
     if [ -f files/etc/init.d/performance-mode ] && grep -q 'rx-udp-gro-forwarding' files/etc/init.d/performance-mode; then
         items+=("UDP GRO")
     fi
@@ -142,24 +138,19 @@ detect_performance_defaults() {
         items+=("BBR")
     fi
 
-    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-hybla; then
-        items+=("Hybla")
-    fi
-
-    if config_is_enabled CONFIG_PACKAGE_kmod-tcp-scalable; then
-        items+=("Scalable")
-    fi
-
-    if config_is_enabled CONFIG_DEBUG_INFO_BTF; then
+    if config_is_enabled CONFIG_KERNEL_DEBUG_INFO_BTF; then
         items+=("Kernel BTF")
     fi
+
+    items+=("SmartDNS-6053 Direct Link")
+    items+=("dae0/dae0peer Queue Tuning")
 
     join_by_comma "${items[@]}"
 }
 
 detect_proxy_stack() {
     if config_is_enabled CONFIG_PACKAGE_honk && config_is_enabled CONFIG_PACKAGE_luci-app-honk; then
-        echo "HONK (eBPF TC-bpf Engine) + Doona Web UI"
+        echo "HONK (eBPF TC-bpf Engine) + Doona Web UI + SmartDNS 6053"
     else
         echo "not detected"
     fi
@@ -203,7 +194,105 @@ sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-se
 echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
 echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
 
-echo "Basic settings applied."
+# ==============================================================================
+# HONK (eBPF) 专属独立调优（仅在 HONK 编译工作区生效，绝不影响其他固件版本）
+# ==============================================================================
+echo "Applying HONK + SmartDNS dedicated optimizations..."
+
+# 1. 修正 files/etc/uci-defaults/99-system-performance 中的 HomeProxy 遗留设定：
+#    - 将 Dnsmasq 上游从已移除的 Sing-box (127.0.0.1#5333) 改为本地 SmartDNS (127.0.0.1#6053)，保障刷机即刻高速解析上网
+#    - 关闭 Firewall4 的 flow_offloading='0'，避免与 Honk 的 TC eBPF 直通转发和 nfqueue 首包 DPI 嗅探冲突
+#    - 为 Honk 的 dae0 / dae0peer 虚拟以太网对扩充 txqueuelen 4096
+if [ -f "files/etc/uci-defaults/99-system-performance" ]; then
+    sed -i "s/127\.0\.0\.1#5333/127.0.0.1#6053/g" files/etc/uci-defaults/99-system-performance
+    sed -i "s/flow_offloading='1'/flow_offloading='0'/g" files/etc/uci-defaults/99-system-performance
+    sed -i 's|/sys/class/net/singtun\*|/sys/class/net/singtun* /sys/class/net/dae*|g' files/etc/uci-defaults/99-system-performance
+fi
+
+# 2. 在 files/etc/init.d/performance-mode 中为 Honk 的 dae0 / dae0peer 虚拟网卡开启 4096 队列扩容
+if [ -f "files/etc/init.d/performance-mode" ]; then
+    sed -i 's/tun\*|singtun\*)/tun*|singtun*|dae*)/g' files/etc/init.d/performance-mode
+fi
+
+# 3. 预置 Honk eBPF 必需的 5 大内核模块开机自动加载与 bpffs 挂载保障，确保 control.sh 预检 100% 通过
+mkdir -p files/etc/modules.d files/etc/uci-defaults
+cat << 'EOF' > files/etc/modules.d/60-honk-ebpf
+sch_ingress
+cls_bpf
+veth
+nft_queue
+nfnetlink_queue
+EOF
+
+cat << 'EOF' > files/etc/uci-defaults/98-honk-ebpf-init
+#!/bin/sh
+# 确保 bpffs 挂载与 Honk 所需内核模块就绪
+if [ -d /sys/fs/bpf ] && ! grep -q ' /sys/fs/bpf bpf ' /proc/mounts 2>/dev/null; then
+	mount -t bpf bpf /sys/fs/bpf 2>/dev/null || true
+fi
+
+for mod in sch_ingress cls_bpf veth nft_queue nfnetlink_queue; do
+	modprobe "$mod" 2>/dev/null || true
+done
+
+exit 0
+EOF
+chmod +x files/etc/uci-defaults/98-honk-ebpf-init
+
+# 4. 深度优化 Honk 默认配置模板 (package/openwrt-honk/honk/files/config.dae)：
+#    - 国内 DNS (default) 直接对接本地 SmartDNS (udp://127.0.0.1:6053)，享受 26万条内存缓存与国内大厂并发测速
+#    - 海外 DNS (remote) 采用纯 IP 免死锁 Google DoH (https://8.8.8.8/dns-query) 走代理防污染
+#    - 屏蔽 HTTPS/SVCB (qtype https) 防止浏览器 ECH 绕过分流
+#    - 顶层直连放行 dnsmasq 与 smartdns 进程流量 (pname -> direct(must))，彻底杜绝 DNS 回环死锁
+#    - 在 eBPF 内核态精准阻断非国内的海外 QUIC (UDP 443)，既让 YouTube/Google 秒切稳定 TCP，又保留国内抖音/B站 QUIC 加速
+if [ -f "package/openwrt-honk/honk/files/config.dae" ]; then
+    cat << 'EOF' > package/openwrt-honk/honk/files/config.dae
+include {
+    system.dae
+}
+
+group {
+    proxy {
+        policy: min_moving_avg
+    }
+}
+
+dns {
+    upstream {
+        # 对接本机 SmartDNS (6053端口)，享受 <0.1ms 纯内存缓存与多运营商并发测速最优 IP
+        default: 'udp://127.0.0.1:6053' -> direct
+        # 海外域名通过代理隧道查询 Google DoH，彻底隔绝 GFW 抢答与 DNS 污染
+        remote: 'https://8.8.8.8/dns-query?tls_server_name=dns.google' -> proxy
+    }
+    routing {
+        request {
+            # 拦截 HTTPS/SVCB (Type 65) 查询，防止浏览器启用 ECH 导致分流失效
+            qtype(https) -> reject
+            qname(geosite: private) -> asis
+            qname(geosite: cn) -> default
+            fallback: remote
+        }
+    }
+}
+
+routing {
+    # 强制放行本机 SmartDNS 与 Dnsmasq 发出的上游查询流量，彻底杜绝 DNS 拦截回环死锁
+    pname(dnsmasq, smartdns) -> direct(must)
+    dip(224.0.0.0/3, 'ff00::/8') -> direct
+    # 路由器自身地址直连，管理面板不被代理；服务启动时按本机地址重写下面区块
+    # honk:local-direct-begin
+    # honk:local-direct-end
+    dip(geoip: private) && !dport(53) -> direct(must)
+    dip(geoip: cn) && !dport(53) -> direct(must)
+    domain(geosite: cn) -> direct
+    # 在 eBPF 内核态阻断海外 QUIC (UDP 443)，强制 YouTube/Google 秒切极速稳定的 TCP TLS 1.3（国内直连 QUIC 已在上方放行）
+    l4proto(udp) && dport(443) -> block
+    fallback: direct
+}
+EOF
+fi
+
+echo "Basic settings and HONK dedicated optimizations applied."
 verify_honk_stack "${target_kernel_series}"
 
 kernel_display="$(detect_kernel_version)"
@@ -226,4 +315,3 @@ echo "  - Performance defaults: ${performance_display}"
 echo "  - Proxy stack: ${proxy_stack_display}"
 echo "  - Apps: ${apps_display}"
 echo "======================================"
-

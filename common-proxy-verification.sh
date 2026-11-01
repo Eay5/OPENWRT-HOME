@@ -141,10 +141,10 @@ verify_honk_stack() {
         exit 1
     fi
 
-    if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
-        echo "Kernel BTF (CONFIG_DEBUG_INFO_BTF) enabled in .config"
+    if grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y' .config; then
+        echo "Kernel BTF (CONFIG_KERNEL_DEBUG_INFO_BTF) enabled in .config"
     else
-        echo "ERROR: CONFIG_DEBUG_INFO_BTF is not enabled in .config (required for Honk eBPF CO-RE)"
+        echo "ERROR: CONFIG_KERNEL_DEBUG_INFO_BTF is not enabled in .config (required for Honk eBPF CO-RE)"
         exit 1
     fi
 

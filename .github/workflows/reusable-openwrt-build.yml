@@ -132,7 +132,7 @@ jobs:
             echo "repo=${{ github.sha }} config=${CONFIG_FILE} p1=${DIY_P1_SH} p2=${DIY_P2_SH} mode=${CONFIG_SYNC_MODE}"
             fp "$REPO_URL" "refs/heads/${REPO_BRANCH}"
             for repo in immortalwrt/packages immortalwrt/luci immortalwrt/homeproxy jerrykuku/luci-theme-argon \
-                        pymumu/openwrt-smartdns pymumu/luci-app-smartdns gdy666/luci-app-lucky sbwml/package_kernel_r8126; do
+                        pymumu/openwrt-smartdns pymumu/luci-app-smartdns gdy666/luci-app-lucky kenzok8/openwrt-honk sbwml/package_kernel_r8126; do
               fp "https://github.com/${repo}.git" HEAD
             done
             fp --heads https://github.com/sbwml/packages_lang_golang.git
@@ -560,7 +560,11 @@ jobs:
               ensure_config CONFIG_TARGET_OPTIONS y
               ensure_config CONFIG_TARGET_OPTIMIZATION '"-O2 -pipe -march=x86-64-v2"'
               # 开启内核 BTF 导出，供 honk eBPF CO-RE 重定位
-              ensure_config CONFIG_DEBUG_INFO_BTF y
+              # 中文注释：顶层 .config 必须使用 KERNEL_ 前缀，且 BTF 依赖完整 DEBUG_INFO（非 REDUCED）
+              ensure_config CONFIG_KERNEL_DEBUG_INFO y
+              ensure_config CONFIG_KERNEL_DEBUG_INFO_REDUCED n
+              ensure_config CONFIG_KERNEL_DEBUG_INFO_BTF y
+              ensure_config CONFIG_KERNEL_MODULE_ALLOW_BTF_MISMATCH y
               ensure_config CONFIG_PACKAGE_kmod-sched-core y
               ensure_config CONFIG_PACKAGE_kmod-sched-bpf y
               ensure_config CONFIG_PACKAGE_kmod-veth y
@@ -568,6 +572,16 @@ jobs:
               ensure_config CONFIG_PACKAGE_kmod-nfnetlink-queue y
               ensure_config CONFIG_PACKAGE_ca-bundle y
               ensure_config CONFIG_PACKAGE_ip-full y
+              ensure_config CONFIG_PACKAGE_kmod y
+              ensure_config CONFIG_PACKAGE_coreutils y
+              ensure_config CONFIG_PACKAGE_coreutils-stat y
+              ensure_config CONFIG_PACKAGE_coreutils-base64 y
+              ensure_config CONFIG_PACKAGE_jsonfilter y
+              ensure_config CONFIG_PACKAGE_jshn y
+              ensure_config CONFIG_PACKAGE_usign y
+              ensure_config CONFIG_PACKAGE_ubus y
+              ensure_config CONFIG_PACKAGE_rpcd y
+              ensure_config CONFIG_PACKAGE_cgi-io y
               ensure_config CONFIG_PACKAGE_sqlite3-cli y
               ensure_config CONFIG_PACKAGE_v2ray-geoip y
               ensure_config CONFIG_PACKAGE_v2ray-geosite y
@@ -614,7 +628,7 @@ jobs:
               make defconfig
               grep -q '^CONFIG_CCACHE=y' .config || { echo 'CONFIG_CCACHE was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_TARGET_OPTIMIZATION="-O2 -pipe -march=x86-64-v2"' .config || { echo 'CONFIG_TARGET_OPTIMIZATION was dropped during defconfig'; exit 1; }
-              grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config || { echo 'CONFIG_DEBUG_INFO_BTF was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y' .config || { echo 'CONFIG_KERNEL_DEBUG_INFO_BTF was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_honk=y' .config || { echo 'honk was dropped during defconfig'; exit 1; }
               grep -q '^CONFIG_PACKAGE_luci-app-honk=y' .config || { echo 'luci-app-honk was dropped during defconfig'; exit 1; }
               ! grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was unexpectedly enabled'; exit 1; }
