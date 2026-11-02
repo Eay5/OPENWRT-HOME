@@ -6,3 +6,6 @@ log/toolchain_install.log
 log/tools_install.log
 build-log/toolchain_install.log
 build-log/tools_install.log
+temp-homeproxy/
+.github/context-mode/
+

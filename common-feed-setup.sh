@@ -1,5 +1,114 @@
 #!/bin/bash
 
+# 动态配置与同步 luci-theme-argon 最新上游版本 (实时获取 Makefile 及 git release 标签，替换模板占位符)
+setup_argon_theme() {
+    echo "Pinning luci-theme-argon to upstream latest release..."
+    rm -rf feeds/luci/themes/luci-theme-argon package/feeds/luci/luci-theme-argon 2>/dev/null || true
+    rm -rf package/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/feeds/luci/luci-app-argon-config 2>/dev/null || true
+    rm -rf package/luci-theme-argon 2>/dev/null || true
+
+    git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+
+    local argon_ver=""
+    if [ -f "package/luci-theme-argon/Makefile" ]; then
+        argon_ver=$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/luci-theme-argon/Makefile 2>/dev/null | tr -d '\r' | head -n 1)
+    fi
+
+    local argon_remote_tag=""
+    argon_remote_tag=$(git ls-remote --tags --refs https://github.com/jerrykuku/luci-theme-argon.git 2>/dev/null \
+        | grep -oE 'refs/tags/v?[0-9.]+$' \
+        | sed 's#refs/tags/##' \
+        | sort -V \
+        | tail -n 1 || true)
+
+    if [ -n "${argon_remote_tag}" ]; then
+        local remote_clean="${argon_remote_tag#v}"
+        if [ -z "${argon_ver}" ] || [ "$(printf '%s\n%s' "${argon_ver}" "${remote_clean}" | sort -V | tail -n 1)" = "${remote_clean}" ]; then
+            argon_ver="${remote_clean}"
+        fi
+    fi
+
+    argon_ver="${argon_ver:-3.1.1}"
+    argon_ver="${argon_ver#v}"
+
+    if [ -f "package/luci-theme-argon/Makefile" ]; then
+        sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${argon_ver}/g" package/luci-theme-argon/Makefile
+        sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-theme-argon/Makefile 2>/dev/null || true
+    fi
+
+    find package/luci-theme-argon -type f \( -name "footer*.ut" -o -name "footer*.htm" \) -exec sed -i -E \
+        -e "s/\\{# vPKG_VERSION #\\}/v${argon_ver}/g" \
+        -e "s/\\{# PKG_VERSION #\\}/${argon_ver}/g" \
+        -e "s/v3\.0\.0/v${argon_ver}/g" {} + 2>/dev/null || true
+
+    echo "luci-theme-argon dynamically synced to latest upstream version: v${argon_ver}"
+}
+
+# 优化 HomeProxy 配置：适配新版 sing-box 并为 DNS 服务器下拉列表注入主流/代表性公共 DoH 节点
+patch_homeproxy_customizations() {
+    local hp_dir="package/homeproxy"
+    [ -d "$hp_dir" ] || return 0
+
+    # 适配最新版 sing-box (>=1.13.0)：移除已废弃的旧版 inbounds 嗅探字段，彻底解决新版 sing-box FATAL decode config 报错
+    find "$hp_dir" -name "generate_client.uc" -exec sed -i '/sniff_override_destination/d' {} + 2>/dev/null || true
+    find "$hp_dir" -name "generate_client.uc" -exec sed -i '/\bsniff:/d' {} + 2>/dev/null || true
+
+    # 扩展 HomeProxy DNS 服务器下拉菜单：增加主流及代表性公共 DoH 服务器 (Cloudflare / Google / Quad9 / OpenDNS)
+    local hp_client_js="$hp_dir/htdocs/luci-static/resources/view/homeproxy/client.js"
+    if [ -f "$hp_client_js" ] && ! grep -q "https://1.1.1.1/dns-query" "$hp_client_js"; then
+        awk '
+        /o\.value\(\x278\.8\.8\.8\x27/ && !inserted {
+            print $0;
+            print "\t\to.value(\x27\x27, \x27---\x27);";
+            print "\t\to.value(\x27https://1.1.1.1/dns-query\x27, _(\x27Cloudflare DoH (1.1.1.1)\x27));";
+            print "\t\to.value(\x27https://cloudflare-dns.com/dns-query\x27, _(\x27Cloudflare DoH (cloudflare-dns.com)\x27));";
+            print "\t\to.value(\x27https://dns.cloudflare.com/dns-query\x27, _(\x27Cloudflare DoH (dns.cloudflare.com)\x27));";
+            print "\t\to.value(\x27https://dns.google/dns-query\x27, _(\x27Google DoH (dns.google)\x27));";
+            print "\t\to.value(\x27https://dns.quad9.net/dns-query\x27, _(\x27Quad9 DoH (dns.quad9.net)\x27));";
+            print "\t\to.value(\x27https://dns9.quad9.net/dns-query\x27, _(\x27Quad9 DoH Uncensored (dns9.quad9.net)\x27));";
+            print "\t\to.value(\x27https://doh.opendns.com/dns-query\x27, _(\x27OpenDNS DoH (doh.opendns.com)\x27));";
+            print "\t\to.value(\x27https://familyshield.opendns.com/dns-query\x27, _(\x27OpenDNS FamilyShield DoH (familyshield)\x27));";
+            inserted=1;
+            next;
+        }
+        { print }
+        ' "$hp_client_js" > "${hp_client_js}.tmp" && mv "${hp_client_js}.tmp" "$hp_client_js"
+        echo "Injected DoH server endpoints into HomeProxy client.js."
+    fi
+
+    # 补充 HomeProxy 简体中文本地化对照表
+    local hp_po="$hp_dir/po/zh_Hans/homeproxy.po"
+    if [ -f "$hp_po" ] && ! grep -q "Cloudflare DoH (1.1.1.1)" "$hp_po"; then
+        cat <<- 'EOF' >> "$hp_po"
+
+msgid "Cloudflare DoH (1.1.1.1)"
+msgstr "Cloudflare DoH (1.1.1.1)"
+
+msgid "Cloudflare DoH (cloudflare-dns.com)"
+msgstr "Cloudflare DoH (cloudflare-dns.com)"
+
+msgid "Cloudflare DoH (dns.cloudflare.com)"
+msgstr "Cloudflare DoH (dns.cloudflare.com)"
+
+msgid "Google DoH (dns.google)"
+msgstr "Google DoH (dns.google)"
+
+msgid "Quad9 DoH (dns.quad9.net)"
+msgstr "Quad9 DoH 安全过滤 (dns.quad9.net)"
+
+msgid "Quad9 DoH Uncensored (dns9.quad9.net)"
+msgstr "Quad9 DoH 无过滤 (dns9.quad9.net)"
+
+msgid "OpenDNS DoH (doh.opendns.com)"
+msgstr "OpenDNS DoH (doh.opendns.com)"
+
+msgid "OpenDNS FamilyShield DoH (familyshield)"
+msgstr "OpenDNS FamilyShield 家庭保护 (familyshield)"
+EOF
+        echo "Appended DoH server translations to HomeProxy po."
+    fi
+}
+
 setup_common_feeds() {
     echo "Adding custom feeds..."
 
@@ -39,9 +148,9 @@ setup_common_feeds() {
         echo "Patched firewall4 fullcone patch for helper module update compatibility."
     fi
 
-    # 修复 luci-theme-argon 3.0 冲突与版本覆盖：
-    # jerrykuku/luci-theme-argon 于 2026-10-16 升级至 3.0，已将 Argon Config 页面与配置原生集成进主题包。
-    # 彻底清理官方 feed 自带的旧版 luci-theme-argon 与独立的 luci-app-argon-config，确保 100% 采用本地 package/luci-theme-argon 3.0
+    # 修复 luci-theme-argon 冲突与版本覆盖：
+    # jerrykuku/luci-theme-argon 已将 Argon Config 页面与配置原生集成进主题包。
+    # 彻底清理官方 feed 自带的旧版 luci-theme-argon 与独立的 luci-app-argon-config，确保 100% 采用本地 package/luci-theme-argon
     rm -rf feeds/luci/themes/luci-theme-argon package/feeds/luci/luci-theme-argon 2>/dev/null || true
     rm -rf package/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/feeds/luci/luci-app-argon-config 2>/dev/null || true
 
@@ -67,9 +176,8 @@ setup_common_feeds() {
         fi
     fi
 
-    # 适配最新版 sing-box (>=1.13.0)：移除已废弃的旧版 inbounds 嗅探字段，彻底解决新版 sing-box FATAL decode config 报错
-    find package/homeproxy -name "generate_client.uc" -exec sed -i '/sniff_override_destination/d' {} + 2>/dev/null || true
-    find package/homeproxy -name "generate_client.uc" -exec sed -i '/\bsniff:/d' {} + 2>/dev/null || true
+    # 应用 HomeProxy 自定义优化 (适配最新 sing-box 并扩展公共 DoH DNS 服务器选项)
+    patch_homeproxy_customizations
 
     # Clean conflicting feeds and pull SmartDNS package source
     rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
@@ -272,4 +380,3 @@ setup_common_feeds() {
 
     echo "Feed cleanup and pinning completed."
 }
-

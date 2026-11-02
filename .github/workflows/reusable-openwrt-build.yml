@@ -294,12 +294,18 @@ jobs:
           # 修复 firewall4 FullCone NAT 补丁与上游 commit bac1d65 冲突
           sed -i 's/zone\.dflags\.helper = true;/zone.dflags.helper = false;/g' package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch 2>/dev/null || true
 
-          # 修复 luci-theme-argon 3.0 与独立旧版 luci-app-argon-config 冲突及 feed 覆盖
+          # 修复 luci-theme-argon 与独立旧版 luci-app-argon-config 冲突及 feed 覆盖，动态检测并应用最新版本号
           rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
           rm -rf package/feeds/luci/luci-theme-argon feeds/luci/themes/luci-theme-argon 2>/dev/null || true
           if [ -d "package/luci-theme-argon" ]; then
-            echo "Using locally pinned Argon 3.0 package from package/luci-theme-argon."
-            find package/luci-theme-argon -type f -name "footer*.ut" -exec sed -i -E 's/\{# vPKG_VERSION #\}/v3.0.0/g' {} + 2>/dev/null || true
+            argon_ver=$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/luci-theme-argon/Makefile 2>/dev/null | tr -d '\r' | head -n 1)
+            argon_ver="${argon_ver:-3.1.1}"
+            argon_ver="${argon_ver#v}"
+            echo "Using dynamically detected Argon package (v${argon_ver}) from package/luci-theme-argon."
+            find package/luci-theme-argon -type f \( -name "footer*.ut" -o -name "footer*.htm" \) -exec sed -i -E \
+              -e "s/\\{# vPKG_VERSION #\\}/v${argon_ver}/g" \
+              -e "s/\\{# PKG_VERSION #\\}/${argon_ver}/g" \
+              -e "s/v3\.0\.0/v${argon_ver}/g" {} + 2>/dev/null || true
           fi
 
           if [ -f "package/smartdns/Makefile" ] || [ -d "package/smartdns" ]; then
@@ -310,6 +316,10 @@ jobs:
           if [ -f "package/homeproxy/Makefile" ] || [ -d "package/homeproxy" ]; then
             echo "Using locally pinned HomeProxy packages from package/."
             rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy package/feeds/*/*/luci-app-homeproxy 2>/dev/null || true
+            if [ -f "common-feed-setup.sh" ]; then
+              source ./common-feed-setup.sh
+              patch_homeproxy_customizations 2>/dev/null || true
+            fi
           fi
 
           if [ -d "package/mosdns" ] || [ -f "package/mosdns/Makefile" ]; then
