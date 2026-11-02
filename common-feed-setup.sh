@@ -44,37 +44,134 @@ setup_argon_theme() {
     echo "luci-theme-argon dynamically synced to latest upstream version: v${argon_ver}"
 }
 
-# 优化 HomeProxy 配置：适配新版 sing-box 并为 DNS 服务器下拉列表注入主流/代表性公共 DoH 节点
+# 优化 HomeProxy 配置：解决 Chrome 访问 Google 报“网络协议不符合”、拦截 QUIC (UDP 443)、修复 DoH Anycast 静态引导并扩展节点选项
 patch_homeproxy_customizations() {
     local hp_dir="package/homeproxy"
     [ -d "$hp_dir" ] || return 0
 
-    # 适配最新版 sing-box (>=1.13.0)：移除已废弃的旧版 inbounds 嗅探字段，彻底解决新版 sing-box FATAL decode config 报错
-    find "$hp_dir" -name "generate_client.uc" -exec sed -i '/sniff_override_destination/d' {} + 2>/dev/null || true
-    find "$hp_dir" -name "generate_client.uc" -exec sed -i '/\bsniff:/d' {} + 2>/dev/null || true
+    python3 - << 'EOF'
+import os, re
 
-    # 扩展 HomeProxy DNS 服务器下拉菜单：增加主流及代表性公共 DoH 服务器 (Cloudflare / Google / Quad9 / OpenDNS)
-    local hp_client_js="$hp_dir/htdocs/luci-static/resources/view/homeproxy/client.js"
-    if [ -f "$hp_client_js" ] && ! grep -q "https://1.1.1.1/dns-query" "$hp_client_js"; then
-        awk '
-        /o\.value\(\x278\.8\.8\.8\x27/ && !inserted {
-            print $0;
-            print "\t\to.value(\x27\x27, \x27---\x27);";
-            print "\t\to.value(\x27https://1.1.1.1/dns-query\x27, _(\x27Cloudflare DoH (1.1.1.1)\x27));";
-            print "\t\to.value(\x27https://cloudflare-dns.com/dns-query\x27, _(\x27Cloudflare DoH (cloudflare-dns.com)\x27));";
-            print "\t\to.value(\x27https://dns.cloudflare.com/dns-query\x27, _(\x27Cloudflare DoH (dns.cloudflare.com)\x27));";
-            print "\t\to.value(\x27https://dns.google/dns-query\x27, _(\x27Google DoH (dns.google)\x27));";
-            print "\t\to.value(\x27https://dns.quad9.net/dns-query\x27, _(\x27Quad9 DoH (dns.quad9.net)\x27));";
-            print "\t\to.value(\x27https://dns9.quad9.net/dns-query\x27, _(\x27Quad9 DoH Uncensored (dns9.quad9.net)\x27));";
-            print "\t\to.value(\x27https://doh.opendns.com/dns-query\x27, _(\x27OpenDNS DoH (doh.opendns.com)\x27));";
-            print "\t\to.value(\x27https://familyshield.opendns.com/dns-query\x27, _(\x27OpenDNS FamilyShield DoH (familyshield)\x27));";
-            inserted=1;
-            next;
-        }
-        { print }
-        ' "$hp_client_js" > "${hp_client_js}.tmp" && mv "${hp_client_js}.tmp" "$hp_client_js"
-        echo "Injected DoH server endpoints into HomeProxy client.js."
-    fi
+hp_dir = "package/homeproxy"
+
+# 1. 修复 generate_client.uc (移除废弃 sniff 字段 + DoH Anycast 静态引导 + QUIC 拦截)
+gen_client = os.path.join(hp_dir, "root/etc/homeproxy/scripts/generate_client.uc")
+if os.path.isfile(gen_client):
+    with open(gen_client, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 1.1 移除已废弃字段，避免新版 sing-box decode 报错
+    content = re.sub(r"^\s*sniff_override_destination.*?\n", "", content, flags=re.MULTILINE)
+    content = re.sub(r"^\s*\bsniff:.*?\n", "", content, flags=re.MULTILINE)
+
+    # 1.2 注入 DoH Anycast 静态 IP 引导（彻底解决国内 WAN DNS 投毒 dns.google 等域名导致 DoH 握手死循环）
+    doh_bootstrap_code = '''\
+\tlet server_host = server_addr.hostname;
+\tlet parsed_tls = null;
+\tconst doh_bootstraps = {
+\t\t'dns.google': '8.8.8.8',
+\t\t'cloudflare-dns.com': '1.1.1.1',
+\t\t'dns.cloudflare.com': '1.1.1.1',
+\t\t'dns.quad9.net': '9.9.9.9',
+\t\t'dns9.quad9.net': '9.9.9.9',
+\t\t'doh.opendns.com': '208.67.222.222',
+\t\t'familyshield.opendns.com': '208.67.222.123'
+\t};
+\tif (doh_bootstraps[server_host]) {
+\t\tparsed_tls = {
+\t\t\tenabled: true,
+\t\t\tserver_name: server_host
+\t\t};
+\t\tserver_host = doh_bootstraps[server_host];
+\t}
+
+\treturn {
+\t\ttype: server_addr.protocol,
+\t\tserver: server_host,
+\t\tserver_port: strToInt(server_addr.port),
+\t\tpath: (server_addr.pathname !== '/') ? server_addr.pathname : null,
+\t\ttls: parsed_tls
+\t}'''
+
+    old_parse_return = '''\treturn {
+\t\ttype: server_addr.protocol,
+\t\tserver: server_addr.hostname,
+\t\tserver_port: strToInt(server_addr.port),
+\t\tpath: (server_addr.pathname !== '/') ? server_addr.pathname : null,
+\t}'''
+
+    if old_parse_return in content:
+        content = content.replace(old_parse_return, doh_bootstrap_code, 1)
+
+    # 1.3 注入 QUIC (UDP 443) 拦截规则，迫使 Chromium 浏览器优雅回退至成熟稳定的 TCP HTTPS (HTTP/2 / TLS 1.3)
+    quic_rule = '''\t\t{
+\t\t\taction: 'sniff'
+\t\t},
+\t\t{
+\t\t\tnetwork: 'udp',
+\t\t\tport: [443],
+\t\t\taction: 'reject'
+\t\t}'''
+    target_sniff = '''\t\t{
+\t\t\taction: 'sniff'
+\t\t}'''
+
+    if target_sniff in content and "network: 'udp',\n\t\t\tport: [443],\n\t\t\taction: 'reject'" not in content:
+        content = content.replace(target_sniff, quic_rule, 1)
+
+    with open(gen_client, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("Patched HomeProxy generate_client.uc (DoH Anycast bootstrap + QUIC reject).")
+
+# 2. 修复 firewall_pre.uc (在防火墙 forward 链阻断 UDP 443，防止直连模式 QUIC 导致协议报错)
+fw_pre = os.path.join(hp_dir, "root/etc/homeproxy/scripts/firewall_pre.uc")
+if os.path.isfile(fw_pre):
+    with open(fw_pre, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    quic_fw = 'push(forward, `meta l4proto udp udp dport 443 counter reject comment "!${cfgname}: reject QUIC to prevent protocol mismatch"`);\n'
+    if "dport 443 counter reject" not in content and ("let forward = [];" in content or "let forward = []," in content):
+        content = re.sub(r"(let forward = \[\],\s*\n\s*input = \[\];)", r"\1\n" + quic_fw, content)
+        with open(fw_pre, "w", encoding="utf-8") as f:
+            f.write(content)
+        print("Patched HomeProxy firewall_pre.uc (firewall4 QUIC reject).")
+
+# 3. 增强 client.js 前端下拉框选项
+client_js = os.path.join(hp_dir, "htdocs/luci-static/resources/view/homeproxy/client.js")
+if os.path.isfile(client_js):
+    with open(client_js, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    target_opt = "o.value('8.8.8.8', _('Google Public DNS (8.8.8.8)'));"
+    doh_block = """o.value('8.8.8.8', _('Google Public DNS (8.8.8.8)'));
+\t\to.value('', '---');
+\t\to.value('https://1.1.1.1/dns-query', _('Cloudflare DoH (1.1.1.1)'));
+\t\to.value('https://cloudflare-dns.com/dns-query', _('Cloudflare DoH (cloudflare-dns.com)'));
+\t\to.value('https://dns.cloudflare.com/dns-query', _('Cloudflare DoH (dns.cloudflare.com)'));
+\t\to.value('https://dns.google/dns-query', _('Google DoH (dns.google)'));
+\t\to.value('https://dns.quad9.net/dns-query', _('Quad9 DoH (dns.quad9.net)'));
+\t\to.value('https://dns9.quad9.net/dns-query', _('Quad9 DoH Uncensored (dns9.quad9.net)'));
+\t\to.value('https://doh.opendns.com/dns-query', _('OpenDNS DoH (doh.opendns.com)'));
+\t\to.value('https://familyshield.opendns.com/dns-query', _('OpenDNS FamilyShield DoH (familyshield)'));"""
+
+    if "https://1.1.1.1/dns-query" not in content and target_opt in content:
+        content = content.replace(target_opt, doh_block, 1)
+        with open(client_js, "w", encoding="utf-8") as f:
+            f.write(content)
+        print("Patched HomeProxy client.js (DoH options).")
+
+# 4. 优化默认配置 (默认关闭 IPv6 旁路防泄露，默认使用纯 IP DoH 1.1.1.1)
+def_config = os.path.join(hp_dir, "root/etc/config/homeproxy")
+if os.path.isfile(def_config):
+    with open(def_config, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    content = re.sub(r"option ipv6_support '1'", "option ipv6_support '0'", content)
+    content = re.sub(r"option dns_server '8.8.8.8'", "option dns_server 'https://1.1.1.1/dns-query'", content)
+    with open(def_config, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("Patched HomeProxy default config (IPv6 off, default DoH).")
+EOF
 
     # 补充 HomeProxy 简体中文本地化对照表
     local hp_po="$hp_dir/po/zh_Hans/homeproxy.po"
@@ -176,7 +273,7 @@ setup_common_feeds() {
         fi
     fi
 
-    # 应用 HomeProxy 自定义优化 (适配最新 sing-box 并扩展公共 DoH DNS 服务器选项)
+    # 应用 HomeProxy 专属优化 (解决 Chrome 访问 Google 协议不符合报错、阻断 QUIC、修复 DoH Anycast 静态引导并扩展 DoH 节点)
     patch_homeproxy_customizations
 
     # Clean conflicting feeds and pull SmartDNS package source
