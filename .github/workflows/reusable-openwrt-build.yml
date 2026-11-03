@@ -141,6 +141,7 @@ jobs:
             fp --tags --refs https://github.com/SagerNet/sing-geosite.git
             fp --tags --refs https://github.com/PikuZheng/smartdns.git
             fp --tags --refs https://github.com/gdy666/lucky.git
+            fp --tags --refs https://github.com/kenzok8/openwrt-honk.git
             curl -sL --connect-timeout 5 --max-time 10 https://thekelleys.org.uk/dnsmasq/ 2>/dev/null | grep -oE 'LATEST_IS_[0-9.]+' | head -n 1 || true
           } > fingerprint.txt
           echo "hash=$(sha256sum fingerprint.txt | cut -c1-20)" >> "$GITHUB_OUTPUT"
@@ -835,6 +836,8 @@ jobs:
           HONK_PKG="$(find_pkg 'honk-')"
           [ -z "${HONK_PKG}" ] && HONK_PKG="$(find_pkg 'honk')"
           HONK_LUCI_PKG="$(find_pkg 'luci-app-honk')"
+          HONK_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/openwrt-honk/honk/Makefile 2>/dev/null | tr -d '\r')"
+          [ -z "${HONK_MAKE_VER}" ] && HONK_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/openwrt-honk/Makefile 2>/dev/null | tr -d '\r')"
           LUCKY_PKG="$(find_pkg 'lucky-')"
           [ -z "${LUCKY_PKG}" ] && LUCKY_PKG="$(find_pkg 'lucky')"
           LUCKY_LUCI_PKG="$(find_pkg 'luci-app-lucky')"
@@ -849,7 +852,7 @@ jobs:
           echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG:-未找到包} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
           echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG:-未找到包}"
           if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
-            echo "🔹 Honk (eBPF)     : ${HONK_PKG:-未找到包}"
+            echo "🔹 Honk (eBPF)     : ${HONK_PKG:-未找到包} (Version: ${HONK_MAKE_VER:-未知})"
             echo "🔹 Honk LuCI       : ${HONK_LUCI_PKG:-未找到包}"
           fi
           if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
@@ -909,7 +912,7 @@ jobs:
             echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
             echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
             if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
-              echo "| **Honk (eBPF)** | \`${HONK_PKG:-未找到}\` | - |"
+              echo "| **Honk (eBPF)** | \`${HONK_PKG:-未找到}\` | \`${HONK_MAKE_VER:-未知}\` |"
               echo "| **Honk LuCI (Doona)** | \`${HONK_LUCI_PKG:-未找到}\` | - |"
             fi
             if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
