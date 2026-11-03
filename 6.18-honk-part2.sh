@@ -206,6 +206,7 @@ echo "Applying HONK + SmartDNS dedicated optimizations..."
 if [ -f "files/etc/uci-defaults/99-system-performance" ]; then
     sed -i "s/127\.0\.0\.1#5333/127.0.0.1#6053/g" files/etc/uci-defaults/99-system-performance
     sed -i "s/flow_offloading='1'/flow_offloading='0'/g" files/etc/uci-defaults/99-system-performance
+    sed -i "s/uci -q del dhcp.@dnsmasq\[0\].noresolv.*/uci -q set dhcp.@dnsmasq[0].noresolv='1'/g" files/etc/uci-defaults/99-system-performance
     sed -i 's|/sys/class/net/singtun\*|/sys/class/net/singtun* /sys/class/net/dae*|g' files/etc/uci-defaults/99-system-performance
 fi
 
@@ -239,15 +240,17 @@ exit 0
 EOF
 chmod +x files/etc/uci-defaults/98-honk-ebpf-init
 
-# 4. 深度优化 Honk 默认配置模板 (package/openwrt-honk/honk/files/config.dae)：
-#    - 国内 DNS (default) 直接对接本地 SmartDNS (udp://127.0.0.1:6053)，享受 26万条内存缓存与国内大厂并发测速
-#    - 海外 DNS (remote) 采用纯 IP 免死锁 Google DoH (https://8.8.8.8/dns-query) 走代理防污染
+# 4. 深度优化 Honk 与 SmartDNS 黄金搭配模板：
+#    - 国内 DNS (smartdns) 直接对接本地 SmartDNS (udp://127.0.0.1:6053)，享受 26万条内存缓存与国内大厂并发测速
+#    - 海外 DNS (googledoh / cfdoh) 采用纯 IP 免死锁 Google & Cloudflare DoH 走代理防污染（双公网 DoH 互备）
 #    - 屏蔽 HTTPS/SVCB (qtype https) 防止浏览器 ECH 绕过分流
+#    - 局域网私有域名 (geosite: private) 放行回退 (asis) 给 Dnsmasq 解析
+#    - DNS 响应阶段 (response) 拦截海外域名返回私有 IP 的投毒特征
 #    - 顶层直连放行 dnsmasq 与 smartdns 进程流量 (pname -> direct(must))，彻底杜绝 DNS 回环死锁
 #    - 在 eBPF 内核态精准阻断非国内的海外 QUIC (UDP 443)，既让 YouTube/Google 秒切稳定 TCP，又保留国内抖音/B站 QUIC 加速
-if [ -f "package/openwrt-honk/honk/files/config.dae" ]; then
-    cat << 'EOF' > package/openwrt-honk/honk/files/config.dae
-include {
+#    - fallback: proxy 确保非国内海外流量 100% 正常走节点代理
+apply_honk_dae_config() {
+    local dae_content='include {
     system.dae
 }
 
@@ -259,38 +262,64 @@ group {
 
 dns {
     upstream {
-        # 对接本机 SmartDNS (6053端口)，享受 <0.1ms 纯内存缓存与多运营商并发测速最优 IP
-        default: 'udp://127.0.0.1:6053' -> direct
-        # 海外域名通过代理隧道查询 Google DoH，彻底隔绝 GFW 抢答与 DNS 污染
-        remote: 'https://8.8.8.8/dns-query?tls_server_name=dns.google' -> proxy
+        # 对接本机 SmartDNS (6053端口)：承接国内域名并发测速与 26万条内存极速缓存
+        smartdns: '\''udp://127.0.0.1:6053'\'' -> direct
+        # 海外 DoH 双节点冗余：纯 IP + SNI 模式通过代理隧道解析，物理隔绝 GFW 抢答投毒
+        googledoh: '\''https://8.8.8.8/dns-query?tls_server_name=dns.google'\'' -> proxy
+        cfdoh: '\''https://1.1.1.1/dns-query?tls_server_name=cloudflare-dns.com'\'' -> proxy
     }
     routing {
         request {
-            # 拦截 HTTPS/SVCB (Type 65) 查询，防止浏览器启用 ECH 导致分流失效
+            # 拦截 HTTPS/SVCB (Type 65) 查询，防止现代浏览器启用 ECH 绕过 SNI 分流规则
             qtype(https) -> reject
+            # 局域网私有域名 (如 *.lan、路由器主机名) 放行给 Dnsmasq 进行本地解析
             qname(geosite: private) -> asis
-            qname(geosite: cn) -> default
-            fallback: remote
+            # 国内域名交由 SmartDNS 进行国内多大厂并发测速，返回最优 CDN 节点 IP
+            qname(geosite: cn) -> smartdns
+            # 海外与未命中域名优先通过 Google DoH 解析，回退 Cloudflare DoH
+            fallback: googledoh
+        }
+        response {
+            upstream(smartdns) -> accept
+            # 阻断海外域名解析出私有保留 IP (投毒特征防护)
+            !qname(geosite: cn) && ip(geoip: private) && !qname(geosite: private) -> reject
+            fallback: accept
         }
     }
 }
 
 routing {
-    # 强制放行本机 SmartDNS 与 Dnsmasq 发出的上游查询流量，彻底杜绝 DNS 拦截回环死锁
+    # 1. 强制放行本机 Dnsmasq 与 SmartDNS 自身发出的上游解析流量，彻底杜绝 eBPF 拦截回环死锁
     pname(dnsmasq, smartdns) -> direct(must)
-    dip(224.0.0.0/3, 'ff00::/8') -> direct
-    # 路由器自身地址直连，管理面板不被代理；服务启动时按本机地址重写下面区块
+    # 2. 组播与局域网广播直连
+    dip(224.0.0.0/3, '\''ff00::/8'\'') -> direct
+    # 3. 路由器自身管理面板与私有局域网直连
     # honk:local-direct-begin
     # honk:local-direct-end
     dip(geoip: private) && !dport(53) -> direct(must)
+    # 4. 国内 IP 与国内域名直连放行
     dip(geoip: cn) && !dport(53) -> direct(must)
     domain(geosite: cn) -> direct
-    # 在 eBPF 内核态阻断海外 QUIC (UDP 443)，强制 YouTube/Google 秒切极速稳定的 TCP TLS 1.3（国内直连 QUIC 已在上方放行）
+    # 5. 在 eBPF 内核态精准阻断海外 QUIC (UDP 443)，迫使客户端浏览器秒切极速稳定的 TCP (TLS 1.3)
     l4proto(udp) && dport(443) -> block
-    fallback: direct
+    # 6. 其余所有海外流量自动走代理节点
+    fallback: proxy
+}'
+
+    # 预置到固件 rootfs files/etc/honk/config.dae
+    mkdir -p files/etc/honk
+    printf '%s\n' "$dae_content" > files/etc/honk/config.dae
+    echo "Pre-seeded files/etc/honk/config.dae."
+
+    # 注入到源码树中的所有可能路径
+    for dae_path in package/openwrt-honk/honk/files/config.dae package/openwrt-honk/files/config.dae package/honk/files/config.dae; do
+        if [ -d "${dae_path%/*}" ]; then
+            printf '%s\n' "$dae_content" > "$dae_path"
+            echo "Injected optimized config.dae into ${dae_path}"
+        fi
+    done
 }
-EOF
-fi
+apply_honk_dae_config
 
 echo "Basic settings and HONK dedicated optimizations applied."
 verify_honk_stack "${target_kernel_series}"

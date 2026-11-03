@@ -193,7 +193,8 @@ chmod +x /etc/hotplug.d/iface/99-tun-tuning
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
 	uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#5333'
-	uci -q del dhcp.@dnsmasq[0].noresolv 2>/dev/null || true
+	uci -q set dhcp.@dnsmasq[0].noresolv='1'
+	uci -q del dhcp.@dnsmasq[0].resolvfile 2>/dev/null || true
 	uci -q set dhcp.@dnsmasq[0].min_cache_ttl='0'
 	uci -q set dhcp.@dnsmasq[0].localservice='0'
 	uci -q set dhcp.@dnsmasq[0].rebind_protection='0'
