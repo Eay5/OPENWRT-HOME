@@ -262,7 +262,8 @@ fi
 if uci -q get homeproxy.routing >/dev/null 2>&1; then
 	# 关闭嗅探覆写 (sniff_override=0)：彻底解决 Google/YouTube 握手时的 ERR_SSL_VERSION_OR_CIPHER_MISMATCH (协议不受支持)
 	uci -q set homeproxy.routing.sniff_override='0'
-	uci -q set homeproxy.routing.default_outbound='direct-out'
+	uci -q set homeproxy.routing.mainland_outbound='direct-out'
+	uci -q del homeproxy.routing.default_outbound 2>/dev/null || true
 	uci -q set homeproxy.routing.default_outbound_dns='default-dns'
 	uci -q commit homeproxy
 fi
@@ -274,6 +275,9 @@ if uci -q get homeproxy.routing >/dev/null 2>&1; then
 		uci -q set homeproxy.@routing_rule[-1].label='block-quic'
 		uci -q set homeproxy.@routing_rule[-1].enabled='1'
 		uci -q set homeproxy.@routing_rule[-1].mode='default'
+		uci -q set homeproxy.@routing_rule[-1].action='reject'
+		uci -q set homeproxy.@routing_rule[-1].reject_method='default'
+		uci -q add_list homeproxy.@routing_rule[-1].protocol='quic'
 		uci -q set homeproxy.@routing_rule[-1].network='udp'
 		uci -q add_list homeproxy.@routing_rule[-1].port='443'
 		uci -q set homeproxy.@routing_rule[-1].outbound='block-out'

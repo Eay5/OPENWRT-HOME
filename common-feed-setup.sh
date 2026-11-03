@@ -62,7 +62,7 @@ if os.path.isfile(gen_client):
 
     # 1.1 移除已废弃字段，避免新版 sing-box decode 报错
     content = re.sub(r"^\s*sniff_override_destination.*?\n", "", content, flags=re.MULTILINE)
-    content = re.sub(r"^\s*\bsniff:.*?\n", "", content, flags=re.MULTILINE)
+    # 保留入站 sniff: true 确保 TLS SNI 嗅探生效；仅移除废弃的 sniff_override_destination 避免 sing-box 1.14 decode 报错
 
     # 1.2 注入 DoH Anycast 静态 IP 引导（彻底解决国内 WAN DNS 投毒 dns.google 等域名导致 DoH 握手死循环）
     doh_bootstrap_code = '''\
@@ -116,8 +116,8 @@ if os.path.isfile(gen_client):
 \t\t\taction: 'sniff'
 \t\t}'''
 
-    if target_sniff in content and "network: 'udp',\n\t\t\tport: [443],\n\t\t\taction: 'reject'" not in content:
-        content = content.replace(target_sniff, quic_rule, 1)
+    if "network: 'udp'" not in content:
+        content = re.sub(r"(let rules\s*=\s*\[|rules:\s*\[)", r"\1\n\t\t{\n\t\t\tnetwork: 'udp',\n\t\t\tport: [443],\n\t\t\toutbound: 'block-out'\n\t\t},", content, count=1)
 
     with open(gen_client, "w", encoding="utf-8") as f:
         f.write(content)
