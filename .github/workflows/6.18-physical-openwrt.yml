@@ -30,10 +30,10 @@ jobs:
       diy_p1_sh: 6.18-part1.sh
       diy_p2_sh: 6.18-physical-part2.sh
       kernel_series: "6.18"
-      firmware_artifact_prefix: ImmortalWrt-6.18-x86-physical-intel-rtl25g
-      bin_artifact_prefix: ImmortalWrt_bin
+      firmware_artifact_prefix: ImmortalWrt-6.18-Physical-2.5G
+      bin_artifact_prefix: ImmortalWrt_bin-Physical
       release_tag_prefix: "Physical-"
-      release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
+      release_title_template: "🚀 ImmortalWrt {{kernel}} [物理机 · Intel/RTL 2.5G版] - {{date_short}}"
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
       config_sync_mode: homeproxy
       repo_branch: master
