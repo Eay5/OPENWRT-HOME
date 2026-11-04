@@ -889,7 +889,16 @@ jobs:
             cd openwrt/bin/targets/*/*
             rm -rf packages
 
-            # 智能重命名固件：添加版本特征前缀与构建时间/自定义名称，杜绝每次下载重名混淆
+            # 1. 若已生成压缩好的 .img.gz，清理多余的巨大未压缩原始 .img（避免占用数GB并防止混淆）
+            for f in *.img; do
+              [ -f "$f" ] || continue
+              if [ -f "${f}.gz" ]; then
+                rm -f "$f"
+                echo "已清理未压缩原始大镜像: $f (保留对应的 $f.gz)"
+              fi
+            done
+
+            # 2. 智能规范重命名固件：添加版本特征前缀与构建时间/自定义名称，精准识别类型与后缀
             prefix="${{ inputs.firmware_artifact_prefix }}"
             custom_tag="${{ inputs.custom_firmware_tag }}"
             build_stamp="$(date +"%Y%m%d-%H%M")"
@@ -901,17 +910,34 @@ jobs:
               name_tag="${build_stamp}"
             fi
 
-            for img in *.img.gz; do
-              [ -f "$img" ] || continue
-              sub_type=$(echo "$img" | sed -E 's/.*(ext4|squashfs)[-_](combined[-_]efi|combined)/\1-\2/g')
-              if [ -n "$sub_type" ] && [ "$sub_type" != "$img" ]; then
-                new_name="${prefix}-${name_tag}-x86-64-${sub_type}.img.gz"
-              else
-                new_name="${prefix}-${name_tag}-${img}"
-              fi
-              if [ "$img" != "$new_name" ]; then
-                mv -f "$img" "$new_name"
-                echo "固件文件已单独命名: $img -> $new_name"
+            for file in *.img.gz; do
+              [ -f "$file" ] || continue
+              case "$file" in
+                *ext4-combined-efi.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-ext4-combined-efi.img.gz"
+                  ;;
+                *ext4-combined.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-ext4-combined.img.gz"
+                  ;;
+                *squashfs-combined-efi.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-squashfs-combined-efi.img.gz"
+                  ;;
+                *squashfs-combined.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-squashfs-combined.img.gz"
+                  ;;
+                *rootfs.img.gz)
+                  fs=$(echo "$file" | grep -oE '(ext4|squashfs)' || echo "rootfs")
+                  new_name="${prefix}-${name_tag}-x86-64-${fs}-rootfs.img.gz"
+                  ;;
+                *)
+                  clean_base=$(basename "$file" .img.gz | sed -E 's/^(immortalwrt|openwrt)[-_]x86[-_]64[-_](generic[-_])?//g')
+                  new_name="${prefix}-${name_tag}-x86-64-${clean_base}.img.gz"
+                  ;;
+              esac
+
+              if [ "$file" != "$new_name" ]; then
+                mv -f "$file" "$new_name"
+                echo "固件已规范命名: $file -> $new_name"
               fi
             done
             sha256sum *.img.gz > sha256sums 2>/dev/null || true
