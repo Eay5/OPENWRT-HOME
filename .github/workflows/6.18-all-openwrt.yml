@@ -1,0 +1,103 @@
+name: Build All 6.18 ImmortalWrt (多版本并发编译)
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      build_homeproxy:
+        description: "编译 HomeProxy 常规版"
+        required: true
+        type: boolean
+        default: true
+      build_honk:
+        description: "编译 HONK (eBPF) 版"
+        required: true
+        type: boolean
+        default: true
+      build_lucky:
+        description: "编译 LUCKY 版"
+        required: true
+        type: boolean
+        default: true
+      build_physical:
+        description: "编译 物理机 (Intel/RTL 2.5G) 版"
+        required: true
+        type: boolean
+        default: true
+      runner:
+        description: "Runner 标签"
+        required: false
+        default: "ubuntu-24.04"
+
+jobs:
+  build-homeproxy:
+    if: inputs.build_homeproxy
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ inputs.runner || 'ubuntu-24.04' }}
+      config_file: 6.18.config
+      diy_p1_sh: 6.18-part1.sh
+      diy_p2_sh: 6.18-part2.sh
+      kernel_series: "6.18"
+      firmware_artifact_prefix: ImmortalWrt-6.18
+      bin_artifact_prefix: ImmortalWrt_bin
+      release_tag_prefix: "HomeProxy-"
+      release_title_template: ImmortalWrt Linux-{{kernel}} X86-64 Build {{build_time}}
+      extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
+      config_sync_mode: homeproxy
+      repo_branch: master
+
+  build-honk:
+    if: inputs.build_honk
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ inputs.runner || 'ubuntu-24.04' }}
+      config_file: 6.18-honk.config
+      diy_p1_sh: 6.18-honk-part1.sh
+      diy_p2_sh: 6.18-honk-part2.sh
+      kernel_series: "6.18"
+      firmware_artifact_prefix: ImmortalWrt-6.18-HONK
+      bin_artifact_prefix: ImmortalWrt_bin
+      release_tag_prefix: "HONK-"
+      release_title_template: ImmortalWrt {{kernel}} HONK Build {{build_time}}
+      extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns
+      config_sync_mode: honk
+      repo_branch: master
+
+  build-lucky:
+    if: inputs.build_lucky
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ inputs.runner || 'ubuntu-24.04' }}
+      config_file: 6.18-lucky.config
+      diy_p1_sh: 6.18-lucky-part1.sh
+      diy_p2_sh: 6.18-lucky-part2.sh
+      kernel_series: "6.18"
+      firmware_artifact_prefix: ImmortalWrt-6.18-LUCKY
+      bin_artifact_prefix: ImmortalWrt_bin
+      release_tag_prefix: "LUCKY-"
+      release_title_template: ImmortalWrt {{kernel}} LUCKY Build {{build_time}}
+      extra_feed_packages: lucky luci-app-lucky
+      config_sync_mode: lucky
+      repo_branch: master
+
+  build-physical:
+    if: inputs.build_physical
+    uses: ./.github/workflows/reusable-openwrt-build.yml
+    secrets: inherit
+    with:
+      runner: ${{ inputs.runner || 'ubuntu-24.04' }}
+      config_file: 6.18-physical.config
+      diy_p1_sh: 6.18-part1.sh
+      diy_p2_sh: 6.18-physical-part2.sh
+      kernel_series: "6.18"
+      firmware_artifact_prefix: ImmortalWrt-6.18-x86-physical-intel-rtl25g
+      bin_artifact_prefix: ImmortalWrt_bin
+      release_tag_prefix: "Physical-"
+      release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
+      extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
+      config_sync_mode: homeproxy
+      repo_branch: master

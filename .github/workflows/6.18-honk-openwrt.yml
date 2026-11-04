@@ -19,10 +19,6 @@ on:
     - cron: "50 6 * * *"  # 北京时间 每天下午 14:50 (UTC 06:50)
     - cron: "50 9 * * *"  # 北京时间 每天下午 17:50 (UTC 09:50)
 
-concurrency:
-  group: build-6.18-honk-openwrt
-  cancel-in-progress: false
-
 jobs:
   build:
     uses: ./.github/workflows/reusable-openwrt-build.yml
@@ -36,8 +32,8 @@ jobs:
       kernel_series: "6.18"
       firmware_artifact_prefix: ImmortalWrt-6.18-HONK
       bin_artifact_prefix: ImmortalWrt_bin
+      release_tag_prefix: "HONK-"
       release_title_template: ImmortalWrt {{kernel}} HONK Build {{build_time}}
       extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns
       config_sync_mode: honk
       repo_branch: master
-

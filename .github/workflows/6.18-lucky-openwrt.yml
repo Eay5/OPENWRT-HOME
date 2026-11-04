@@ -19,10 +19,6 @@ on:
     - cron: "40 6 * * *"  # 北京时间 每天下午 14:40 (UTC 06:40)
     - cron: "40 9 * * *"  # 北京时间 每天下午 17:40 (UTC 09:40)
 
-concurrency:
-  group: build-6.18-lucky-openwrt
-  cancel-in-progress: false
-
 jobs:
   build:
     uses: ./.github/workflows/reusable-openwrt-build.yml
@@ -36,6 +32,7 @@ jobs:
       kernel_series: "6.18"
       firmware_artifact_prefix: ImmortalWrt-6.18-LUCKY
       bin_artifact_prefix: ImmortalWrt_bin
+      release_tag_prefix: "LUCKY-"
       release_title_template: ImmortalWrt {{kernel}} LUCKY Build {{build_time}}
       extra_feed_packages: lucky luci-app-lucky
       config_sync_mode: lucky
