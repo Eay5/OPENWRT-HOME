@@ -4,6 +4,16 @@ on:
   repository_dispatch:
   workflow_dispatch:
     inputs:
+      build_times:
+        description: "选择编译次数 (例如 1 次、2 次、3 次...)"
+        required: true
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "5"
+        default: "1"
       build_homeproxy:
         description: "编译 HomeProxy 常规版"
         required: true
@@ -30,8 +40,26 @@ on:
         default: "ubuntu-24.04"
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - name: Generate build matrix iterations
+        id: gen
+        run: |
+          count="${{ inputs.build_times || '1' }}"
+          list=$(seq 1 "$count" | jq -s -c .)
+          echo "matrix=$list" >> "$GITHUB_OUTPUT"
+          echo "生成的编译轮次序列: $list"
+
   build-homeproxy:
+    needs: setup
     if: ${{ inputs.build_homeproxy == true || inputs.build_homeproxy == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: ${{ fromJson(needs.setup.outputs.matrix) }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -41,7 +69,7 @@ jobs:
       diy_p2_sh: 6.18-part2.sh
       kernel_series: "6.18"
       firmware_artifact_prefix: ImmortalWrt-6.18
-      bin_artifact_prefix: ImmortalWrt_bin
+      bin_artifact_prefix: ImmortalWrt_bin-HomeProxy
       release_tag_prefix: "HomeProxy-"
       release_title_template: ImmortalWrt Linux-{{kernel}} X86-64 Build {{build_time}}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
@@ -49,7 +77,12 @@ jobs:
       repo_branch: master
 
   build-honk:
+    needs: setup
     if: ${{ inputs.build_honk == true || inputs.build_honk == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: ${{ fromJson(needs.setup.outputs.matrix) }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -59,7 +92,7 @@ jobs:
       diy_p2_sh: 6.18-honk-part2.sh
       kernel_series: "6.18"
       firmware_artifact_prefix: ImmortalWrt-6.18-HONK
-      bin_artifact_prefix: ImmortalWrt_bin
+      bin_artifact_prefix: ImmortalWrt_bin-HONK
       release_tag_prefix: "HONK-"
       release_title_template: ImmortalWrt {{kernel}} HONK Build {{build_time}}
       extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns
@@ -67,7 +100,12 @@ jobs:
       repo_branch: master
 
   build-lucky:
+    needs: setup
     if: ${{ inputs.build_lucky == true || inputs.build_lucky == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: ${{ fromJson(needs.setup.outputs.matrix) }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -77,7 +115,7 @@ jobs:
       diy_p2_sh: 6.18-lucky-part2.sh
       kernel_series: "6.18"
       firmware_artifact_prefix: ImmortalWrt-6.18-LUCKY
-      bin_artifact_prefix: ImmortalWrt_bin
+      bin_artifact_prefix: ImmortalWrt_bin-LUCKY
       release_tag_prefix: "LUCKY-"
       release_title_template: ImmortalWrt {{kernel}} LUCKY Build {{build_time}}
       extra_feed_packages: lucky luci-app-lucky
@@ -85,7 +123,12 @@ jobs:
       repo_branch: master
 
   build-physical:
+    needs: setup
     if: ${{ inputs.build_physical == true || inputs.build_physical == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: ${{ fromJson(needs.setup.outputs.matrix) }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -95,7 +138,7 @@ jobs:
       diy_p2_sh: 6.18-physical-part2.sh
       kernel_series: "6.18"
       firmware_artifact_prefix: ImmortalWrt-6.18-x86-physical-intel-rtl25g
-      bin_artifact_prefix: ImmortalWrt_bin
+      bin_artifact_prefix: ImmortalWrt_bin-Physical
       release_tag_prefix: "Physical-"
       release_title_template: ImmortalWrt {{kernel}} x86-64 Physical Install (Intel/Realtek 2.5G) {{build_time}}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
