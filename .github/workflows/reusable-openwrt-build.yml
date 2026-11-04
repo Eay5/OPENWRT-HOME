@@ -82,6 +82,11 @@ on:
         required: false
         type: boolean
         default: false
+      custom_firmware_tag:
+        description: Optional custom name or version tag for firmware files.
+        required: false
+        type: string
+        default: ""
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
@@ -884,19 +889,29 @@ jobs:
             cd openwrt/bin/targets/*/*
             rm -rf packages
 
-            # 智能重命名固件：添加版本特征前缀，避免下载后文件名混淆
+            # 智能重命名固件：添加版本特征前缀与构建时间/自定义名称，杜绝每次下载重名混淆
             prefix="${{ inputs.firmware_artifact_prefix }}"
+            custom_tag="${{ inputs.custom_firmware_tag }}"
+            build_stamp="$(date +"%Y%m%d-%H%M")"
+
+            if [ -n "$custom_tag" ]; then
+              clean_tag=$(echo "$custom_tag" | tr -cd 'a-zA-Z0-9_-')
+              name_tag="${clean_tag}-${build_stamp}"
+            else
+              name_tag="${build_stamp}"
+            fi
+
             for img in *.img.gz; do
               [ -f "$img" ] || continue
               sub_type=$(echo "$img" | sed -E 's/.*(ext4|squashfs)[-_](combined[-_]efi|combined)/\1-\2/g')
               if [ -n "$sub_type" ] && [ "$sub_type" != "$img" ]; then
-                new_name="${prefix}-x86-64-${sub_type}.img.gz"
+                new_name="${prefix}-${name_tag}-x86-64-${sub_type}.img.gz"
               else
-                new_name="${prefix}-${img}"
+                new_name="${prefix}-${name_tag}-${img}"
               fi
               if [ "$img" != "$new_name" ]; then
                 mv -f "$img" "$new_name"
-                echo "固件文件已重命名: $img -> $new_name"
+                echo "固件文件已单独命名: $img -> $new_name"
               fi
             done
             sha256sum *.img.gz > sha256sums 2>/dev/null || true

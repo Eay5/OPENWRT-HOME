@@ -4,6 +4,11 @@ on:
   repository_dispatch:
   workflow_dispatch:
     inputs:
+      custom_name:
+        description: "自定义固件名称/备注 (可选，例如: dev、v2，留空则自动按日期时间命名)"
+        required: false
+        type: string
+        default: ""
       ssh:
         description: SSH connection to Actions
         required: false
@@ -34,6 +39,7 @@ jobs:
       bin_artifact_prefix: ImmortalWrt_bin-LUCKY
       release_tag_prefix: "LUCKY-"
       release_title_template: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版] - {{date_short}}"
+      custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
       extra_feed_packages: lucky luci-app-lucky
       config_sync_mode: lucky
       repo_branch: master
