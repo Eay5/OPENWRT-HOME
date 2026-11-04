@@ -31,7 +31,7 @@ on:
 
 jobs:
   build-homeproxy:
-    if: inputs.build_homeproxy
+    if: ${{ inputs.build_homeproxy == true || inputs.build_homeproxy == 'true' }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -49,7 +49,7 @@ jobs:
       repo_branch: master
 
   build-honk:
-    if: inputs.build_honk
+    if: ${{ inputs.build_honk == true || inputs.build_honk == 'true' }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -67,7 +67,7 @@ jobs:
       repo_branch: master
 
   build-lucky:
-    if: inputs.build_lucky
+    if: ${{ inputs.build_lucky == true || inputs.build_lucky == 'true' }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
@@ -85,7 +85,7 @@ jobs:
       repo_branch: master
 
   build-physical:
-    if: inputs.build_physical
+    if: ${{ inputs.build_physical == true || inputs.build_physical == 'true' }}
     uses: ./.github/workflows/reusable-openwrt-build.yml
     secrets: inherit
     with:
