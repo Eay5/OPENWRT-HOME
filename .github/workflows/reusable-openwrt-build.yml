@@ -107,67 +107,7 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
-  # 中文注释：定时任务先做“源码指纹”检测，上游与本仓库都没变化时直接跳过整次编译，节省数小时 Runner 时间。
-  check:
-    runs-on: ubuntu-latest
-    outputs:
-      skip: ${{ steps.decide.outputs.skip }}
-      source_hash: ${{ steps.fingerprint.outputs.hash }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Fingerprint upstream sources
-        id: fingerprint
-        run: |
-          set +e
-          # 任一远端查询失败都写入随机值，保证“查询失败”时不会误跳过构建。
-          fp() {
-            local out
-            out="$(git ls-remote "$@" 2>/dev/null)" || out="FAIL-$(date +%s%N)"
-            [ -n "$out" ] || out="EMPTY-$(date +%s%N)"
-            printf '%s\n' "$out"
-          }
-          {
-            echo "repo=${{ github.sha }} config=${CONFIG_FILE} p1=${DIY_P1_SH} p2=${DIY_P2_SH} mode=${CONFIG_SYNC_MODE}"
-            fp "$REPO_URL" "refs/heads/${REPO_BRANCH}"
-            for repo in immortalwrt/packages immortalwrt/luci immortalwrt/homeproxy jerrykuku/luci-theme-argon \
-                        pymumu/openwrt-smartdns pymumu/luci-app-smartdns gdy666/luci-app-lucky kenzok8/openwrt-honk sbwml/package_kernel_r8126; do
-              fp "https://github.com/${repo}.git" HEAD
-            done
-            fp --heads https://github.com/sbwml/packages_lang_golang.git
-            fp --tags --refs https://github.com/SagerNet/sing-box.git
-            fp --tags --refs https://github.com/SagerNet/sing-geoip.git
-            fp --tags --refs https://github.com/SagerNet/sing-geosite.git
-            fp --tags --refs https://github.com/PikuZheng/smartdns.git
-            fp --tags --refs https://github.com/gdy666/lucky.git
-            fp --tags --refs https://github.com/kenzok8/openwrt-honk.git
-            curl -sL --connect-timeout 5 --max-time 10 https://thekelleys.org.uk/dnsmasq/ 2>/dev/null | grep -oE 'LATEST_IS_[0-9.]+' | head -n 1 || true
-          } > fingerprint.txt
-          echo "hash=$(sha256sum fingerprint.txt | cut -c1-20)" >> "$GITHUB_OUTPUT"
-
-      - name: Look up previous successful build
-        id: lookup
-        if: github.event_name == 'schedule'
-        uses: actions/cache/restore@v4
-        with:
-          path: .build-marker
-          key: built-${{ inputs.config_file }}-${{ steps.fingerprint.outputs.hash }}
-          lookup-only: true
-
-      - name: Decide whether to build
-        id: decide
-        run: |
-          if [ "${{ steps.lookup.outputs.cache-hit }}" = "true" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "### ⏭️ 上游源码与仓库均无变化，本次定时构建已跳过" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
-    needs: check
-    if: needs.check.outputs.skip != 'true'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 180
     permissions:
@@ -1011,20 +951,6 @@ jobs:
             ${{ env.FIRMWARE }}/*
             openwrt/package-versions.txt
             release.txt
-
-      # 中文注释：构建成功后写入源码指纹标记，下次定时任务若检测到上游与本仓库均无更新，即可直接跳过编译。
-      - name: Create build fingerprint marker
-        if: env.status == 'success' && !cancelled()
-        run: |
-          mkdir -p .build-marker
-          echo "${{ needs.check.outputs.source_hash }} $(date -Iseconds)" > .build-marker/stamp
-
-      - name: Save build fingerprint marker
-        if: env.status == 'success' && !cancelled()
-        uses: actions/cache/save@v4
-        with:
-          path: .build-marker
-          key: built-${{ inputs.config_file }}-${{ needs.check.outputs.source_hash }}
 
       - name: Delete old workflow runs
         if: always() && !cancelled()
