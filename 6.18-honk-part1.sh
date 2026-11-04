@@ -36,34 +36,11 @@ pin_honk_package_sources() {
     local honk_commit=""
     honk_commit=$(git ls-remote https://github.com/kenzok8/openwrt-honk.git refs/heads/main 2>/dev/null | cut -f1 | head -n 1 || true)
 
-    # 拉取最新的 Honk 与 luci-app-honk 专属软件包源码
+    # 拉取最新的 Honk 与 luci-app-honk 专属软件包源码（每次构建拉取 main 分支最新提交）
     rm -rf package/openwrt-honk package/honk feeds/luci/applications/luci-app-honk package/feeds/*/luci-app-honk 2>/dev/null || true
     clone_package_repo "https://github.com/kenzok8/openwrt-honk.git" "package/openwrt-honk" "main"
 
-    if [ -d "package/openwrt-honk" ]; then
-        # 1. 确保所有 Makefile 中的哈希校验跳过，防止每次上游 Release 更新因哈希变动报错中断编译
-        find package/openwrt-honk -type f -name "Makefile" | while read -r mk; do
-            sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$mk" 2>/dev/null || true
-            sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$mk" 2>/dev/null || true
-        done
-
-        # 2. 动态匹配并更新 Makefile 内部版本号为上游最新 Release
-        if [ -n "${honk_tag}" ]; then
-            local clean_honk_ver="${honk_tag#v}"
-            clean_honk_ver="${clean_honk_ver//.v/.}"
-            for mk in package/openwrt-honk/honk/Makefile package/openwrt-honk/luci-app-honk/Makefile; do
-                if [ -f "$mk" ]; then
-                    local cur_ver
-                    cur_ver=$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' "$mk" 2>/dev/null | head -n 1 | tr -d '\r')
-                    if [ -n "$cur_ver" ] && [ "$(printf '%s\n%s' "$cur_ver" "$clean_honk_ver" | sort -V | tail -n 1)" = "$clean_honk_ver" ]; then
-                        sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${clean_honk_ver}/g" "$mk" 2>/dev/null || true
-                        sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$mk" 2>/dev/null || true
-                    fi
-                fi
-            done
-        fi
-        echo "HONK tracking upstream latest: Tag=${honk_tag:-none}, Commit=${honk_commit:-HEAD}"
-    fi
+    echo "HONK tracking upstream latest: Tag=${honk_tag:-none}, Commit=${honk_commit:-HEAD}"
 
     # 清除 HomeProxy 与 sing-box 源码包，确保纯净无冲突
     rm -rf package/homeproxy feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy 2>/dev/null || true
