@@ -990,12 +990,25 @@ jobs:
         if: env.UPLOAD_RELEASE == 'true' && env.status == 'success' && !cancelled()
         run: |
           date_short="$(date +"%Y.%m.%d")"
+          custom_tag="${{ inputs.custom_firmware_tag }}"
+          if [ -n "$custom_tag" ]; then
+            tag_display=" [${custom_tag}]"
+          else
+            tag_display=""
+          fi
+
           release_title="${RELEASE_TITLE_TEMPLATE}"
           release_title="${release_title//\{\{kernel\}\}/${KERNEL_VERSION}}"
           release_title="${release_title//\{\{device\}\}/${DEVICE_NAME}}"
           release_title="${release_title//\{\{date\}\}/${FILE_DATE}}"
           release_title="${release_title//\{\{date_short\}\}/${date_short}}"
+          release_title="${release_title//\{\{custom_tag\}\}/${tag_display}}"
           release_title="${release_title//\{\{build_time\}\}/${BUILD_TIME_DISPLAY}}"
+
+          # 若模板中未显式包含 {{custom_tag}} 且用户输入了自定义标签，则在标题后智能附加
+          if [ -n "$custom_tag" ] && [[ "$release_title" != *"[${custom_tag}]"* ]]; then
+            release_title="${release_title} [${custom_tag}]"
+          fi
 
           tag="${{ inputs.release_tag_prefix }}v${KERNEL_SERIES}-$(date +"%Y.%m.%d-%H%M%S")"
           echo "release_tag=${tag}" >> "$GITHUB_ENV"
@@ -1033,6 +1046,7 @@ jobs:
             echo "## 📋 构建详细信息"
             echo "- **内核版本**: ${KERNEL_SERIES} (${KERNEL_VERSION})"
             [ -n "${DEVICE_NAME}" ] && echo "- **设备架构**: ${DEVICE_NAME#_}"
+            [ -n "${custom_tag}" ] && echo "- **自定义版本备注**: \`${custom_tag}\`"
             echo "- **构建时间**: ${BUILD_TIME_DISPLAY} (ISO: ${BUILD_TIME_ISO})"
             echo "- **源码分支**: [${REPO_URL}](${REPO_URL}) (${REPO_BRANCH})"
             echo "- **配置文件**: \`${CONFIG_FILE}\`"
@@ -1070,4 +1084,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           keep_latest: 30
+          delete_tag_pattern: "^${{ inputs.release_tag_prefix }}"
           delete_tags: true

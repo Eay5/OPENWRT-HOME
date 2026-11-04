@@ -38,7 +38,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-Physical-2.5G
       bin_artifact_prefix: ImmortalWrt_bin-Physical
       release_tag_prefix: "Physical-"
-      release_title_template: "🚀 ImmortalWrt {{kernel}} [物理机 · Intel/RTL 2.5G版] - {{date_short}}"
+      release_title_template: "🚀 ImmortalWrt {{kernel}} [物理机 · Intel/RTL 2.5G版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
       config_sync_mode: homeproxy

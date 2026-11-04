@@ -38,7 +38,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-HONK
       bin_artifact_prefix: ImmortalWrt_bin-HONK
       release_tag_prefix: "HONK-"
-      release_title_template: "⚡ ImmortalWrt {{kernel}} [HONK · eBPF性能版] - {{date_short}}"
+      release_title_template: "⚡ ImmortalWrt {{kernel}} [HONK · eBPF性能版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
       extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns
       config_sync_mode: honk

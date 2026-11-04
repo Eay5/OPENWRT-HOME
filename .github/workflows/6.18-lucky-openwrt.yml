@@ -38,7 +38,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-LUCKY
       bin_artifact_prefix: ImmortalWrt_bin-LUCKY
       release_tag_prefix: "LUCKY-"
-      release_title_template: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版] - {{date_short}}"
+      release_title_template: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
       extra_feed_packages: lucky luci-app-lucky
       config_sync_mode: lucky

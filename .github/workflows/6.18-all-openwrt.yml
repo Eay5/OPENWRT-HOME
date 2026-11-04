@@ -76,7 +76,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-HomeProxy
       bin_artifact_prefix: ImmortalWrt_bin-HomeProxy
       release_tag_prefix: "HomeProxy-"
-      release_title_template: "🛡️ ImmortalWrt {{kernel}} [HomeProxy · 科学代理版] - {{date_short}}"
+      release_title_template: "🛡️ ImmortalWrt {{kernel}} [HomeProxy · 科学代理版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ inputs.custom_name || '' }}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
       config_sync_mode: homeproxy
@@ -100,7 +100,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-HONK
       bin_artifact_prefix: ImmortalWrt_bin-HONK
       release_tag_prefix: "HONK-"
-      release_title_template: "⚡ ImmortalWrt {{kernel}} [HONK · eBPF性能版] - {{date_short}}"
+      release_title_template: "⚡ ImmortalWrt {{kernel}} [HONK · eBPF性能版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ inputs.custom_name || '' }}
       extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns
       config_sync_mode: honk
@@ -124,7 +124,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-LUCKY
       bin_artifact_prefix: ImmortalWrt_bin-LUCKY
       release_tag_prefix: "LUCKY-"
-      release_title_template: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版] - {{date_short}}"
+      release_title_template: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ inputs.custom_name || '' }}
       extra_feed_packages: lucky luci-app-lucky
       config_sync_mode: lucky
@@ -148,7 +148,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-Physical-2.5G
       bin_artifact_prefix: ImmortalWrt_bin-Physical
       release_tag_prefix: "Physical-"
-      release_title_template: "🚀 ImmortalWrt {{kernel}} [物理机 · Intel/RTL 2.5G版] - {{date_short}}"
+      release_title_template: "🚀 ImmortalWrt {{kernel}} [物理机 · Intel/RTL 2.5G版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ inputs.custom_name || '' }}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
       config_sync_mode: homeproxy

@@ -38,7 +38,7 @@ jobs:
       firmware_artifact_prefix: ImmortalWrt-6.18-HomeProxy
       bin_artifact_prefix: ImmortalWrt_bin-HomeProxy
       release_tag_prefix: "HomeProxy-"
-      release_title_template: "🛡️ ImmortalWrt {{kernel}} [HomeProxy · 科学代理版] - {{date_short}}"
+      release_title_template: "🛡️ ImmortalWrt {{kernel}} [HomeProxy · 科学代理版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
       extra_feed_packages: pcre2 luci-app-homeproxy sing-box smartdns luci-app-smartdns sing-geoip sing-geosite
       config_sync_mode: homeproxy
