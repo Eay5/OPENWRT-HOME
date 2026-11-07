@@ -446,24 +446,44 @@ if [ -x /etc/init.d/dns-preload ]; then
 	/etc/init.d/dns-preload enable >/dev/null 2>&1 || true
 fi
 
-# 10. UPnP IGD & PCP/NAT-PMP 游戏与打洞高阶调优 (支持二级路由穿透/IGDv1主机兼容/千兆带宽广播/租约驻留内存)
+# 10. UPnP IGD & PCP/NAT-PMP 主/旁双栖智能调优：
+# - 主路由模式：默认开启 UPnP IGD + NAT-PMP，并将广播速率上限提升至 2.5Gbps 下行 / 1Gbps 上行，保障主机游戏 NAT1 与 PT 满速打洞
+# - 旁路由模式：默认自动停用 UPnP，严禁旁路由在局域网广播 SSDP 抢答主路由的 UPnP IGD 导致游戏机/PT 端口映射失效
 if uci -q get upnpd.config >/dev/null 2>&1; then
-	uci -q set upnpd.config.enabled='1'
 	uci -q set upnpd.config.enable_upnp='1'
 	uci -q set upnpd.config.enable_natpmp='1'
 	uci -q set upnpd.config.secure_mode='1'
 	uci -q set upnpd.config.igdv1='1'
 	uci -q set upnpd.config.ext_ip_reserved_ignore='1'
-	uci -q set upnpd.config.download='125000'
-	uci -q set upnpd.config.upload='62500'
+	uci -q set upnpd.config.download='312500'
+	uci -q set upnpd.config.upload='125000'
 	uci -q set upnpd.config.upnp_lease_file='/var/run/miniupnpd.leases'
 	uci -q set upnpd.config.clean_ruleset_interval='600'
 	uci -q set upnpd.config.clean_ruleset_threshold='20'
+	if [ "$is_bypass_mode" = "1" ]; then
+		uci -q set upnpd.config.enabled='0'
+		[ -x /etc/init.d/miniupnpd ] && /etc/init.d/miniupnpd disable >/dev/null 2>&1 || true
+		[ -x /etc/init.d/miniupnpd ] && /etc/init.d/miniupnpd stop >/dev/null 2>&1 || true
+	else
+		uci -q set upnpd.config.enabled='1'
+	fi
 	uci -q commit upnpd
 fi
 
-# Clean non-existent snapshot package repos (helloworld, video, passwall, mosdns)
-sed -i '/helloworld/d;/video/d;/passwall/d;/mosdns/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
+# 11. LuCI Web 后台 (uhttpd) 高并发与零卡顿调优：
+# 调大并发 CGI/RPC 请求上限与 Keep-Alive 复用，彻底消除 HomeProxy / Doona (Honk) 面板多节点并发测速时 Web 界面转圈或 RPC 超时
+if uci -q get uhttpd.main >/dev/null 2>&1; then
+	uci -q set uhttpd.main.max_requests='32'
+	uci -q set uhttpd.main.max_connections='200'
+	uci -q set uhttpd.main.http_keepalive='20'
+	uci -q set uhttpd.main.network_timeout='60'
+	uci -q set uhttpd.main.script_timeout='120'
+	uci -q set uhttpd.main.ubus_Noauth='0'
+	uci -q commit uhttpd
+fi
+
+# 12. 清理本地编译临时 feed 名称在软件源配置中的残留，确保刷机后执行 apk update 100% 绿灯不报 404
+sed -i '/helloworld/d;/video/d;/passwall/d;/mosdns/d;/openwrt_honk/d;/homeproxy/d;/lucky/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
 
 sysctl -p /etc/sysctl.d/99-performance.conf >/dev/null 2>&1 || true
 

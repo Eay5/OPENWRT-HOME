@@ -332,6 +332,17 @@ ip -4 route show 2>/dev/null | while IFS= read -r rt; do
     case "$rt" in *"initcwnd"*) continue ;; esac
     ip -4 route change $rt initcwnd 32 initrwnd 32 >/dev/null 2>&1 || true
 done
+
+# 9. LuCI Web 后台 (uhttpd) 高并发调优与清理本地编译临时软件源
+if uci -q get uhttpd.main >/dev/null 2>&1; then
+    uci -q set uhttpd.main.max_requests='32'
+    uci -q set uhttpd.main.max_connections='200'
+    uci -q set uhttpd.main.http_keepalive='20'
+    uci -q set uhttpd.main.network_timeout='60'
+    uci -q set uhttpd.main.script_timeout='120'
+    uci -q commit uhttpd
+fi
+sed -i '/helloworld/d;/video/d;/passwall/d;/mosdns/d;/openwrt_honk/d;/homeproxy/d;/lucky/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
 exit 0
 EOF
 chmod +x files/etc/uci-defaults/98-lucky-appliance
