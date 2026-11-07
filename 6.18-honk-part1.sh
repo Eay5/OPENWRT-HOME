@@ -57,9 +57,10 @@ pin_honk_package_sources() {
 
     echo "HONK tracking upstream latest: Tag=${honk_tag:-none}, Commit=${honk_commit:-HEAD}"
 
-    # 清除 HomeProxy 与 sing-box 源码包，确保纯净无冲突
+    # 清除 HomeProxy、sing-box 与 Lucky 源码包，确保 HONK 构建环境纯净无冗余扫描
     rm -rf package/homeproxy feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy 2>/dev/null || true
     rm -rf feeds/packages/net/sing-box package/feeds/packages/sing-box 2>/dev/null || true
+    rm -rf package/lucky feeds/luci/applications/luci-app-lucky package/feeds/luci/luci-app-lucky 2>/dev/null || true
 
     echo "6.18 HONK package sources pinned to upstream latest."
 }

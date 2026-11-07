@@ -24,6 +24,9 @@ pin_618_package_sources() {
     # 动态拉取并同步 luci-theme-argon 最新上游版本
     setup_argon_theme
 
+    # 清理非当前版本所需的 Lucky 源码目录，加快包索引扫描并保持源码树纯净
+    rm -rf package/lucky feeds/luci/applications/luci-app-lucky package/feeds/luci/luci-app-lucky 2>/dev/null || true
+
     echo "6.18 package sources pinned."
 }
 

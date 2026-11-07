@@ -58,6 +58,7 @@ setup_argon_theme() {
     argon_ver="${argon_ver#v}"
 
     if [ -f "package/luci-theme-argon/Makefile" ]; then
+        sed -i 's|include \.\./\.\./luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|g' package/luci-theme-argon/Makefile 2>/dev/null || true
         sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${argon_ver}/g" package/luci-theme-argon/Makefile
         sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-theme-argon/Makefile 2>/dev/null || true
         sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/luci-theme-argon/Makefile 2>/dev/null || true
