@@ -203,6 +203,27 @@ apply_sysctl_tweaks() {
 	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
 	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
 
+	# 旁路由防分流失效：彻底关闭 ICMP 重定向发送与接收，杜绝终端绕过旁路由
+	# 注意：Linux 内核对 send_redirects 采用 ORCONF (all || iface)，必须遍历所有已创建的接口逐一置 0 才能真正生效
+	sysctl -w net.ipv4.conf.all.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.all.accept_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.accept_redirects=0 >/dev/null 2>&1 || true
+
+	# 旁路由非对称路由优化：放宽反向路径过滤，杜绝单臂进出与回包被静默丢弃
+	sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true
+	for conf_dir in /proc/sys/net/ipv4/conf/*; do
+		[ -d "$conf_dir" ] || continue
+		echo 0 >"$conf_dir/send_redirects" 2>/dev/null || true
+		echo 0 >"$conf_dir/accept_redirects" 2>/dev/null || true
+		echo 2 >"$conf_dir/rp_filter" 2>/dev/null || true
+	done
+
+	# 开启 Linux 6.12 / 6.18 原生 UDP GRO 转发加速与核心路由转发
+	sysctl -w net.ipv4.udp_gro_forwarding=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+
 	# 收敛 UDP Conntrack 超时窗口，防止 P2P / BT / QUIC / STUN 突发会话堆积撑爆连接表
 	sysctl -w net.netfilter.nf_conntrack_udp_timeout=15 >/dev/null 2>&1 || true
 	sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=60 >/dev/null 2>&1 || true

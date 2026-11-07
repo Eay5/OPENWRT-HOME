@@ -204,6 +204,12 @@ for dev in /sys/class/net/tun* /sys/class/net/singtun* /sys/class/net/br-* /sys/
 	ip link set dev "${dev##*/}" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "${dev##*/}" txqueuelen 4096 >/dev/null 2>&1 || true
 	ethtool -K "${dev##*/}" tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
 done
+for conf_dir in /proc/sys/net/ipv4/conf/*; do
+	[ -d "$conf_dir" ] || continue
+	echo 0 >"$conf_dir/send_redirects" 2>/dev/null || true
+	echo 0 >"$conf_dir/accept_redirects" 2>/dev/null || true
+	echo 2 >"$conf_dir/rp_filter" 2>/dev/null || true
+done
 ip -4 route show 2>/dev/null | while IFS= read -r rt; do
 	[ -n "$rt" ] || continue
 	case "$rt" in *"initcwnd"*) continue ;; esac
@@ -404,6 +410,7 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].port='6053'
 	uci -q set smartdns.@smartdns[0].tcp_server='1'
 	uci -q set smartdns.@smartdns[0].ipv6_server='0'
+	uci -q set smartdns.@smartdns[0].bind_device='0'
 	uci -q set smartdns.@smartdns[0].dualstack_ip_selection='0'
 	uci -q set smartdns.@smartdns[0].force_aaaa_soa='1'
 	uci -q set smartdns.@smartdns[0].prefetch_domain='1'
@@ -426,7 +433,7 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q del smartdns.@smartdns[0].seconddns_force_https_soa 2>/dev/null || true
 
 	# 确保所有 overseas 组的海外 DNS 绝对排除在默认组外，杜绝直连 GFW 抢答投毒
-	local s_idx=0
+	s_idx=0
 	while uci -q get smartdns.@server[$s_idx] >/dev/null 2>&1; do
 		if [ "$(uci -q get smartdns.@server[$s_idx].server_group)" = "overseas" ]; then
 			uci -q set smartdns.@server[$s_idx].exclude_default_group='1'

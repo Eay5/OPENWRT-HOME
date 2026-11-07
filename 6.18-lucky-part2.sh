@@ -83,7 +83,7 @@ detect_default_ip() {
         ip="$(sed -n "s/.*option ipaddr '\([^']*\)'.*/\1/p" files/etc/config/network 2>/dev/null | head -n 1)"
     fi
     if [ -z "$ip" ]; then
-        ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | head -n 1 || true)"
+        ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | grep -v '^127\.' | head -n 1 || true)"
     fi
     echo "${ip:-unknown}"
 }
@@ -148,6 +148,12 @@ rm -f files/etc/uci-defaults/99-system-performance 2>/dev/null || true
 rm -f files/etc/init.d/dns-preload 2>/dev/null || true
 rm -f files/etc/config/smartdns 2>/dev/null || true
 rm -f files/etc/config/upnpd 2>/dev/null || true
+
+# Lucky 专属：保留 files/etc/init.d/performance-mode 的 CPU 满血调度、RPS/XPS 与网卡卸载优化，
+# 但移除其中的 disable_ipv6=1，确保 Lucky 的公网 IPv6 DDNS、STUN 穿透与 IPv6 反向代理 100% 正常工作
+if [ -f "files/etc/init.d/performance-mode" ]; then
+    sed -i '/disable_ipv6=1/d' files/etc/init.d/performance-mode
+fi
 
 # 清空默认密码
 sed -i 's/$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.//g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
@@ -254,6 +260,12 @@ EOF
 # 注入独立应用主机防火墙与服务默认设置
 cat << 'EOF' > files/etc/uci-defaults/98-lucky-appliance
 #!/bin/sh
+if ! uci -q show network.globals >/dev/null 2>&1; then
+    uci set network.globals='globals'
+fi
+uci -q set network.globals.packet_steering='1'
+uci -q commit network
+
 # 1. 独立主机纯净模式：彻底关闭本机的 DHCP 服务，严禁抢答局域网主路由的 DHCP 分配导致冲突
 if uci -q get dhcp.lan >/dev/null 2>&1; then
     uci -q set dhcp.lan.ignore='1'
@@ -305,6 +317,16 @@ if uci -q get system.ntp >/dev/null 2>&1; then
 fi
 
 echo "CST-8" > /etc/TZ 2>/dev/null || true
+
+if [ -x /etc/init.d/performance-mode ]; then
+    /etc/init.d/performance-mode enable >/dev/null 2>&1 || true
+    /etc/init.d/performance-mode restart >/dev/null 2>&1 || /etc/init.d/performance-mode start >/dev/null 2>&1 || true
+fi
+
+if [ -x /etc/init.d/irqbalance ]; then
+    /etc/init.d/irqbalance enable >/dev/null 2>&1 || true
+    /etc/init.d/irqbalance restart >/dev/null 2>&1 || /etc/init.d/irqbalance start >/dev/null 2>&1 || true
+fi
 
 # 6. 调大进程打开文件句柄上限，多线程下载大文件不报错
 ulimit -n 1048576 2>/dev/null || true

@@ -795,9 +795,12 @@ jobs:
           cd openwrt
 
           find_pkg() {
-            local pattern="$1"
+            local pkg="$1"
             local res
-            res=$(find bin/packages -type f -name "*${pattern}*" 2>/dev/null | grep -E '\.(apk|ipk)$' | head -n 1 || true)
+            res=$(find bin/packages -type f \( -name "${pkg}-[0-9]*.apk" -o -name "${pkg}_[0-9]*.ipk" -o -name "${pkg}-[0-9]*.ipk" -o -name "${pkg}_*.apk" \) 2>/dev/null | head -n 1 || true)
+            if [ -z "${res}" ]; then
+              res=$(find bin/packages -type f -name "${pkg}*" 2>/dev/null | grep -E '\.(apk|ipk)$' | head -n 1 || true)
+            fi
             if [ -n "${res}" ]; then
               basename "${res}"
             fi
@@ -815,13 +818,11 @@ jobs:
           V2_GEOIP_PKG="$(find_pkg 'v2ray-geoip')"
           V2_GEOSITE_PKG="$(find_pkg 'v2ray-geosite')"
           ARGON_PKG="$(find_pkg 'luci-theme-argon')"
-          HONK_PKG="$(find_pkg 'honk-')"
-          [ -z "${HONK_PKG}" ] && HONK_PKG="$(find_pkg 'honk')"
+          HONK_PKG="$(find_pkg 'honk')"
           HONK_LUCI_PKG="$(find_pkg 'luci-app-honk')"
           HONK_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/openwrt-honk/honk/Makefile 2>/dev/null | tr -d '\r')"
           [ -z "${HONK_MAKE_VER}" ] && HONK_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/openwrt-honk/Makefile 2>/dev/null | tr -d '\r')"
-          LUCKY_PKG="$(find_pkg 'lucky-')"
-          [ -z "${LUCKY_PKG}" ] && LUCKY_PKG="$(find_pkg 'lucky')"
+          LUCKY_PKG="$(find_pkg 'lucky')"
           LUCKY_LUCI_PKG="$(find_pkg 'luci-app-lucky')"
           DNSMASQ_PKG="$(find_pkg 'dnsmasq-full')"
           GO_MAKE_VER="$(sed -n 's/^GO_VERSION_MAJOR_MINOR:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r').$(sed -n 's/^GO_VERSION_PATCH:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r')"
@@ -921,7 +922,9 @@ jobs:
           } > "$GITHUB_WORKSPACE/package_versions_table.md"
           cat "$GITHUB_WORKSPACE/package_versions_table.md" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER:-未知}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"
+          if [ -n "${SMARTDNS_PKG}" ] || [ -n "${SMARTDNS_MAKE_VER}" ]; then
+            echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"
+          fi
 
       - name: Upload package versions artifact
         if: env.status == 'success' && !cancelled()
@@ -1107,10 +1110,9 @@ jobs:
             echo "- **源码分支**: [${REPO_URL}](${REPO_URL}) (${REPO_BRANCH})"
             echo "- **配置文件**: \`${CONFIG_FILE}\`"
             [ -n "${SMARTDNS_VER_DISPLAY}" ] && echo "- **SmartDNS**: ${SMARTDNS_VER_DISPLAY}"
-            [ -n "${MOSDNS_VER_DISPLAY}" ] && echo "- **MosDNS**: ${MOSDNS_VER_DISPLAY}"
             echo "- **构建机器**: \`${{ inputs.runner }}\` (Run #${{ github.run_number }})"
-          } > release.txt
-          cp -f release.txt "${{ env.FIRMWARE }}/release-info.txt" || true
+          } > "$GITHUB_WORKSPACE/release.txt"
+          cp -f "$GITHUB_WORKSPACE/release.txt" "${{ env.FIRMWARE }}/release-info.txt" || true
 
       - name: Publish release
         if: env.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
@@ -1120,11 +1122,10 @@ jobs:
         with:
           name: ${{ env.RELEASE_TITLE }}
           tag_name: ${{ env.release_tag }}
-          body_path: release.txt
+          body_path: ${{ github.workspace }}/release.txt
           files: |
             ${{ env.FIRMWARE }}/*
-            openwrt/package-versions.txt
-            release.txt
+            ${{ github.workspace }}/release.txt
 
       - name: Delete old workflow runs
         if: always() && !cancelled()

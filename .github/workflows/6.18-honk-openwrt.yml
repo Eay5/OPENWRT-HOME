@@ -44,6 +44,6 @@ jobs:
       release_tag_prefix: "HONK-"
       release_title_template: "⚡ ImmortalWrt {{kernel}} [HONK · eBPF性能版]{{custom_tag}} {{build_time}}"
       custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
-      extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns
+      extra_feed_packages: honk luci-app-honk smartdns luci-app-smartdns v2ray-geoip v2ray-geosite
       config_sync_mode: honk
       repo_branch: master
