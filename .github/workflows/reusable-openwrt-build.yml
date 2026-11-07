@@ -106,6 +106,9 @@ env:
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
   CCACHE_MAXSIZE: 4G
+  CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+  CCACHE_NOHASHDIR: "true"
+  CCACHE_SLOPPINESS: "file_macro,time_macros,include_file_mtime,include_file_ctime"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
@@ -192,8 +195,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ steps.cache_scope.outputs.dl_scope }}-${{ github.run_id }}
+          key: ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.dl_scope }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.dl_scope }}-
+            ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ env.CONFIG_FILE }}-
             ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ steps.cache_scope.outputs.dl_scope }}-
             ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-
             ${{ runner.os }}-openwrt-dl-
@@ -210,8 +215,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/.ccache
-          key: ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ steps.cache_scope.outputs.ccache_scope }}-${{ github.run_id }}
+          key: ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.ccache_scope }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.ccache_scope }}-
+            ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ env.CONFIG_FILE }}-
             ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ steps.cache_scope.outputs.ccache_scope }}-
             ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-
             ${{ runner.os }}-openwrt-ccache-
@@ -220,9 +227,10 @@ jobs:
         run: |
           mkdir -p "$CCACHE_DIR"
           ccache --set-config=max_size="${CCACHE_MAXSIZE}" || true
-          # 中文注释：CI 环境下每次新建编译目录会导致编译器与头文件的 mtime 变化，从而使默认基于 mtime 的 ccache 100% 失效。
-          # 改为基于编译器二进制内容校验 (content)、忽略绝对路径哈希 (hash_dir=false) 并放宽头文件时间戳校验，使跨次构建缓存命中率提升至 85%+！
-          ccache --set-config=compiler_check=content || true
+          # 中文注释：由于每次 CI 都会从源码重新构建交叉编译器 (make toolchain/install)，生成的 gcc 二进制既会改变 mtime 也会因构建元数据改变二进制哈希 (content)。
+          # 因此采用 "%compiler% -dumpmachine; %compiler% -dumpversion" 校验编译器目标架构与版本号，配合忽略绝对路径哈希 (hash_dir=false) 与时间戳放宽，
+          # 使跨次 CI 构建的交叉编译产物真正实现 85%+ 缓存命中率！
+          ccache --set-config=compiler_check="%compiler% -dumpmachine; %compiler% -dumpversion" || true
           ccache --set-config=hash_dir=false || true
           ccache --set-config=compression=true || true
           ccache --set-config=compression_level=6 || true

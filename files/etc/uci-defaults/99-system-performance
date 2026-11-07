@@ -227,15 +227,19 @@ chmod +x /etc/hotplug.d/iface/99-tun-tuning
 # Dnsmasq: 接驳 HomeProxy Sing-Box DNS (127.0.0.1#5333) 实现智能国内外分流，保持动态 min_cache_ttl 为 0，保留 WAN 上游容灾，关闭 localservice 丢包限制，过滤 IPv6 AAAA 记录，设置 10000 缓存
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
-	uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#5333'
-	uci -q set dhcp.@dnsmasq[0].noresolv='1'
-	uci -q del dhcp.@dnsmasq[0].resolvfile 2>/dev/null || true
+	# HomeProxy 启动时将通过 redirect-dns.conf 自动注入 no-resolv 与 server=127.0.0.1#5333 独占接管；未启动时自动走 resolv.conf.auto 保底
+	uci -q set dhcp.@dnsmasq[0].noresolv='0'
+	uci -q set dhcp.@dnsmasq[0].resolvfile='/tmp/resolv.conf.d/resolv.conf.auto'
 	uci -q set dhcp.@dnsmasq[0].min_cache_ttl='0'
 	uci -q set dhcp.@dnsmasq[0].localservice='0'
 	uci -q set dhcp.@dnsmasq[0].rebind_protection='0'
 	uci -q set dhcp.@dnsmasq[0].filter_aaaa='1'
 	uci -q set dhcp.@dnsmasq[0].cachesize='10000'
 	uci -q set dhcp.@dnsmasq[0].dns_forward_max='4096'
+	mkdir -p /tmp/resolv.conf.d 2>/dev/null || true
+	if [ ! -s /tmp/resolv.conf.d/resolv.conf.auto ]; then
+		printf "nameserver 223.5.5.5\nnameserver 119.29.29.29\n" > /tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null || true
+	fi
 	uci -q commit dhcp
 fi
 

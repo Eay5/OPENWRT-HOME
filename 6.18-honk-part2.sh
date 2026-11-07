@@ -199,14 +199,11 @@ echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
 # ==============================================================================
 echo "Applying HONK + SmartDNS dedicated optimizations..."
 
-# 1. 修正 files/etc/uci-defaults/99-system-performance 中的 HomeProxy 遗留设定：
-#    - 将 Dnsmasq 上游从已移除的 Sing-box (127.0.0.1#5333) 改为公网高速 DNS (223.5.5.5)，使本机进程与回退查询发出的 53 端口报文流经 WAN 接口，从而被 Honk eBPF 的 dns {} 分流引擎精准接管（国内转交 127.0.0.1:6053 SmartDNS，海外转交 Google DoH）
+# 1. 修正 files/etc/uci-defaults/99-system-performance 中的 HONK 专属设定：
 #    - 关闭 Firewall4 的 flow_offloading='0'，避免与 Honk 的 TC eBPF 直通转发和 nfqueue 首包 DPI 嗅探冲突
 #    - 为 Honk 的 dae0 / dae0peer 虚拟以太网对扩充 txqueuelen 4096
 if [ -f "files/etc/uci-defaults/99-system-performance" ]; then
-    sed -i "s/127\.0\.0\.1#5333/223.5.5.5/g" files/etc/uci-defaults/99-system-performance
     sed -i "s/flow_offloading='1'/flow_offloading='0'/g" files/etc/uci-defaults/99-system-performance
-    sed -i "s/uci -q del dhcp.@dnsmasq\[0\].noresolv.*/uci -q set dhcp.@dnsmasq[0].noresolv='1'/g" files/etc/uci-defaults/99-system-performance
     sed -i 's|/sys/class/net/singtun\*|/sys/class/net/singtun* /sys/class/net/dae*|g' files/etc/uci-defaults/99-system-performance
 fi
 

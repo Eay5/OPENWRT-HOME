@@ -374,6 +374,10 @@ apply_route_initcwnd() {
 # 启动时按顺序应用根分区免写放大挂载、CPU、网络栈、网卡硬件/UDP GRO、队列分流、TCP 首包窗口加速及核心进程保护调优。
 start() {
 	mount -o remount,noatime / 2>/dev/null || true
+	mkdir -p /tmp/resolv.conf.d 2>/dev/null || true
+	if [ ! -s /tmp/resolv.conf.d/resolv.conf.auto ]; then
+		printf "nameserver 223.5.5.5\nnameserver 119.29.29.29\n" >/tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null || true
+	fi
 	apply_cpu_governor
 	apply_sysctl_tweaks
 	apply_irq_affinity_defaults
