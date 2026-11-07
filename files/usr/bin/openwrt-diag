@@ -1,6 +1,6 @@
 #!/bin/sh
 # ==============================================================================
-# OpenWrt 全方位运行性能、网络栈、分流状态与系统日志一键诊断采集器 (自动脱敏版)
+# OpenWrt 全方位运行性能、网络栈、全插件日志与深度状态一键诊断采集器 (自动脱敏版)
 # 用法:
 #   1. LuCI 网页后台: 系统 -> 运行诊断与日志导出 -> 一键下载 / 一键复制
 #   2. SSH 终端命令行: openwrt-diag (自动生成报告并保存至 /tmp/openwrt-diag-latest.txt)
@@ -8,12 +8,23 @@
 
 OUT_FILE="/tmp/openwrt-diag-latest.txt"
 
-# 隐私数据脱敏过滤器：自动隐去宽带账号密码、节点服务器地址/UUID/密钥/订阅链接、公网IP与Token
+# 隐私数据脱敏过滤器：自动隐去宽带账号密码、节点服务器地址/UUID/密钥/订阅链接、Token
 sanitize_output() {
 	sed -E \
-		-e 's/((password|passwd|secret|token|uuid|private_key|public_key|short_id|auth_str|key|username)[[:space:]"'\'':=]+)[^"'\''[:space:],;}]+/\1***REDACTED***/Ig' \
-		-e 's/(https?:\/\/)[^"'\''[:space:]]+/\1***SUBSCRIPTION_URL_REDACTED***/Ig' \
-		-e 's/(option[[:space:]]+(server|address|ip|host)[[:space:]]+['\''"])([^'\''"]+)List/\1***REDACTED***/g'
+		-e 's/((password|passwd|secret|token|uuid|private_key|public_key|short_id|auth_str|key|username|user)[[:space:]"'\'':=]+)[^"'\''[:space:],;}]+/\1***REDACTED***/Ig' \
+		-e 's/(https?:\/\/)[^"'\''[:space:]]+/\1***URL_REDACTED***/Ig' \
+		-e 's/("server"[[:space:]]*:[[:space:]]*")([^"]+)(")/\1***SERVER_REDACTED***\3/Ig' \
+		-e 's/(option[[:space:]]+(server|address|username|password|key|token|uuid)[[:space:]]+['\''"])([^'\''"]+)(['\''"])/\1***REDACTED***\4/Ig'
+}
+
+print_file_tail() {
+	local file_path="$1"
+	local max_lines="${2:-150}"
+	if [ -f "$file_path" ] && [ -s "$file_path" ]; then
+		echo ">>> 文件: ${file_path} (大小: $(wc -c < "$file_path" 2>/dev/null) bytes, 截取最新 ${max_lines} 行)"
+		tail -n "$max_lines" "$file_path" 2>/dev/null | sanitize_output
+		echo ""
+	fi
 }
 
 collect_report() {
@@ -23,14 +34,14 @@ collect_report() {
 	up_str="$(uptime 2>/dev/null || true)"
 
 	echo "======================================================================"
-	echo "📊 OpenWrt 运行性能与全链路日志诊断报告 (AI 深度优化分析专用)"
+	echo "📊 OpenWrt 全链路运行性能、网络栈与全插件日志诊断报告 (AI 深度优化专用)"
 	echo "======================================================================"
 	echo "采集时间 : ${now_str}"
 	echo "主机名称 : ${host_name}"
 	echo "运行时间 : ${up_str}"
 	echo "内核版本 : $(uname -a 2>/dev/null)"
 	if [ -f /etc/openwrt_release ]; then
-		echo "--- 固件版本信息 ---"
+		echo "--- 固件发行版信息 ---"
 		cat /etc/openwrt_release 2>/dev/null
 	fi
 	echo ""
@@ -52,12 +63,12 @@ collect_report() {
 	echo -n "C-States 状态: "
 	for st in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
 		[ -d "$st" ] || continue
-		printf "%s(lat=%sus,dis=%s) " "$(cat "$st/name" 2>/dev/null)" "$(cat "$st/latency" 2>/dev/null)" "$(cat "$st/disable" 2>/dev/null)"
+		printf "%s(lat=%sus,dis=%s,usage=%s) " "$(cat "$st/name" 2>/dev/null)" "$(cat "$st/latency" 2>/dev/null)" "$(cat "$st/disable" 2>/dev/null)" "$(cat "$st/usage" 2>/dev/null)"
 	done
 	echo ""
 	if command -v sensors >/dev/null 2>&1; then
 		echo "--- 硬件传感器温度 ---"
-		sensors 2>/dev/null | head -n 30 || true
+		sensors 2>/dev/null | head -n 35 || true
 	elif ls /sys/class/thermal/thermal_zone*/temp >/dev/null 2>&1; then
 		echo -n "Thermal Zones (mC): "
 		cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | tr '\n' ' '
@@ -66,18 +77,20 @@ collect_report() {
 	echo ""
 
 	# ==========================================================================
-	# 2. 内存、Slab 缓存、文件句柄与分区挂载 (noatime)
+	# 2. 内存、Slab 缓存、文件句柄、进程 Top 排行与分区挂载 (noatime)
 	# ==========================================================================
 	echo "======================================================================"
-	echo "[2] 内存分配、文件句柄与磁盘挂载状态"
+	echo "[2] 内存分配、文件句柄、高占用进程排行与磁盘挂载状态"
 	echo "======================================================================"
 	free -m 2>/dev/null || true
 	echo "--- /proc/meminfo 关键指标 ---"
 	grep -E '^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree|Dirty|Writeback|Slab|SReclaimable|SUnreclaim):' /proc/meminfo 2>/dev/null || true
 	echo "全局文件句柄 (已分配/未使用/上限): $(cat /proc/sys/fs/file-nr 2>/dev/null)"
 	echo "--- 挂载参数 (检查 noatime) 与磁盘空间 ---"
-	mount 2>/dev/null | grep -E ' on / | on /overlay | on /tmp ' || true
+	mount 2>/dev/null | grep -E ' on / | on /overlay | on /tmp |bpf' || true
 	df -hT 2>/dev/null || df -h 2>/dev/null || true
+	echo "--- 当前系统进程 CPU/内存占用快照 ---"
+	ps w 2>/dev/null | head -n 45 | sanitize_output || ps 2>/dev/null | head -n 45 | sanitize_output || true
 	echo ""
 
 	# ==========================================================================
@@ -109,6 +122,12 @@ collect_report() {
 	done
 	echo "--- IPv4 路由表 (检查 initcwnd / initrwnd 32 是否生效) ---"
 	ip -4 route show 2>/dev/null || true
+	echo "--- IPv4 策略路由规则 (ip rule show) ---"
+	ip -4 rule show 2>/dev/null || true
+	for rtab in 100 101 200 2022; do
+		rt_out="$(ip -4 route show table "$rtab" 2>/dev/null || true)"
+		[ -n "$rt_out" ] && echo "Table ${rtab}: ${rt_out}"
+	done
 	echo ""
 
 	# ==========================================================================
@@ -149,8 +168,8 @@ collect_report() {
 	awk '{printf "CPU%-2d: total=%-12d dropped=%-8d time_squeeze=%-8d rps_ipi=%-8d\n", NR-1, "0x"$1, "0x"$2, "0x"$3, "0x"$10}' /proc/net/softnet_stat 2>/dev/null || cat /proc/net/softnet_stat 2>/dev/null
 	echo "--- 硬件中断分布 (/proc/interrupts 网卡相关) ---"
 	grep -iE 'CPU|eth|enp|ens|virtio|pci|nvme|ahci' /proc/interrupts 2>/dev/null || true
-	echo "--- 各网口 RPS / XPS 掩码 ---"
-	for q in /sys/class/net/*/queues/rx-*/rps_cpus /sys/class/net/*/queues/tx-*/xps_cpus; do
+	echo "--- 各网口 RPS / XPS 掩码与流表容量 ---"
+	for q in /sys/class/net/*/queues/rx-*/rps_cpus /sys/class/net/*/queues/rx-*/rps_flow_cnt /sys/class/net/*/queues/tx-*/xps_cpus; do
 		[ -f "$q" ] || continue
 		printf "%s = %s\n" "$q" "$(cat "$q" 2>/dev/null)"
 	done
@@ -168,7 +187,7 @@ collect_report() {
 	echo "Conntrack 表 : 当前连接数=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || echo N/A) / 最大上限=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo N/A) (哈希桶=$(cat /proc/sys/net/netfilter/nf_conntrack_buckets 2>/dev/null || echo N/A))"
 	if [ -f /proc/net/stat/nf_conntrack ]; then
 		echo "--- Conntrack 内核统计 (检查 insert_failed / drop / early_drop 是否为 0) ---"
-		head -n 5 /proc/net/stat/nf_conntrack 2>/dev/null || true
+		head -n 8 /proc/net/stat/nf_conntrack 2>/dev/null || true
 	fi
 	echo "--- Socket 汇总 (/proc/net/sockstat) ---"
 	cat /proc/net/sockstat 2>/dev/null || true
@@ -177,15 +196,15 @@ collect_report() {
 		[ -d "$cdir" ] || continue
 		printf "%-12s: send_redirects=%s accept_redirects=%s rp_filter=%s\n" "${cdir##*/}" "$(cat "$cdir/send_redirects" 2>/dev/null)" "$(cat "$cdir/accept_redirects" 2>/dev/null)" "$(cat "$cdir/rp_filter" 2>/dev/null)"
 	done
-	echo "--- TCP/UDP 关键重传与溢出计数 (/proc/net/snmp & netstat) ---"
+	echo "--- TCP/UDP 关键重传与溢出计数 (/proc/net/snmp) ---"
 	awk '/^Tcp:/ {if (hdr=="") {hdr=$0} else {split(hdr,h); split($0,v); for(i=2;i<=NF;i++) printf "%s=%s ", h[i], v[i]; print ""}} /^Udp:/ {if (uhdr=="") {uhdr=$0} else {split(uhdr,uh); split($0,uv); for(i=2;i<=NF;i++) printf "%s=%s ", uh[i], uv[i]; print ""}}' /proc/net/snmp 2>/dev/null || true
 	echo ""
 
 	# ==========================================================================
-	# 7. 核心守护进程资源占用、OOM 免死保护与实时 DNS 解析延迟基准测试
+	# 7. 核心守护进程健康度、端口监听与实时 DNS 解析基准测试
 	# ==========================================================================
 	echo "======================================================================"
-	echo "[7] 核心守护进程状态 (OOM 保护/优先级/内存) 与实时 DNS 测速"
+	echo "[7] 核心守护进程状态 (OOM 保护/优先级/内存)、监听端口与实时 DNS 测速"
 	echo "======================================================================"
 	for proc in dnsmasq smartdns sing-box honk lucky miniupnpd uhttpd irqbalance; do
 		pids="$(pidof "$proc" 2>/dev/null || true)"
@@ -194,62 +213,186 @@ collect_report() {
 				rss="$(awk '/^VmRSS:/ {print $2, $3}' "/proc/$pid/status" 2>/dev/null || echo '0 kB')"
 				oom="$(cat "/proc/$pid/oom_score_adj" 2>/dev/null || echo '0')"
 				nice_val="$(awk '{print $19}' "/proc/$pid/stat" 2>/dev/null || echo '0')"
-				printf "✅ %-12s PID=%-7s VmRSS=%-12s oom_score_adj=%-5s nice=%s\n" "$proc" "$pid" "$rss" "$oom" "$nice_val"
+				threads="$(awk '/^Threads:/ {print $2}' "/proc/$pid/status" 2>/dev/null || echo '1')"
+				printf "✅ %-12s PID=%-7s VmRSS=%-12s Threads=%-4s oom_score_adj=%-5s nice=%s\n" "$proc" "$pid" "$rss" "$threads" "$oom" "$nice_val"
 			done
 		else
-			printf "⚪ %-12s 未运行 (或当前固件未启用)\n" "$proc"
+			printf "⚪ %-12s 未运行 (或当前固件未包含)\n" "$proc"
 		fi
 	done
 
+	echo "--- 当前系统监听端口明细 (netstat / ss) ---"
+	netstat -tulnp 2>/dev/null | head -n 45 || ss -tulnp 2>/dev/null | head -n 45 || true
+
 	echo "--- 实时 DNS 解析耗时实测 (验证 SmartDNS 缓存命中与分流响应) ---"
 	if command -v dig >/dev/null 2>&1; then
-		for dom in qq.com taobao.com baidu.com github.com google.com; do
+		for dom in qq.com taobao.com baidu.com bilibili.com github.com google.com youtube.com; do
 			q53="$(dig @127.0.0.1 -p 53 +time=2 +tries=1 "$dom" A 2>/dev/null | grep -E 'Query time:|status:' | tr '\n' ' ' || echo 'timeout')"
 			q6053="$(dig @127.0.0.1 -p 6053 +time=2 +tries=1 "$dom" A 2>/dev/null | grep -E 'Query time:|status:' | tr '\n' ' ' || echo 'N/A')"
-			printf "Domain %-12s -> [Port 53 Dnsmasq/Proxy]: %s | [Port 6053 SmartDNS]: %s\n" "$dom" "$q53" "$q6053"
+			printf "Domain %-13s -> [Port 53]: %s | [Port 6053 SmartDNS]: %s\n" "$dom" "$q53" "$q6053"
 		done
 	fi
 	echo ""
 
 	# ==========================================================================
-	# 8. 脱敏核心 UCI 配置摘要与最近系统/内核告警日志
+	# 8. 【插件专项深度日志 1】Dnsmasq 与 SmartDNS 运行状态及完整日志
 	# ==========================================================================
 	echo "======================================================================"
-	echo "[8] 核心配置摘要 (已自动脱敏隐藏节点密码/UUID/订阅地址)"
+	echo "[8] DNS 核心插件专项诊断 (Dnsmasq & SmartDNS 配置、缓存与日志)"
 	echo "======================================================================"
-	echo "--- DHCP / Dnsmasq UCI ---"
-	uci -q show dhcp.@dnsmasq[0] 2>/dev/null | sanitize_output || true
-	if uci -q show smartdns.@smartdns[0] >/dev/null 2>&1; then
-		echo "--- SmartDNS UCI ---"
-		uci -q show smartdns.@smartdns[0] 2>/dev/null | sanitize_output || true
+	# 触发 Dnsmasq 向 syslog 导出实时缓存命中率与各上游转发成功/失败统计
+	if [ -n "$(pidof dnsmasq 2>/dev/null)" ]; then
+		kill -USR1 $(pidof dnsmasq) 2>/dev/null || true
+		sleep 1
 	fi
-	if uci -q show homeproxy.config >/dev/null 2>&1; then
-		echo "--- HomeProxy UCI (Config & Routing) ---"
+	echo "--- /tmp/resolv.conf.d/resolv.conf.auto 内容 ---"
+	cat /tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null || true
+	echo "--- Dnsmasq 转发扩展配置 (/tmp/dnsmasq.d / redirect-dns.conf) ---"
+	for dconf in /tmp/dnsmasq.d/* /tmp/dnsmasq.d/*/* /var/etc/dnsmasq.conf.*; do
+		[ -f "$dconf" ] && print_file_tail "$dconf" 60
+	done
+	echo "--- Dnsmasq 运行统计与最新日志 (含缓存命中率、queries forwarded/answered) ---"
+	logread 2>/dev/null | grep -i 'dnsmasq' | tail -n 100 | sanitize_output || true
+	echo ""
+
+	echo "--- SmartDNS 实际生成的运行配置与缓存状态 ---"
+	ls -lh /tmp/smartdns.cache 2>/dev/null || echo "未检测到 /tmp/smartdns.cache"
+	for sconf in /var/etc/smartdns/smartdns.conf /tmp/etc/smartdns/smartdns.conf /etc/smartdns/smartdns.conf; do
+		[ -f "$sconf" ] && print_file_tail "$sconf" 120
+	done
+	echo "--- SmartDNS 运行日志 ---"
+	for slog in /var/log/smartdns/smartdns.log /var/log/smartdns.log /tmp/smartdns.log /tmp/log/smartdns.log; do
+		[ -f "$slog" ] && print_file_tail "$slog" 150
+	done
+	logread 2>/dev/null | grep -i 'smartdns' | tail -n 100 | sanitize_output || true
+	echo ""
+
+	# ==========================================================================
+	# 9. 【插件专项深度日志 2】HomeProxy + Sing-box 代理核心日志与规则状态
+	# ==========================================================================
+	if [ -d /etc/homeproxy ] || [ -d /var/run/homeproxy ] || uci -q show homeproxy.config >/dev/null 2>&1; then
+		echo "======================================================================"
+		echo "[9] HomeProxy & Sing-box 插件专项诊断 (配置、规则集、nftables 与完整日志)"
+		echo "======================================================================"
+		echo "--- HomeProxy UCI 配置 (已脱敏) ---"
 		uci -q show homeproxy.config 2>/dev/null | sanitize_output || true
 		uci -q show homeproxy.routing 2>/dev/null | sanitize_output || true
+		uci -q show homeproxy.subscription 2>/dev/null | sanitize_output || true
+		echo "--- Sing-box 规则库与资源文件检查 ---"
+		ls -lh /etc/homeproxy/ruleset/* /usr/share/sing-box/* 2>/dev/null || true
+		echo "--- HomeProxy 主控日志 (/var/run/homeproxy/homeproxy.log) ---"
+		for hplog in /var/run/homeproxy/homeproxy.log /tmp/homeproxy.log /var/log/homeproxy.log; do
+			[ -f "$hplog" ] && print_file_tail "$hplog" 200
+		done
+		echo "--- Sing-box 核心运行日志 (/var/run/homeproxy/sing-box*.log) ---"
+		for sblog in /var/run/homeproxy/sing-box.log /var/run/homeproxy/sing-box-c.log /var/run/homeproxy/sing-box-s.log /tmp/sing-box.log; do
+			[ -f "$sblog" ] && print_file_tail "$sblog" 200
+		done
+		echo "--- Sing-box 实际生成的运行时 JSON 配置 (/var/run/homeproxy/sing-box-c.json 脱敏) ---"
+		if [ -f /var/run/homeproxy/sing-box-c.json ]; then
+			print_file_tail /var/run/homeproxy/sing-box-c.json 180
+		fi
+		echo "--- System Log 中的 sing-box / homeproxy 记录 ---"
+		logread 2>/dev/null | grep -iE 'sing-box|homeproxy' | tail -n 120 | sanitize_output || true
+		echo ""
 	fi
-	if [ -f /etc/honk/config.dae ]; then
-		echo "--- HONK config.dae (routing & dns) ---"
-		cat /etc/honk/config.dae 2>/dev/null | sanitize_output || true
+
+	# ==========================================================================
+	# 10. 【插件专项深度日志 3】HONK (eBPF) + Doona 核心日志、TC 钩子与 BTF 状态
+	# ==========================================================================
+	if [ -d /etc/honk ] || command -v honk >/dev/null 2>&1; then
+		echo "======================================================================"
+		echo "[10] HONK (eBPF) 插件专项诊断 (TC 钩子、BPF 挂载、Geo库与运行日志)"
+		echo "======================================================================"
+		echo "--- HONK eBPF 内核模块与 BTF 状态 ---"
+		ls -lh /sys/kernel/btf/vmlinux 2>/dev/null || echo "⚠️ /sys/kernel/btf/vmlinux 不存在！"
+		lsmod 2>/dev/null | grep -E 'cls_bpf|sch_ingress|veth|nft_queue|nfnetlink_queue' || true
+		echo "--- /sys/fs/bpf 挂载点与映射对象 ---"
+		ls -la /sys/fs/bpf /sys/fs/bpf/* 2>/dev/null || true
+		echo "--- TC قdisc 与 eBPF 钩子挂载状态 (验证网卡是否已挂载 clsact/bpf) ---"
+		tc qdisc show 2>/dev/null || true
+		for tdev in br-lan eth0 eth1 pppoe-wan; do
+			[ -d "/sys/class/net/$tdev" ] || continue
+			echo ">> tc filter dev ${tdev} ingress/egress:"
+			tc filter show dev "$tdev" ingress 2>/dev/null || true
+			tc filter show dev "$tdev" egress 2>/dev/null || true
+		done
+		echo "--- V2Ray GeoIP / GeoSite 规则库文件状态 ---"
+		ls -lh /usr/share/v2ray/*.dat /etc/honk/*.dat 2>/dev/null || true
+		echo "--- HONK 配置文件 (/etc/honk/config.dae & system.dae 脱敏) ---"
+		[ -f /etc/honk/system.dae ] && print_file_tail /etc/honk/system.dae 80
+		[ -f /etc/honk/config.dae ] && print_file_tail /etc/honk/config.dae 120
+		echo "--- HONK 插件运行日志 ---"
+		for hklog in /var/log/honk/honk.log /var/log/honk.log /tmp/honk.log /var/run/honk/honk.log /tmp/log/honk.log /var/log/dae.log /tmp/dae.log; do
+			[ -f "$hklog" ] && print_file_tail "$hklog" 200
+		done
+		logread 2>/dev/null | grep -iE 'honk|dae|doona|bpf' | tail -n 150 | sanitize_output || true
+		echo ""
 	fi
+
+	# ==========================================================================
+	# 11. 【插件专项深度日志 4】Lucky (DDNS / 反向代理 / STUN 穿透) 与 UPnP 状态
+	# ==========================================================================
+	if [ -d /etc/config/lucky.d ] || command -v lucky >/dev/null 2>&1 || uci -q show lucky >/dev/null 2>&1; then
+		echo "======================================================================"
+		echo "[11] Lucky 大吉插件专项诊断 (配置、反向代理/STUN 端口与完整日志)"
+		echo "======================================================================"
+		uci -q show lucky 2>/dev/null | sanitize_output || true
+		ls -la /etc/config/lucky.d/ 2>/dev/null || true
+		for lklog in /var/log/lucky.log /tmp/lucky.log /tmp/log/lucky.log /var/run/lucky/lucky.log /etc/config/lucky.d/*.log; do
+			[ -f "$lklog" ] && print_file_tail "$lklog" 200
+		done
+		logread 2>/dev/null | grep -i 'lucky' | tail -n 150 | sanitize_output || true
+		echo ""
+	fi
+
+	if [ -f /var/run/miniupnpd.leases ] || [ -n "$(pidof miniupnpd 2>/dev/null)" ]; then
+		echo "======================================================================"
+		echo "[12] MiniUPnPd 端口映射状态与日志"
+		echo "======================================================================"
+		uci -q show upnpd 2>/dev/null || true
+		echo "--- 当前活跃 UPnP / NAT-PMP 映射表 (/var/run/miniupnpd.leases) ---"
+		cat /var/run/miniupnpd.leases 2>/dev/null || true
+		logread 2>/dev/null | grep -i 'miniupnpd' | tail -n 60 | sanitize_output || true
+		echo ""
+	fi
+
+	# ==========================================================================
+	# 13. 防火墙 (Firewall4 / Nftables) 规则表、Flowtable 加速与拨号/网络事件日志
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[13] Nftables 加速表状态与网络接口/PPPoE 拨号日志 (netifd / pppd)"
+	echo "======================================================================"
+	echo "--- Nftables 活跃表清单與 Flowtable 定义 ---"
+	nft list tables 2>/dev/null || true
+	nft list flowtables 2>/dev/null || true
+	if nft list table inet homeproxy >/dev/null 2>&1; then
+		echo "--- Nftables inet homeproxy 表摘要 (前 80 行) ---"
+		nft list table inet homeproxy 2>/dev/null | head -n 80 | sanitize_output || true
+	fi
+	echo "--- 网络接口与 PPPoE 拨号/重连日志 (netifd / pppd / odhcp) ---"
+	logread 2>/dev/null | grep -iE 'netifd|pppd|pppoe|wan|link|udhcpc|firewall' | tail -n 120 | sanitize_output || true
+	echo ""
+
+	# ==========================================================================
+	# 14. 内核日志 (dmesg) 与全局系统日志 (logread)
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[14] 内核日志 (dmesg 告警/异常与最新 120 行)"
+	echo "======================================================================"
+	dmesg 2>/dev/null | grep -iE 'error|warn|fail|drop|oom|panic|oops|reset|timeout|link is|fullcone|bbr|bpf|conntrack' | tail -n 120 | sanitize_output || true
+	echo "--- dmesg 最新 120 行 ---"
+	dmesg 2>/dev/null | tail -n 120 | sanitize_output || true
 	echo ""
 
 	echo "======================================================================"
-	echo "[9] 内核日志 (dmesg 告警/错误与尾部 60 行)"
+	echo "[15] 全局系统运行日志 (logread 告警汇总与最新 250 行)"
 	echo "======================================================================"
-	dmesg 2>/dev/null | grep -iE 'error|warn|fail|drop|oom|panic|oops|reset|link is|fullcone|bbr|bpf' | tail -n 60 | sanitize_output || true
-	echo "--- dmesg 最新 40 行 ---"
-	dmesg 2>/dev/null | tail -n 40 | sanitize_output || true
-	echo ""
-
+	logread 2>/dev/null | grep -iE 'error|warn|fail|fatal|timeout|refused|drop|kill|oom' | tail -n 150 | sanitize_output || true
+	echo "--- logread 最新 250 行 ---"
+	logread 2>/dev/null | tail -n 250 | sanitize_output || true
 	echo "======================================================================"
-	echo "[10] 系统运行日志 (logread 关键服务告警与最新 80 行)"
-	echo "======================================================================"
-	logread 2>/dev/null | grep -iE 'error|warn|fail|fatal|timeout|refused|smartdns|sing-box|homeproxy|honk|lucky|dnsmasq' | tail -n 60 | sanitize_output || true
-	echo "--- logread 最新 60 行 ---"
-	logread 2>/dev/null | tail -n 60 | sanitize_output || true
-	echo "======================================================================"
-	echo "报告生成完毕 (已自动脱敏隐私字段，可直接复制或上传给 AI 进行深度调优分析)"
+	echo "报告生成完毕 (共 15 大模块，已自动脱敏隐私字段，可直接下载或复制给 AI 进行深度调优分析)"
 	echo "======================================================================"
 }
 

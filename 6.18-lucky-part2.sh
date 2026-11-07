@@ -300,8 +300,8 @@ fi
 if uci -q get system.@system[0] >/dev/null 2>&1; then
     uci -q set system.@system[0].timezone='CST-8'
     uci -q set system.@system[0].zonename='Asia/Shanghai'
-    uci -q set system.@system[0].log_size='64'
-    uci -q set system.@system[0].log_buffer_size='64'
+    uci -q set system.@system[0].log_size='512'
+    uci -q set system.@system[0].log_buffer_size='512'
     uci -q set system.@system[0].conloglevel='4'
     uci -q set system.@system[0].cronloglevel='8'
     uci -q commit system

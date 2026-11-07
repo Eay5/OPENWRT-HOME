@@ -54,8 +54,8 @@ fi
 if uci -q get system.@system[0] >/dev/null 2>&1; then
 	uci -q set system.@system[0].timezone='CST-8'
 	uci -q set system.@system[0].zonename='Asia/Shanghai'
-	uci -q set system.@system[0].log_size='64'
-	uci -q set system.@system[0].log_buffer_size='64'
+	uci -q set system.@system[0].log_size='512'
+	uci -q set system.@system[0].log_buffer_size='512'
 	uci -q set system.@system[0].conloglevel='4'
 	uci -q set system.@system[0].cronloglevel='8'
 	uci -q commit system
@@ -430,7 +430,9 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].rr_ttl_min='600'
 	uci -q set smartdns.@smartdns[0].rr_ttl_max='86400'
 	uci -q set smartdns.@smartdns[0].max_reply_ip_num='3'
-	uci -q set smartdns.@smartdns[0].log_level='error'
+	uci -q set smartdns.@smartdns[0].log_level='warn'
+	uci -q set smartdns.@smartdns[0].log_size='128'
+	uci -q set smartdns.@smartdns[0].log_num='2'
 	uci -q set smartdns.@smartdns[0].seconddns_enabled='0'
 	uci -q del smartdns.@smartdns[0].seconddns_port 2>/dev/null || true
 	uci -q del smartdns.@smartdns[0].seconddns_tcp_server 2>/dev/null || true
