@@ -94,7 +94,7 @@ detect_kernel_version() {
 detect_default_ip() {
     local ip
 
-    ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | head -n 1 || true)"
+    ip="$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' package/base-files/files/bin/config_generate 2>/dev/null | grep -v '^127\.' | head -n 1 || true)"
     echo "${ip:-unknown}"
 }
 

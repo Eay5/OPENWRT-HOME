@@ -267,76 +267,80 @@ setup_common_feeds() {
         fi
     done
 
-    # 拉取 ImmortalWrt 官方最新 HomeProxy 源码
+    # 按需拉取 ImmortalWrt 官方最新 HomeProxy 源码（Lucky 与 HONK 版本无需拉取，避免冗余网络开销）
     rm -rf feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy package/homeproxy 2>/dev/null || true
-    safe_git_clone "https://github.com/immortalwrt/homeproxy.git" "package/homeproxy"
+    if [[ "${CONFIG_FILE:-}" != *"lucky"* && "${CONFIG_FILE:-}" != *"honk"* ]]; then
+        safe_git_clone "https://github.com/immortalwrt/homeproxy.git" "package/homeproxy"
 
-    # 修复 HomeProxy Makefile 依赖与路径 (补齐缺失的 ucode-mod-math 依赖，并保证 PKG_NAME 结构完整)
-    if [ -f package/homeproxy/Makefile ]; then
-        sed -i 's|include \.\./\.\./luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|g' package/homeproxy/Makefile 2>/dev/null || true
-        if ! grep -q 'ucode-mod-math' package/homeproxy/Makefile; then
-            sed -i 's/+ucode-mod-digest.*$/+ucode-mod-digest \\\n\t+ucode-mod-math/' package/homeproxy/Makefile 2>/dev/null || true
+        # 修复 HomeProxy Makefile 依赖与路径 (补齐缺失的 ucode-mod-math 依赖，并保证 PKG_NAME 结构完整)
+        if [ -f package/homeproxy/Makefile ]; then
+            sed -i 's|include \.\./\.\./luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|g' package/homeproxy/Makefile 2>/dev/null || true
+            if ! grep -q 'ucode-mod-math' package/homeproxy/Makefile; then
+                sed -i 's/+ucode-mod-digest.*$/+ucode-mod-digest \\\n\t+ucode-mod-math/' package/homeproxy/Makefile 2>/dev/null || true
+            fi
+            sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/homeproxy/Makefile 2>/dev/null || true
+            sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/homeproxy/Makefile 2>/dev/null || true
         fi
-        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/homeproxy/Makefile 2>/dev/null || true
-        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/homeproxy/Makefile 2>/dev/null || true
+
+        # 应用 HomeProxy 专属优化 (解决 Chrome 访问 Google 协议不符合报错、阻断 QUIC、修复 DoH Anycast 静态引导并扩展 DoH 节点)
+        patch_homeproxy_customizations
     fi
 
-    # 应用 HomeProxy 专属优化 (解决 Chrome 访问 Google 协议不符合报错、阻断 QUIC、修复 DoH Anycast 静态引导并扩展 DoH 节点)
-    patch_homeproxy_customizations
-
-    # Clean conflicting feeds and pull SmartDNS package source
+    # 按需拉取 SmartDNS 源码并同步 PikuZheng 增强分支（Lucky 极简版无需拉取）
     rm -rf feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
     rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns 2>/dev/null || true
     rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns feeds/*/*/luci-app-smartdns feeds/*/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/*/luci-app-smartdns package/feeds/*/*/smartdns 2>/dev/null || true
     rm -rf package/smartdns package/luci-app-smartdns 2>/dev/null || true
-    safe_git_clone "https://github.com/pymumu/openwrt-smartdns.git" "package/smartdns"
-    safe_git_clone "https://github.com/pymumu/luci-app-smartdns.git" "package/luci-app-smartdns"
+    if [[ "${CONFIG_FILE:-}" != *"lucky"* ]]; then
+        safe_git_clone "https://github.com/pymumu/openwrt-smartdns.git" "package/smartdns"
+        safe_git_clone "https://github.com/pymumu/luci-app-smartdns.git" "package/luci-app-smartdns"
 
-    # 切换上游为社区活跃增强分支 PikuZheng/smartdns (解决 HTTP/2 泄漏、musl 内存碎片化、高并发崩溃及 OpenSSL 3.5.8 适配)
-    sed -i 's#https://www.github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
-    sed -i 's#https://github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
+        # 切换上游为社区活跃增强分支 PikuZheng/smartdns (解决 HTTP/2 泄漏、musl 内存碎片化、高并发崩溃及 OpenSSL 3.5.8 适配)
+        sed -i 's#https://www.github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
+        sed -i 's#https://github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
 
-    # 动态获取 upstream PikuZheng/smartdns 最新稳定 release 标签与 master commit
-    local smartdns_commit=""
-    local smartdns_tag=""
-    local smartdns_ver=""
+        # 动态获取 upstream PikuZheng/smartdns 最新稳定 release 标签与 master commit
+        local smartdns_commit=""
+        local smartdns_tag=""
+        local smartdns_ver=""
 
-    smartdns_tag=$(git ls-remote --tags --refs https://github.com/PikuZheng/smartdns.git 2>/dev/null \
-        | grep -v 'canary' \
-        | grep -oE 'refs/tags/1\.[0-9]+\.v[0-9.]+' \
-        | sed 's#refs/tags/##' \
-        | sort -V \
-        | tail -n 1 || true)
+        smartdns_tag=$(git ls-remote --tags --refs https://github.com/PikuZheng/smartdns.git 2>/dev/null \
+            | grep -v 'canary' \
+            | grep -oE 'refs/tags/1\.[0-9]+\.v[0-9.]+' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n 1 || true)
 
-    smartdns_ver="${smartdns_tag:-1.2026.v48.4.2}"
-    # 彻底去除版本号中的字母 'v'（1.2026.v48.4.2 -> 1.2026.48.4.2）
-    # OpenWrt 24+ 采用 apk 包管理器，apk mkpkg 严格要求版本号必须为数字点分规范，不能含有 'v'，否则报 package version is invalid 错误导致打包中断
-    smartdns_ver="${smartdns_ver//.v/.}"
-    smartdns_ver="${smartdns_ver#v}"
+        smartdns_ver="${smartdns_tag:-1.2026.v48.4.2}"
+        # 彻底去除版本号中的字母 'v'（1.2026.v48.4.2 -> 1.2026.48.4.2）
+        # OpenWrt 24+ 采用 apk 包管理器，apk mkpkg 严格要求版本号必须为数字点分规范，不能含有 'v'，否则报 package version is invalid 错误导致打包中断
+        smartdns_ver="${smartdns_ver//.v/.}"
+        smartdns_ver="${smartdns_ver#v}"
 
-    # 优先匹配对应标签的 commit hash，若未匹配则取 master 分支最新 commit
-    if [ -n "${smartdns_tag}" ]; then
-        smartdns_commit=$(git ls-remote --tags https://github.com/PikuZheng/smartdns.git "refs/tags/${smartdns_tag}" 2>/dev/null | cut -f1 | head -n 1 || true)
-        [ -z "${smartdns_commit}" ] && smartdns_commit=$(git ls-remote --tags https://github.com/PikuZheng/smartdns.git "refs/tags/${smartdns_tag}_with_ui" 2>/dev/null | cut -f1 | head -n 1 || true)
+        # 优先匹配对应标签的 commit hash，若未匹配则取 master 分支最新 commit
+        if [ -n "${smartdns_tag}" ]; then
+            smartdns_commit=$(git ls-remote --tags https://github.com/PikuZheng/smartdns.git "refs/tags/${smartdns_tag}" 2>/dev/null | cut -f1 | head -n 1 || true)
+            [ -z "${smartdns_commit}" ] && smartdns_commit=$(git ls-remote --tags https://github.com/PikuZheng/smartdns.git "refs/tags/${smartdns_tag}_with_ui" 2>/dev/null | cut -f1 | head -n 1 || true)
+        fi
+
+        if [ -z "${smartdns_commit}" ]; then
+            smartdns_commit=$(git ls-remote https://github.com/PikuZheng/smartdns.git refs/heads/master 2>/dev/null | cut -f1 || true)
+        fi
+
+        # 兜底已知最稳定发行版 commit (1.2026.v48.4.2)
+        smartdns_commit="${smartdns_commit:-395ea7e05619ed030c4898467d56e59445ffb84e}"
+
+        sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${smartdns_commit}/g" package/smartdns/Makefile
+        sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
+        sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
+        sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
+        echo "SmartDNS tracking PikuZheng upstream: Version=${smartdns_ver} (tag=${smartdns_tag:-default}), Commit=${smartdns_commit}"
+
+        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
+        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
     fi
-
-    if [ -z "${smartdns_commit}" ]; then
-        smartdns_commit=$(git ls-remote https://github.com/PikuZheng/smartdns.git refs/heads/master 2>/dev/null | cut -f1 || true)
-    fi
-
-    # 兜底已知最稳定发行版 commit (1.2026.v48.4.2)
-    smartdns_commit="${smartdns_commit:-395ea7e05619ed030c4898467d56e59445ffb84e}"
-
-    sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=${smartdns_commit}/g" package/smartdns/Makefile
-    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/smartdns/Makefile
-    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${smartdns_ver}/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
-    sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-app-smartdns/Makefile 2>/dev/null || true
-    echo "SmartDNS tracking PikuZheng upstream: Version=${smartdns_ver} (tag=${smartdns_tag:-default}), Commit=${smartdns_commit}"
-
-    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
-    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/smartdns/Makefile 2>/dev/null || true
-    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
-    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/luci-app-smartdns/Makefile 2>/dev/null || true
 
     # 动态获取 upstream sbwml/packages_lang_golang 最新分支，保持实时编译最新版本
     local golang_branch=""
@@ -367,118 +371,125 @@ setup_common_feeds() {
     go_ver_patch=$(sed -n 's/^GO_VERSION_PATCH:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r')
     echo "Golang compiler pinned to latest upstream: Go ${go_ver_major:-${golang_branch}}.${go_ver_patch:-0} (GOAMD64=v2)"
 
-    # 动态获取 upstream SagerNet/sing-box 最新正式稳定版本 (严格过滤三段式纯数字标签，100% 排除 alpha/beta/rc 测试版)
-    local singbox_tag=""
-    singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null \
-        | grep -oE 'refs/tags/v[0-9]+\.[0-9]+(\.[0-9]+)?$' \
-        | sed 's#refs/tags/v##' \
-        | sort -V \
-        | tail -n 1 || true)
+    # 按需追踪 Sing-box 与 sing-geoip / sing-geosite（仅 HomeProxy 版本需要）
+    if [[ "${CONFIG_FILE:-}" != *"lucky"* && "${CONFIG_FILE:-}" != *"honk"* ]]; then
+        # 动态获取 upstream SagerNet/sing-box 最新正式稳定版本 (严格过滤三段式纯数字标签，100% 排除 alpha/beta/rc 测试版)
+        local singbox_tag=""
+        singbox_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 2>/dev/null \
+            | grep -oE 'refs/tags/v[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+            | sed 's#refs/tags/v##' \
+            | sort -V \
+            | tail -n 1 || true)
 
-    # 兜底安全稳定版本
-    singbox_tag="${singbox_tag:-1.13.19}"
+        # 兜底安全稳定版本
+        singbox_tag="${singbox_tag:-1.13.19}"
 
-    if [ -n "${singbox_tag}" ]; then
-        for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile package/sing-box/Makefile; do
-            if [ -f "$singbox_mk" ]; then
-                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
-                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$singbox_mk" 2>/dev/null || true
-                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"
-                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$singbox_mk" 2>/dev/null || true
-                sed -i '/GO_PKG_BUILD_VARS/ s/$/ GOEXPERIMENT=none GOAMD64=v2/' "$singbox_mk" 2>/dev/null || true
-            fi
-        done
-        echo "Sing-box tracking upstream latest STABLE release: v${singbox_tag} (GOAMD64=v2)"
-    fi
-
-    # 动态追踪 SagerNet/sing-geoip 与 SagerNet/sing-geosite 最新 Release 规则库，
-    # 确保 HomeProxy 大陆白名单与海外分流规则库 100% 保持最新，减少规则漏判导致的绕路延迟
-    local geoip_tag=""
-    geoip_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-geoip.git 2>/dev/null \
-        | grep -oE 'refs/tags/[0-9]{8,}$' \
-        | sed 's#refs/tags/##' \
-        | sort -V \
-        | tail -n 1 || true)
-    if [ -n "${geoip_tag}" ]; then
-        for geoip_mk in feeds/packages/net/sing-geoip/Makefile package/feeds/packages/sing-geoip/Makefile package/sing-geoip/Makefile; do
-            if [ -f "$geoip_mk" ]; then
-                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${geoip_tag}/g" "$geoip_mk"
-                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$geoip_mk" 2>/dev/null || true
-                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$geoip_mk"
-                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$geoip_mk" 2>/dev/null || true
-            fi
-        done
-        echo "sing-geoip tracking upstream latest release: ${geoip_tag}"
-    fi
-
-    local geosite_tag=""
-    geosite_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-geosite.git 2>/dev/null \
-        | grep -oE 'refs/tags/[0-9]{8,}$' \
-        | sed 's#refs/tags/##' \
-        | sort -V \
-        | tail -n 1 || true)
-    if [ -n "${geosite_tag}" ]; then
-        for geosite_mk in feeds/packages/net/sing-geosite/Makefile package/feeds/packages/sing-geosite/Makefile package/sing-geosite/Makefile; do
-            if [ -f "$geosite_mk" ]; then
-                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${geosite_tag}/g" "$geosite_mk"
-                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$geosite_mk" 2>/dev/null || true
-                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$geosite_mk"
-                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$geosite_mk" 2>/dev/null || true
-            fi
-        done
-        echo "sing-geosite tracking upstream latest release: ${geosite_tag}"
-    fi
-
-    # 动态追踪 v2fly/geoip 与 v2fly/domain-list-community 最新 Release 规则库 (v2ray-geodata)，
-    # 确保 HONK (eBPF) 的国内外 IP 与域名分流规则库 100% 同步全球每日最新数据
-    local v2_geoip_tag=""
-    v2_geoip_tag=$(git ls-remote --tags --refs https://github.com/v2fly/geoip.git 2>/dev/null \
-        | grep -oE 'refs/tags/[0-9]{8,}$' \
-        | sed 's#refs/tags/##' \
-        | sort -V \
-        | tail -n 1 || true)
-    local v2_geosite_tag=""
-    v2_geosite_tag=$(git ls-remote --tags --refs https://github.com/v2fly/domain-list-community.git 2>/dev/null \
-        | grep -oE 'refs/tags/[0-9]{8,}$' \
-        | sed 's#refs/tags/##' \
-        | sort -V \
-        | tail -n 1 || true)
-    for v2geo_mk in feeds/packages/net/v2ray-geodata/Makefile package/feeds/packages/v2ray-geodata/Makefile; do
-        if [ -f "$v2geo_mk" ]; then
-            [ -n "${v2_geoip_tag}" ] && sed -i "s/^GEOIP_VER:=.*/GEOIP_VER:=${v2_geoip_tag}/g" "$v2geo_mk" 2>/dev/null || true
-            [ -n "${v2_geosite_tag}" ] && sed -i "s/^GEOSITE_VER:=.*/GEOSITE_VER:=${v2_geosite_tag}/g" "$v2geo_mk" 2>/dev/null || true
-            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$v2geo_mk" 2>/dev/null || true
-            sed -i 's/^[[:space:]]*HASH:=.*/  HASH:=skip/g' "$v2geo_mk" 2>/dev/null || true
-            sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$v2geo_mk" 2>/dev/null || true
+        if [ -n "${singbox_tag}" ]; then
+            for singbox_mk in feeds/packages/net/sing-box/Makefile package/feeds/packages/sing-box/Makefile package/sing-box/Makefile; do
+                if [ -f "$singbox_mk" ]; then
+                    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${singbox_tag}/g" "$singbox_mk"
+                    sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$singbox_mk" 2>/dev/null || true
+                    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$singbox_mk"
+                    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$singbox_mk" 2>/dev/null || true
+                    sed -i '/GO_PKG_BUILD_VARS/ s/$/ GOEXPERIMENT=none GOAMD64=v2/' "$singbox_mk" 2>/dev/null || true
+                fi
+            done
+            echo "Sing-box tracking upstream latest STABLE release: v${singbox_tag} (GOAMD64=v2)"
         fi
-    done
-    if [ -n "${v2_geoip_tag}" ] || [ -n "${v2_geosite_tag}" ]; then
-        echo "v2ray-geodata tracking upstream latest release: geoip=${v2_geoip_tag:-default}, geosite=${v2_geosite_tag:-default}"
+
+        # 动态追踪 SagerNet/sing-geoip 与 SagerNet/sing-geosite 最新 Release 规则库，
+        # 确保 HomeProxy 大陆白名单与海外分流规则库 100% 保持最新，减少规则漏判导致的绕路延迟
+        local geoip_tag=""
+        geoip_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-geoip.git 2>/dev/null \
+            | grep -oE 'refs/tags/[0-9]{8,}$' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n 1 || true)
+        if [ -n "${geoip_tag}" ]; then
+            for geoip_mk in feeds/packages/net/sing-geoip/Makefile package/feeds/packages/sing-geoip/Makefile package/sing-geoip/Makefile; do
+                if [ -f "$geoip_mk" ]; then
+                    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${geoip_tag}/g" "$geoip_mk"
+                    sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$geoip_mk" 2>/dev/null || true
+                    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$geoip_mk"
+                    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$geoip_mk" 2>/dev/null || true
+                fi
+            done
+            echo "sing-geoip tracking upstream latest release: ${geoip_tag}"
+        fi
+
+        local geosite_tag=""
+        geosite_tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-geosite.git 2>/dev/null \
+            | grep -oE 'refs/tags/[0-9]{8,}$' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n 1 || true)
+        if [ -n "${geosite_tag}" ]; then
+            for geosite_mk in feeds/packages/net/sing-geosite/Makefile package/feeds/packages/sing-geosite/Makefile package/sing-geosite/Makefile; do
+                if [ -f "$geosite_mk" ]; then
+                    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${geosite_tag}/g" "$geosite_mk"
+                    sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$geosite_mk" 2>/dev/null || true
+                    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$geosite_mk"
+                    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$geosite_mk" 2>/dev/null || true
+                fi
+            done
+            echo "sing-geosite tracking upstream latest release: ${geosite_tag}"
+        fi
     fi
 
-    # 动态获取 upstream gdy666/luci-app-lucky 最新官方源码与稳定二进制 Release 版本
+    # 按需动态追踪 v2fly/geoip 与 v2fly/domain-list-community 最新 Release 规则库 (v2ray-geodata)，
+    # 确保 HONK (eBPF) 的国内外 IP 与域名分流规则库 100% 同步全球每日最新数据
+    if [[ -z "${CONFIG_FILE:-}" || "${CONFIG_FILE:-}" == *"honk"* ]]; then
+        local v2_geoip_tag=""
+        v2_geoip_tag=$(git ls-remote --tags --refs https://github.com/v2fly/geoip.git 2>/dev/null \
+            | grep -oE 'refs/tags/[0-9]{8,}$' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n 1 || true)
+        local v2_geosite_tag=""
+        v2_geosite_tag=$(git ls-remote --tags --refs https://github.com/v2fly/domain-list-community.git 2>/dev/null \
+            | grep -oE 'refs/tags/[0-9]{8,}$' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n 1 || true)
+        for v2geo_mk in feeds/packages/net/v2ray-geodata/Makefile package/feeds/packages/v2ray-geodata/Makefile; do
+            if [ -f "$v2geo_mk" ]; then
+                [ -n "${v2_geoip_tag}" ] && sed -i "s/^GEOIP_VER:=.*/GEOIP_VER:=${v2_geoip_tag}/g" "$v2geo_mk" 2>/dev/null || true
+                [ -n "${v2_geosite_tag}" ] && sed -i "s/^GEOSITE_VER:=.*/GEOSITE_VER:=${v2_geosite_tag}/g" "$v2geo_mk" 2>/dev/null || true
+                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$v2geo_mk" 2>/dev/null || true
+                sed -i 's/^[[:space:]]*HASH:=.*/  HASH:=skip/g' "$v2geo_mk" 2>/dev/null || true
+                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$v2geo_mk" 2>/dev/null || true
+            fi
+        done
+        if [ -n "${v2_geoip_tag}" ] || [ -n "${v2_geosite_tag}" ]; then
+            echo "v2ray-geodata tracking upstream latest release: geoip=${v2_geoip_tag:-default}, geosite=${v2_geosite_tag:-default}"
+        fi
+    fi
+
+    # 按需动态获取 upstream gdy666/luci-app-lucky 最新官方源码与稳定二进制 Release 版本（仅 Lucky 版本拉取）
     rm -rf feeds/luci/applications/luci-app-lucky package/feeds/luci/luci-app-lucky 2>/dev/null || true
     rm -rf feeds/*/luci-app-lucky package/feeds/*/luci-app-lucky 2>/dev/null || true
     rm -rf package/lucky 2>/dev/null || true
-    safe_git_clone "https://github.com/gdy666/luci-app-lucky.git" "package/lucky"
+    if [[ -z "${CONFIG_FILE:-}" || "${CONFIG_FILE:-}" == *"lucky"* ]]; then
+        safe_git_clone "https://github.com/gdy666/luci-app-lucky.git" "package/lucky"
 
-    local lucky_tag=""
-    lucky_tag=$(git ls-remote --tags --refs https://github.com/gdy666/lucky.git 2>/dev/null \
-        | grep -oE 'refs/tags/v[0-9.]+$' \
-        | sed 's#refs/tags/v##' \
-        | sort -V \
-        | tail -n 1 || true)
+        local lucky_tag=""
+        lucky_tag=$(git ls-remote --tags --refs https://github.com/gdy666/lucky.git 2>/dev/null \
+            | grep -oE 'refs/tags/v[0-9.]+$' \
+            | sed 's#refs/tags/v##' \
+            | sort -V \
+            | tail -n 1 || true)
 
-    if [ -n "${lucky_tag}" ]; then
-        for lucky_mk in package/lucky/lucky/Makefile package/lucky/luci-app-lucky/Makefile package/lucky/Makefile; do
-            if [ -f "$lucky_mk" ]; then
-                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${lucky_tag}/g" "$lucky_mk" 2>/dev/null || true
-                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$lucky_mk" 2>/dev/null || true
-                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$lucky_mk" 2>/dev/null || true
-                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$lucky_mk" 2>/dev/null || true
-            fi
-        done
-        echo "Lucky tracking upstream latest release: v${lucky_tag}"
+        if [ -n "${lucky_tag}" ]; then
+            for lucky_mk in package/lucky/lucky/Makefile package/lucky/luci-app-lucky/Makefile package/lucky/Makefile; do
+                if [ -f "$lucky_mk" ]; then
+                    sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${lucky_tag}/g" "$lucky_mk" 2>/dev/null || true
+                    sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$lucky_mk" 2>/dev/null || true
+                    sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$lucky_mk" 2>/dev/null || true
+                    sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$lucky_mk" 2>/dev/null || true
+                fi
+            done
+            echo "Lucky tracking upstream latest release: v${lucky_tag}"
+        fi
     fi
 
     # 动态检测并升级 Dnsmasq 至官方最新正式版本 (2.93+)

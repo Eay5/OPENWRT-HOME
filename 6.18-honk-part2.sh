@@ -200,11 +200,11 @@ echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
 echo "Applying HONK + SmartDNS dedicated optimizations..."
 
 # 1. 修正 files/etc/uci-defaults/99-system-performance 中的 HomeProxy 遗留设定：
-#    - 将 Dnsmasq 上游从已移除的 Sing-box (127.0.0.1#5333) 改为本地 SmartDNS (127.0.0.1#6053)，保障刷机即刻高速解析上网
+#    - 将 Dnsmasq 上游从已移除的 Sing-box (127.0.0.1#5333) 改为公网高速 DNS (223.5.5.5)，使本机进程与回退查询发出的 53 端口报文流经 WAN 接口，从而被 Honk eBPF 的 dns {} 分流引擎精准接管（国内转交 127.0.0.1:6053 SmartDNS，海外转交 Google DoH）
 #    - 关闭 Firewall4 的 flow_offloading='0'，避免与 Honk 的 TC eBPF 直通转发和 nfqueue 首包 DPI 嗅探冲突
 #    - 为 Honk 的 dae0 / dae0peer 虚拟以太网对扩充 txqueuelen 4096
 if [ -f "files/etc/uci-defaults/99-system-performance" ]; then
-    sed -i "s/127\.0\.0\.1#5333/127.0.0.1#6053/g" files/etc/uci-defaults/99-system-performance
+    sed -i "s/127\.0\.0\.1#5333/223.5.5.5/g" files/etc/uci-defaults/99-system-performance
     sed -i "s/flow_offloading='1'/flow_offloading='0'/g" files/etc/uci-defaults/99-system-performance
     sed -i "s/uci -q del dhcp.@dnsmasq\[0\].noresolv.*/uci -q set dhcp.@dnsmasq[0].noresolv='1'/g" files/etc/uci-defaults/99-system-performance
     sed -i 's|/sys/class/net/singtun\*|/sys/class/net/singtun* /sys/class/net/dae*|g' files/etc/uci-defaults/99-system-performance
@@ -246,7 +246,7 @@ chmod +x files/etc/uci-defaults/98-honk-ebpf-init
 #    - 屏蔽 HTTPS/SVCB (qtype https) 防止浏览器 ECH 绕过分流
 #    - 局域网私有域名 (geosite: private) 放行回退 (asis) 给 Dnsmasq 解析
 #    - DNS 响应阶段 (response) 拦截海外域名返回私有 IP 的投毒特征
-#    - 顶层直连放行 dnsmasq 与 smartdns 进程流量 (pname -> direct(must))，彻底杜绝 DNS 回环死锁
+#    - 顶层直连放行 smartdns 进程流量 (pname(smartdns) -> direct(must))，彻底杜绝 DNS 回环死锁；保留 dnsmasq 由上方 dns {} 分流引擎接管，防止本机请求绕过海外 DoH 被污染
 #    - 在 eBPF 内核态精准阻断非国内的海外 QUIC (UDP 443)，既让 YouTube/Google 秒切稳定 TCP，又保留国内抖音/B站 QUIC 加速
 #    - fallback: proxy 确保非国内海外流量 100% 正常走节点代理
 apply_honk_dae_config() {
@@ -289,8 +289,8 @@ dns {
 }
 
 routing {
-    # 1. 强制放行本机 Dnsmasq 与 SmartDNS 自身发出的上游解析流量，彻底杜绝 eBPF 拦截回环死锁
-    pname(dnsmasq, smartdns) -> direct(must)
+    # 1. 强制放行本机 SmartDNS 自身发出的上游解析流量，彻底杜绝 eBPF 拦截回环死锁；Dnsmasq 转发流量交由上方 dns {} 引擎分流
+    pname(smartdns) -> direct(must)
     # 2. 组播与局域网广播直连
     dip(224.0.0.0/3, '\''ff00::/8'\'') -> direct
     # 3. 路由器自身管理面板与私有局域网直连
