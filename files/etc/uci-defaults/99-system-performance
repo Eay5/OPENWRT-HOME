@@ -54,6 +54,10 @@ fi
 if uci -q get system.@system[0] >/dev/null 2>&1; then
 	uci -q set system.@system[0].timezone='CST-8'
 	uci -q set system.@system[0].zonename='Asia/Shanghai'
+	uci -q set system.@system[0].log_size='64'
+	uci -q set system.@system[0].log_buffer_size='64'
+	uci -q set system.@system[0].conloglevel='4'
+	uci -q set system.@system[0].cronloglevel='8'
 	uci -q commit system
 fi
 
@@ -139,8 +143,8 @@ net.netfilter.nf_conntrack_tcp_timeout_established = 7200
 net.netfilter.nf_conntrack_tcp_timeout_close_wait = 15
 net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 30
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
-net.netfilter.nf_conntrack_udp_timeout = 30
-net.netfilter.nf_conntrack_udp_timeout_stream = 120
+net.netfilter.nf_conntrack_udp_timeout = 15
+net.netfilter.nf_conntrack_udp_timeout_stream = 60
 
 # 6. ARP / Neighbor Table Scaling (Prevents overflow in VM/Docker/Dense LAN)
 net.ipv4.neigh.default.gc_thresh1 = 2048
@@ -155,6 +159,8 @@ vm.vfs_cache_pressure = 50
 vm.min_free_kbytes = 65536
 vm.dirty_ratio = 10
 vm.dirty_background_ratio = 5
+kernel.panic = 10
+kernel.panic_on_oops = 1
 
 # 8. IPv6 Global Disable (全局彻底禁用 IPv6，规避双栈 DNS 污染与旁路泄露)
 net.ipv6.conf.all.disable_ipv6 = 1
@@ -185,6 +191,12 @@ cat << 'HOTPLUG_EOF' > /etc/hotplug.d/iface/99-tun-tuning
 for dev in /sys/class/net/tun* /sys/class/net/singtun*; do
 	[ -e "$dev" ] || continue
 	ip link set dev "${dev##*/}" txqueuelen 4096 >/dev/null 2>&1 || true
+done
+for proc in dnsmasq smartdns sing-box honk lucky; do
+	for pid in $(pidof "$proc" 2>/dev/null); do
+		[ -w "/proc/$pid/oom_score_adj" ] && echo -900 >"/proc/$pid/oom_score_adj" 2>/dev/null || true
+		renice -n -5 -p "$pid" >/dev/null 2>&1 || true
+	done
 done
 HOTPLUG_EOF
 chmod +x /etc/hotplug.d/iface/99-tun-tuning

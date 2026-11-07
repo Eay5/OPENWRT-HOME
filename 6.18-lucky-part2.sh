@@ -243,9 +243,11 @@ fs.nr_open = 2097152
 net.ipv4.conf.all.rp_filter = 2
 net.ipv4.conf.default.rp_filter = 2
 
-# 9. 独立主机暴露高位端口下的安全防扫描与抗拒绝服务
+# 9. 独立主机暴露高位端口下的安全防扫描与抗拒绝服务与无人值守崩溃自愈
 net.ipv4.tcp_syncookies = 1
 net.ipv4.icmp_echo_ignore_broadcasts = 1
+kernel.panic = 10
+kernel.panic_on_oops = 1
 EOF
 
 # 注入独立应用主机防火墙与服务默认设置
@@ -281,10 +283,14 @@ if uci -q get firewall.@defaults[0] >/dev/null 2>&1; then
     uci -q commit firewall
 fi
 
-# 5. 设置系统时区为中国上海时间 (CST-8, Asia/Shanghai) 并配置国内高可用 NTP 授时服务
+# 5. 设置系统时区为中国上海时间 (CST-8, Asia/Shanghai) 并配置国内高可用 NTP 授时服务，限制日志内存占用
 if uci -q get system.@system[0] >/dev/null 2>&1; then
     uci -q set system.@system[0].timezone='CST-8'
     uci -q set system.@system[0].zonename='Asia/Shanghai'
+    uci -q set system.@system[0].log_size='64'
+    uci -q set system.@system[0].log_buffer_size='64'
+    uci -q set system.@system[0].conloglevel='4'
+    uci -q set system.@system[0].cronloglevel='8'
     uci -q commit system
 fi
 
@@ -302,12 +308,14 @@ echo "CST-8" > /etc/TZ 2>/dev/null || true
 # 6. 调大进程打开文件句柄上限，多线程下载大文件不报错
 ulimit -n 1048576 2>/dev/null || true
 
-# 6. 网卡硬件大包发送/接收切片加速与硬件接收缓冲扩容 (TSO/GSO/GRO & RX/TX Ring Buffer)
+# 7. 网卡硬件大包发送/接收切片加速与硬件接收缓冲扩容 (TSO/GSO/GRO & RX/TX Ring Buffer & 禁用 EEE 节能断流)
 command -v ethtool >/dev/null 2>&1 && {
     for dev in $(ls /sys/class/net 2>/dev/null); do
         case "$dev" in
             lo|veth*|br-*|docker*) continue ;;
         esac
+        [ -w "/sys/class/net/$dev/device/power/control" ] && echo on >"/sys/class/net/$dev/device/power/control" 2>/dev/null || true
+        ethtool --set-eee "$dev" eee off >/dev/null 2>&1 || true
         # 扩充网卡硬件环形缓冲区至 4096，大文件上传洪峰灌入 0 丢包
         ethtool -G "$dev" rx 4096 tx 4096 >/dev/null 2>&1 || ethtool -G "$dev" rx 2048 tx 2048 >/dev/null 2>&1 || true
         # 开启网卡硬件切片卸载与大包合并
