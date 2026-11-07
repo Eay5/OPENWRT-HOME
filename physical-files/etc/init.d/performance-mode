@@ -253,12 +253,12 @@ apply_nic_hardware_tuning() {
 				ethtool -K "$dev" rx on tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
 				continue
 				;;
-			br-*|ppp*|pppoe*|wg*)
+			br-*|ppp*|pppoe*|wg*|lo)
 				ip link set dev "$dev" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
 				ethtool -K "$dev" tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
 				continue
 				;;
-			lo|veth*|docker*|tap*)
+			veth*|docker*|tap*)
 				continue
 				;;
 		esac
