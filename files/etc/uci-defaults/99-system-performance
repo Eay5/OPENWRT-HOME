@@ -179,20 +179,26 @@ net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.all.rp_filter = 2
 net.ipv4.conf.default.rp_filter = 2
 
-# 开启 Linux 6.12 / 6.18 原生 UDP GRO 转发加速，提升单臂双倍吞吐性能
+# 开启 Linux 6.12 / 6.18 原生 UDP GRO 转发加速，提升单臂与主路由双倍吞吐性能
 net.ipv4.udp_gro_forwarding = 1
 net.ipv4.ip_forward = 1
+
+# 主路由多 LAN 口网桥二层直通：禁止将纯局域网二层交换流量 (如 PC <-> NAS) 送入三层防火墙与 Conntrack
+net.bridge.bridge-nf-call-arptables = 0
+net.bridge.bridge-nf-call-iptables = 0
+net.bridge.bridge-nf-call-ip6tables = 0
 EOF
 
-# 7. HomeProxy & Bypass Gateway Default Tuning
-# 注册 hotplug 钩子：当 HomeProxy 启动并创建 singtun0 虚拟网卡时，自动将其 txqueuelen 扩充至 4096，消除 TUN 接口突发丢包
+# 7. HomeProxy & Main/Bypass Dual-Mode Gateway Tuning
+# 注册 hotplug 钩子：当代理隧道 (singtun0/dae0)、局域网桥 (br-lan) 或主路由拨号口 (pppoe-wan) 启动时，
+# 自动将其 txqueuelen 扩充至 4096（修复 pppoe-wan 默认仅 3 队列丢包）、开启 GSO/GRO 64KB 卸载，并刷新路由 initcwnd=32
 mkdir -p /etc/hotplug.d/iface
 cat << 'HOTPLUG_EOF' > /etc/hotplug.d/iface/99-tun-tuning
 #!/bin/sh
-for dev in /sys/class/net/tun* /sys/class/net/singtun*; do
+for dev in /sys/class/net/tun* /sys/class/net/singtun* /sys/class/net/br-* /sys/class/net/ppp* /sys/class/net/pppoe* /sys/class/net/wg*; do
 	[ -e "$dev" ] || continue
 	ip link set dev "${dev##*/}" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "${dev##*/}" txqueuelen 4096 >/dev/null 2>&1 || true
-	ethtool -K "${dev##*/}" rx on tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
+	ethtool -K "${dev##*/}" tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
 done
 ip -4 route show 2>/dev/null | while IFS= read -r rt; do
 	[ -n "$rt" ] || continue
@@ -245,10 +251,15 @@ if uci -q get dhcp.lan >/dev/null 2>&1; then
 	uci -q set dhcp.lan.ndp='disabled'
 	uci -q del dhcp.lan.dns 2>/dev/null || true
 
-	# 旁路由防冲突：单网口虚拟机/旁路由环境默认关闭 IPv4 DHCP 分配，严禁插电瞬间与主路由抢答引起局域网瘫痪
+	# 主路由 vs 旁路由智能识别：
+	# - 单网口/无 WAN 口（旁路由模式）：默认关闭 DHCP 分配，严禁插电瞬间与主路由抢答引起局域网瘫痪
+	# - 多网口/有 WAN 口（主路由模式）：正常开启 DHCP 并启用 force='1' 极速响应全屋终端 IP 分配
 	eth_count="$(ls /sys/class/net 2>/dev/null | grep -cE '^(eth|en|vi)[0-9]+' || true)"
-	if [ "${eth_count:-0}" -le 1 ] && ! uci -q get network.wan.device >/dev/null 2>&1; then
+	if [ "${eth_count:-0}" -le 1 ] && ! uci -q get network.wan >/dev/null 2>&1; then
 		uci -q set dhcp.lan.ignore='1'
+	else
+		uci -q set dhcp.lan.ignore='0'
+		uci -q set dhcp.lan.force='1'
 	fi
 fi
 if uci -q get dhcp.wan >/dev/null 2>&1; then
@@ -349,15 +360,36 @@ if uci -q get homeproxy.config >/dev/null 2>&1; then
 	uci -q commit homeproxy
 fi
 
-# Firewall: 旁路由核心调优（LAN 开启动态伪装 NAT、MSS 钳制、允许全向转发）
-if uci -q get firewall.lan >/dev/null 2>&1; then
-	uci -q set firewall.lan.masq='1'
-	uci -q set firewall.lan.mtu_fix='1'
-	uci -q set firewall.lan.input='ACCEPT'
-	uci -q set firewall.lan.output='ACCEPT'
-	uci -q set firewall.lan.forward='ACCEPT'
-	uci -q commit firewall
+# Firewall: 主路由与旁路由双栖自适应调优（兼容匿名 @zone[i] 与命名 zone）
+# - 旁路由模式（单网口无 WAN）：在 LAN 区开启 masq='1' 动态伪装与 mtu_fix='1' MSS 钳制，单臂即插即用
+# - 主路由模式（多网口有 WAN）：在 WAN 区开启 masq='1' 与 mtu_fix='1'，在 LAN 区保持 masq='0' 并开启 mtu_fix='1'，
+#   彻底消除主路由内网二次 NAT 性能损耗、保留内网真实客户端源 IP，让 Flow Offloading / FullCone NAT / UPnP 100% 满血工作
+eth_count_fw="$(ls /sys/class/net 2>/dev/null | grep -cE '^(eth|en|vi)[0-9]+' || true)"
+is_bypass_mode="0"
+if [ "${eth_count_fw:-0}" -le 1 ] && ! uci -q get network.wan >/dev/null 2>&1; then
+	is_bypass_mode="1"
 fi
+
+z_idx=0
+while uci -q get firewall.@zone[$z_idx] >/dev/null 2>&1; do
+	z_name="$(uci -q get firewall.@zone[$z_idx].name 2>/dev/null || true)"
+	if [ "$z_name" = "lan" ]; then
+		uci -q set firewall.@zone[$z_idx].mtu_fix='1'
+		uci -q set firewall.@zone[$z_idx].input='ACCEPT'
+		uci -q set firewall.@zone[$z_idx].output='ACCEPT'
+		uci -q set firewall.@zone[$z_idx].forward='ACCEPT'
+		if [ "$is_bypass_mode" = "1" ]; then
+			uci -q set firewall.@zone[$z_idx].masq='1'
+		else
+			uci -q set firewall.@zone[$z_idx].masq='0'
+		fi
+	elif [ "$z_name" = "wan" ]; then
+		uci -q set firewall.@zone[$z_idx].masq='1'
+		uci -q set firewall.@zone[$z_idx].mtu_fix='1'
+	fi
+	z_idx=$((z_idx + 1))
+done
+uci -q commit firewall
 
 # Firewall: 拦截/拒绝外网 UDP 443 (QUIC/HTTP3)，强制全网设备 YouTube/Google 回退极速稳定的 TCP，彻底根除 ERR_SSL_VERSION_OR_CIPHER_MISMATCH
 if ! uci -q get firewall.block_quic >/dev/null 2>&1; then

@@ -209,6 +209,11 @@ apply_sysctl_tweaks() {
 	sysctl -w kernel.panic=10 >/dev/null 2>&1 || true
 	sysctl -w kernel.panic_on_oops=1 >/dev/null 2>&1 || true
 
+	# 主路由多 LAN 口网桥二层硬件直通加速：禁止将纯局域网二层交换流量 (如 PC <-> NAS) 送入三层防火墙与 Conntrack，实现零 CPU 损耗满速内网互传
+	sysctl -w net.bridge.bridge-nf-call-arptables=0 >/dev/null 2>&1 || true
+	sysctl -w net.bridge.bridge-nf-call-iptables=0 >/dev/null 2>&1 || true
+	sysctl -w net.bridge.bridge-nf-call-ip6tables=0 >/dev/null 2>&1 || true
+
 	# 全局彻底禁用 IPv6
 	sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
@@ -230,15 +235,21 @@ apply_nic_hardware_tuning() {
 		[ -d "$iface" ] || continue
 		dev="${iface##*/}"
 
-		# 为 HomeProxy / Sing-box 的 TUN 虚拟网卡 (singtun0 / tun*) 扩充发送队列至 4096（默认仅 500），
-		# 并开启虚拟网卡 GSO/GRO 与 64KB 大包聚合，根除千兆/2.5G 透明代理高并发测速、PT 下载时的虚拟网卡瓶颈
+		# 兼顾旁路由与主路由虚拟接口加速：
+		# 1. 为代理隧道 (singtun0 / tun* / dae*) 与局域网桥 (br-lan) 扩充队列至 4096 并开启 GSO/GRO 64KB 大包聚合
+		# 2. 为主路由 PPPoE 拨号虚拟网卡 (pppoe-wan，内核默认队列仅 3！) 与 WireGuard 扩充发送队列至 4096，根除主路由拨号高并发上传/下载 ACK 溢出丢包
 		case "$dev" in
 			tun*|singtun*)
 				ip link set dev "$dev" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
 				ethtool -K "$dev" rx on tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
 				continue
 				;;
-			lo|veth*|br-*|docker*|tap*|ppp*|wg*)
+			br-*|ppp*|pppoe*|wg*)
+				ip link set dev "$dev" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
+				ethtool -K "$dev" tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
+				continue
+				;;
+			lo|veth*|docker*|tap*)
 				continue
 				;;
 		esac
