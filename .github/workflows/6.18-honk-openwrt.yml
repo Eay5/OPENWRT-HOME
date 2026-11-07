@@ -24,6 +24,10 @@ on:
     - cron: "50 6 * * *"  # 北京时间 每天下午 14:50 (UTC 06:50)
     - cron: "50 9 * * *"  # 北京时间 每天下午 17:50 (UTC 09:50)
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     uses: ./.github/workflows/reusable-openwrt-build.yml

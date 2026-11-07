@@ -132,40 +132,11 @@ if os.path.isfile(gen_client):
     if old_parse_return in content:
         content = content.replace(old_parse_return, doh_bootstrap_code, 1)
 
-    # 1.3 注入 QUIC (UDP 443) 拦截规则，迫使 Chromium 浏览器优雅回退至成熟稳定的 TCP HTTPS (HTTP/2 / TLS 1.3)
-    quic_rule = '''\t\t{
-\t\t\taction: 'sniff'
-\t\t},
-\t\t{
-\t\t\tnetwork: 'udp',
-\t\t\tport: [443],
-\t\t\taction: 'reject'
-\t\t}'''
-    target_sniff = '''\t\t{
-\t\t\taction: 'sniff'
-\t\t}'''
-
-    if "network: 'udp'" not in content:
-        content = re.sub(r"(let rules\s*=\s*\[|rules:\s*\[)", r"\1\n\t\t{\n\t\t\tnetwork: 'udp',\n\t\t\tport: [443],\n\t\t\toutbound: 'block-out'\n\t\t},", content, count=1)
-
     with open(gen_client, "w", encoding="utf-8") as f:
         f.write(content)
-    print("Patched HomeProxy generate_client.uc (DoH Anycast bootstrap + QUIC reject).")
+    print("Patched HomeProxy generate_client.uc (DoH Anycast bootstrap).")
 
-# 2. 修复 firewall_pre.uc (在防火墙 forward 链阻断 UDP 443，防止直连模式 QUIC 导致协议报错)
-fw_pre = os.path.join(hp_dir, "root/etc/homeproxy/scripts/firewall_pre.uc")
-if os.path.isfile(fw_pre):
-    with open(fw_pre, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    quic_fw = 'push(forward, `meta l4proto udp udp dport 443 counter reject comment "!${cfgname}: reject QUIC to prevent protocol mismatch"`);\n'
-    if "dport 443 counter reject" not in content and ("let forward = [];" in content or "let forward = []," in content):
-        content = re.sub(r"(let forward = \[\],\s*\n\s*input = \[\];)", r"\1\n" + quic_fw, content)
-        with open(fw_pre, "w", encoding="utf-8") as f:
-            f.write(content)
-        print("Patched HomeProxy firewall_pre.uc (firewall4 QUIC reject).")
-
-# 3. 增强 client.js 前端下拉框选项
+# 2. 增强 client.js 前端下拉框选项
 client_js = os.path.join(hp_dir, "htdocs/luci-static/resources/view/homeproxy/client.js")
 if os.path.isfile(client_js):
     with open(client_js, "r", encoding="utf-8") as f:
@@ -189,17 +160,17 @@ if os.path.isfile(client_js):
             f.write(content)
         print("Patched HomeProxy client.js (DoH options).")
 
-# 4. 优化默认配置 (默认关闭 IPv6 旁路防泄露，默认使用纯 IP DoH 1.1.1.1)
+# 3. 优化默认配置 (默认关闭 IPv6 旁路防泄露，默认使用免死锁纯 IP DoH https://8.8.8.8/dns-query 与 99-system-performance 保持完全一致)
 def_config = os.path.join(hp_dir, "root/etc/config/homeproxy")
 if os.path.isfile(def_config):
     with open(def_config, "r", encoding="utf-8") as f:
         content = f.read()
 
     content = re.sub(r"option ipv6_support '1'", "option ipv6_support '0'", content)
-    content = re.sub(r"option dns_server '8.8.8.8'", "option dns_server 'https://1.1.1.1/dns-query'", content)
+    content = re.sub(r"option dns_server '8.8.8.8'", "option dns_server 'https://8.8.8.8/dns-query'", content)
     with open(def_config, "w", encoding="utf-8") as f:
         f.write(content)
-    print("Patched HomeProxy default config (IPv6 off, default DoH).")
+    print("Patched HomeProxy default config (IPv6 off, default DoH https://8.8.8.8/dns-query).")
 EOF
 
     # 补充 HomeProxy 简体中文本地化对照表

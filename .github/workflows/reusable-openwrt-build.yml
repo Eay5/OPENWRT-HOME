@@ -100,10 +100,8 @@ env:
   CONFIG_SYNC_MODE: ${{ inputs.config_sync_mode }}
   RELEASE_TITLE_TEMPLATE: ${{ inputs.release_title_template }}
   RELEASE_NOTES_TITLE: ${{ inputs.release_notes_title }}
-  UPLOAD_BIN_DIR: true
+  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: true
-  UPLOAD_WETRANSFER: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
@@ -645,6 +643,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.toolchain_log_name }}-${{ inputs.firmware_artifact_prefix }}-${{ env.BUILD_ID }}
+          retention-days: 3
           path: |
             openwrt/tools_install.log
             openwrt/toolchain_install.log
@@ -715,6 +714,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.build_log_name }}-${{ inputs.firmware_artifact_prefix }}-${{ env.BUILD_ID }}
+          retention-days: 3
           path: openwrt/build.log
 
       - name: Save download cache
@@ -928,6 +928,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Package-Versions${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          retention-days: 5
           path: openwrt/package-versions.txt
 
       - name: Organize firmware files
@@ -1005,6 +1006,7 @@ jobs:
         with:
           name: ${{ inputs.firmware_artifact_prefix }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
+          retention-days: 5
           compression-level: 0
 
       - name: Upload firmware to GoFile

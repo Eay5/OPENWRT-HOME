@@ -393,18 +393,10 @@ while uci -q get firewall.@zone[$z_idx] >/dev/null 2>&1; do
 	fi
 	z_idx=$((z_idx + 1))
 done
+# 清理可能残留的防火墙层无差别 UDP 443 拦截规则（避免误杀国内 B站/抖音/淘宝 HTTP/3 QUIC 加速；
+# 海外 QUIC 拦截已统一交由 HomeProxy 路由规则 block-quic 与 HONK config.dae 分流后精准处理）
+uci -q del firewall.block_quic 2>/dev/null || true
 uci -q commit firewall
-
-# Firewall: 拦截/拒绝外网 UDP 443 (QUIC/HTTP3)，强制全网设备 YouTube/Google 回退极速稳定的 TCP，彻底根除 ERR_SSL_VERSION_OR_CIPHER_MISMATCH
-if ! uci -q get firewall.block_quic >/dev/null 2>&1; then
-	uci -q set firewall.block_quic='rule'
-	uci -q set firewall.block_quic.name='Block-QUIC-UDP443'
-	uci -q set firewall.block_quic.src='lan'
-	uci -q set firewall.block_quic.proto='udp'
-	uci -q set firewall.block_quic.dest_port='443'
-	uci -q set firewall.block_quic.target='REJECT'
-	uci -q commit firewall
-fi
 
 # 8. SmartDNS Full-RAM Performance Tuning (26.2万条纯内存极速响应，48小时乐观缓存，彻底隔离海外防投毒)
 if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
