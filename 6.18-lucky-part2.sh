@@ -205,9 +205,10 @@ net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 16384
 net.core.netdev_max_backlog = 32768
 
-# 6. 动态 TCP 缓冲区与大套接字缓冲（极大提升外网大文件双向拉取/上传带宽利用率）
-net.ipv4.tcp_rmem = 4096 87380 33554432
-net.ipv4.tcp_wmem = 4096 65536 33554432
+# 6. 动态 TCP 缓冲区与大套接字缓冲（极大提升外网大文件双向拉取/上传带宽利用率，256KB 初始默认窗口起步即满速）
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_rmem = 4096 262144 33554432
+net.ipv4.tcp_wmem = 4096 262144 33554432
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
 net.core.rmem_max = 33554432
@@ -324,6 +325,13 @@ command -v ethtool >/dev/null 2>&1 && {
         ethtool -C "$dev" adaptive-rx on adaptive-tx on >/dev/null 2>&1 || true
     done
 }
+
+# 8. 将默认路由与局域网路由的 TCP 初始拥塞窗口/接收窗口 (initcwnd / initrwnd) 提升至 32 (46KB)，实现外网访问与大文件拉取 1-RTT 起步满速
+ip -4 route show 2>/dev/null | while IFS= read -r rt; do
+    [ -n "$rt" ] || continue
+    case "$rt" in *"initcwnd"*) continue ;; esac
+    ip -4 route change $rt initcwnd 32 initrwnd 32 >/dev/null 2>&1 || true
+done
 exit 0
 EOF
 chmod +x files/etc/uci-defaults/98-lucky-appliance

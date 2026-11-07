@@ -125,8 +125,9 @@ net.core.wmem_default = 262144
 net.core.rmem_max = 33554432
 net.core.wmem_max = 33554432
 net.core.optmem_max = 65536
-net.ipv4.tcp_rmem = 4096 87380 33554432
-net.ipv4.tcp_wmem = 4096 65536 33554432
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_rmem = 4096 262144 33554432
+net.ipv4.tcp_wmem = 4096 262144 33554432
 net.ipv4.udp_rmem_min = 8192
 net.ipv4.udp_wmem_min = 8192
 net.core.netdev_max_backlog = 16384
@@ -190,7 +191,13 @@ cat << 'HOTPLUG_EOF' > /etc/hotplug.d/iface/99-tun-tuning
 #!/bin/sh
 for dev in /sys/class/net/tun* /sys/class/net/singtun*; do
 	[ -e "$dev" ] || continue
-	ip link set dev "${dev##*/}" txqueuelen 4096 >/dev/null 2>&1 || true
+	ip link set dev "${dev##*/}" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "${dev##*/}" txqueuelen 4096 >/dev/null 2>&1 || true
+	ethtool -K "${dev##*/}" rx on tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
+done
+ip -4 route show 2>/dev/null | while IFS= read -r rt; do
+	[ -n "$rt" ] || continue
+	case "$rt" in *"initcwnd"*) continue ;; esac
+	ip -4 route change $rt initcwnd 32 initrwnd 32 >/dev/null 2>&1 || true
 done
 for proc in dnsmasq smartdns sing-box honk lucky; do
 	for pid in $(pidof "$proc" 2>/dev/null); do
@@ -375,14 +382,16 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].serve_expired='1'
 	uci -q set smartdns.@smartdns[0].serve_expired_ttl='172800'
 	uci -q set smartdns.@smartdns[0].serve_expired_reply_ttl='3'
-	uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80'
+	uci -q set smartdns.@smartdns[0].serve_expired_prefetch_time='21600'
+	uci -q set smartdns.@smartdns[0].speed_check_mode='ping,tcp:443,tcp:80'
 	uci -q set smartdns.@smartdns[0].cache_size='262144'
 	uci -q set smartdns.@smartdns[0].cache_file='/tmp/smartdns.cache'
 	uci -q set smartdns.@smartdns[0].cache_persist='1'
 	uci -q set smartdns.@smartdns[0].force_https_soa='1'
-	uci -q set smartdns.@smartdns[0].rr_ttl_min='300'
+	uci -q set smartdns.@smartdns[0].rr_ttl_min='600'
 	uci -q set smartdns.@smartdns[0].rr_ttl_max='86400'
 	uci -q set smartdns.@smartdns[0].max_reply_ip_num='3'
+	uci -q set smartdns.@smartdns[0].log_level='error'
 	uci -q set smartdns.@smartdns[0].seconddns_enabled='0'
 	uci -q del smartdns.@smartdns[0].seconddns_port 2>/dev/null || true
 	uci -q del smartdns.@smartdns[0].seconddns_tcp_server 2>/dev/null || true
