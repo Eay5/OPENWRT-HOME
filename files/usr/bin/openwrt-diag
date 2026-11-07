@@ -8,13 +8,16 @@
 
 OUT_FILE="/tmp/openwrt-diag-latest.txt"
 
-# 隐私数据脱敏过滤器：自动隐去宽带账号密码、节点服务器地址/UUID/密钥/订阅链接、Token
+# 隐私数据脱敏过滤器：兼容 BusyBox POSIX sed (不使用 GNU 专属 I 标志)
+# 自动隐去宽带账号密码、节点服务器地址/UUID/密钥/订阅链接、Token，同时保留公共 DNS 诊断信息
 sanitize_output() {
 	sed -E \
-		-e 's/((password|passwd|secret|token|uuid|private_key|public_key|short_id|auth_str|key|username|user)[[:space:]"'\'':=]+)[^"'\''[:space:],;}]+/\1***REDACTED***/Ig' \
-		-e 's/(https?:\/\/)[^"'\''[:space:]]+/\1***URL_REDACTED***/Ig' \
-		-e 's/("server"[[:space:]]*:[[:space:]]*")([^"]+)(")/\1***SERVER_REDACTED***\3/Ig' \
-		-e 's/(option[[:space:]]+(server|address|username|password|key|token|uuid)[[:space:]]+['\''"])([^'\''"]+)(['\''"])/\1***REDACTED***\4/Ig'
+		-e 's/((password|passwd|PassWord|secret|token|uuid|private_key|public_key|preshared_key|short_id|auth_str|username)[[:space:]"'\'':=]+)[^"'\''[:space:],;}]+/\1***REDACTED***/g' \
+		-e 's/((subscription_url|sub_url|SafeURL|webhook)[[:space:]"'\'':=]+)(https?:\/\/)[^"'\''[:space:],;}]+/\1\3***SUB_URL_REDACTED***/g' \
+		-e 's/((vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|anytls|wireguard):\/\/)[^"'\''[:space:]]+/\1***NODE_REDACTED***/g' \
+		-e 's/("server"[[:space:]]*:[[:space:]]*")([^"]+)(")/\1***SERVER_REDACTED***\3/g' \
+		-e 's/(option[[:space:]]+(server|address|username|password|key|token|uuid|private_key)[[:space:]]+['\''"])([^'\''"]+)(['\''"])/\1***REDACTED***\4/g' \
+		-e 's/(list[[:space:]]+subscription_url[[:space:]]+['\''"])([^'\''"]+)(['\''"])/\1***SUB_URL_REDACTED***\3/g'
 }
 
 print_file_tail() {
@@ -166,8 +169,8 @@ collect_report() {
 	grep -E 'CPU|NET_RX|NET_TX|TIMER|SCHED|RCU' /proc/softirqs 2>/dev/null || true
 	echo "--- /proc/net/softnet_stat (第1列:处理包数 第2列:dropped丢包 第3列:time_squeeze预算不足次数) ---"
 	awk '{printf "CPU%-2d: total=%-12d dropped=%-8d time_squeeze=%-8d rps_ipi=%-8d\n", NR-1, "0x"$1, "0x"$2, "0x"$3, "0x"$10}' /proc/net/softnet_stat 2>/dev/null || cat /proc/net/softnet_stat 2>/dev/null
-	echo "--- 硬件中断分布 (/proc/interrupts 网卡相关) ---"
-	grep -iE 'CPU|eth|enp|ens|virtio|pci|nvme|ahci' /proc/interrupts 2>/dev/null || true
+	echo "--- 硬件中断分布 (/proc/interrupts 网卡与存储控制器相关) ---"
+	grep -iE 'CPU|eth|enp|ens|igb|igc|ixgbe|r81|virtio|vmx|pci|nvme|ahci' /proc/interrupts 2>/dev/null || true
 	echo "--- 各网口 RPS / XPS 掩码与流表容量 ---"
 	for q in /sys/class/net/*/queues/rx-*/rps_cpus /sys/class/net/*/queues/rx-*/rps_flow_cnt /sys/class/net/*/queues/tx-*/xps_cpus; do
 		[ -f "$q" ] || continue
@@ -309,7 +312,7 @@ collect_report() {
 		lsmod 2>/dev/null | grep -E 'cls_bpf|sch_ingress|veth|nft_queue|nfnetlink_queue' || true
 		echo "--- /sys/fs/bpf 挂载点与映射对象 ---"
 		ls -la /sys/fs/bpf /sys/fs/bpf/* 2>/dev/null || true
-		echo "--- TC قdisc 与 eBPF 钩子挂载状态 (验证网卡是否已挂载 clsact/bpf) ---"
+		echo "--- TC qdisc 与 eBPF 钩子挂载状态 (验证网卡是否已挂载 clsact/bpf) ---"
 		tc qdisc show 2>/dev/null || true
 		for tdev in br-lan eth0 eth1 pppoe-wan; do
 			[ -d "/sys/class/net/$tdev" ] || continue

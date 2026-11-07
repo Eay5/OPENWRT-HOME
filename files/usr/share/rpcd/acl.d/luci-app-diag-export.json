@@ -5,7 +5,11 @@
 			"cgi-io": [ "exec" ],
 			"file": {
 				"/usr/bin/openwrt-diag": [ "exec" ],
+				"/usr/bin/openwrt-diag *": [ "exec" ],
 				"/tmp/openwrt-diag-latest.txt": [ "read" ]
+			},
+			"ubus": {
+				"file": [ "exec", "read", "stat" ]
 			}
 		},
 		"write": {

@@ -4,10 +4,26 @@
 'require ui';
 
 return view.extend({
-	load: function() {
-		return fs.exec_direct('/usr/bin/openwrt-diag', []).catch(function(err) {
-			return '诊断脚本执行失败: ' + (err && err.message ? err.message : String(err));
+	runDiagReport: function() {
+		return fs.exec_direct('/usr/bin/openwrt-diag', []).then(function(out) {
+			if (out && out.length > 32)
+				return out;
+			return fs.exec('/usr/bin/openwrt-diag', []).then(function(res) {
+				if (res && res.stdout && res.stdout.length > 32)
+					return res.stdout;
+				return fs.read_direct('/tmp/openwrt-diag-latest.txt');
+			});
+		}).catch(function(err) {
+			return fs.exec('/usr/bin/openwrt-diag', []).then(function(res) {
+				return (res && res.stdout) ? res.stdout : '诊断脚本执行返回为空';
+			}).catch(function(err2) {
+				return '诊断脚本执行失败: ' + (err2 && err2.message ? err2.message : String(err));
+			});
 		});
+	},
+
+	load: function() {
+		return this.runDiagReport();
 	},
 
 	render: function(reportText) {
@@ -35,8 +51,8 @@ return view.extend({
 			'class': 'btn cbi-button cbi-button-apply',
 			'style': 'margin-right: 10px;',
 			'click': ui.createHandlerFn(this, function() {
-				setStatus('⏳ 正在实时采集全链路性能指标与日志...', false);
-				return fs.exec_direct('/usr/bin/openwrt-diag', []).then(function(out) {
+				setStatus('⏳ 正在实时采集全链路性能指标与插件日志...', false);
+				return this.runDiagReport().then(function(out) {
 					textarea.value = out || '';
 					setStatus('✅ 最新运行诊断报告已刷新！', false);
 				}).catch(function(err) {
