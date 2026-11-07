@@ -1,5 +1,31 @@
 #!/bin/bash
 
+# 通用安全 Git 克隆函数：支持 3 次失败自动重试，免疫 GitHub 国际网络瞬时波动
+safe_git_clone() {
+    local repo_url="$1"
+    local dest_dir="$2"
+    local branch="${3:-}"
+    local attempt
+
+    for attempt in 1 2 3; do
+        rm -rf "${dest_dir}" 2>/dev/null || true
+        if [ -n "${branch}" ]; then
+            if git clone --depth 1 -b "${branch}" "${repo_url}" "${dest_dir}"; then
+                return 0
+            fi
+        else
+            if git clone --depth 1 "${repo_url}" "${dest_dir}"; then
+                return 0
+            fi
+        fi
+        echo "警告: 克隆 ${repo_url} 失败 (第 ${attempt}/3 次)，3 秒后重试..."
+        sleep 3
+    done
+
+    echo "错误: 无法克隆 ${repo_url} 到 ${dest_dir}"
+    return 1
+}
+
 # 动态配置与同步 luci-theme-argon 最新上游版本 (实时获取 Makefile 及 git release 标签，替换模板占位符)
 setup_argon_theme() {
     echo "Pinning luci-theme-argon to upstream latest release..."
@@ -7,7 +33,7 @@ setup_argon_theme() {
     rm -rf package/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/feeds/luci/luci-app-argon-config 2>/dev/null || true
     rm -rf package/luci-theme-argon 2>/dev/null || true
 
-    git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+    safe_git_clone "https://github.com/jerrykuku/luci-theme-argon.git" "package/luci-theme-argon"
 
     local argon_ver=""
     if [ -f "package/luci-theme-argon/Makefile" ]; then
@@ -34,6 +60,8 @@ setup_argon_theme() {
     if [ -f "package/luci-theme-argon/Makefile" ]; then
         sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${argon_ver}/g" package/luci-theme-argon/Makefile
         sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" package/luci-theme-argon/Makefile 2>/dev/null || true
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/luci-theme-argon/Makefile 2>/dev/null || true
+        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/luci-theme-argon/Makefile 2>/dev/null || true
     fi
 
     find package/luci-theme-argon -type f \( -name "footer*.ut" -o -name "footer*.htm" \) -exec sed -i -E \
@@ -251,19 +279,25 @@ setup_common_feeds() {
     rm -rf feeds/luci/themes/luci-theme-argon package/feeds/luci/luci-theme-argon 2>/dev/null || true
     rm -rf package/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/feeds/luci/luci-app-argon-config 2>/dev/null || true
 
-    # 确保 Realtek r8126 (5G) 网卡驱动包存在 (若官方源码树未收录则拉取 sbwml 独立包兜底)
+    # 确保 Realtek r8126 (5G) 网卡驱动包存在并保持最新 (若官方源码树未收录则拉取 sbwml 独立包兜底)
     if [ ! -d "package/kernel/r8126" ] && [ ! -d "package/emortal/r8126" ] && [ ! -d "package/network/utils/r8126" ]; then
         echo "Official r8126 driver not found in tree, pulling sbwml/package_kernel_r8126..."
         rm -rf package/kernel/r8126 2>/dev/null || true
-        git clone --depth 1 https://github.com/sbwml/package_kernel_r8126.git package/kernel/r8126
+        safe_git_clone "https://github.com/sbwml/package_kernel_r8126.git" "package/kernel/r8126"
         echo "Pulled r8126 5G driver from sbwml/package_kernel_r8126."
     else
         echo "Official r8126 driver detected in source tree."
     fi
+    for r_mk in package/kernel/r8126/Makefile package/emortal/r8126/Makefile package/kernel/r8125/Makefile; do
+        if [ -f "$r_mk" ]; then
+            sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$r_mk" 2>/dev/null || true
+            sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$r_mk" 2>/dev/null || true
+        fi
+    done
 
     # 拉取 ImmortalWrt 官方最新 HomeProxy 源码
     rm -rf feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy package/homeproxy 2>/dev/null || true
-    git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
+    safe_git_clone "https://github.com/immortalwrt/homeproxy.git" "package/homeproxy"
 
     # 修复 HomeProxy Makefile 依赖与路径 (补齐缺失的 ucode-mod-math 依赖，并保证 PKG_NAME 结构完整)
     if [ -f package/homeproxy/Makefile ]; then
@@ -271,6 +305,8 @@ setup_common_feeds() {
         if ! grep -q 'ucode-mod-math' package/homeproxy/Makefile; then
             sed -i 's/+ucode-mod-digest.*$/+ucode-mod-digest \\\n\t+ucode-mod-math/' package/homeproxy/Makefile 2>/dev/null || true
         fi
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' package/homeproxy/Makefile 2>/dev/null || true
+        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' package/homeproxy/Makefile 2>/dev/null || true
     fi
 
     # 应用 HomeProxy 专属优化 (解决 Chrome 访问 Google 协议不符合报错、阻断 QUIC、修复 DoH Anycast 静态引导并扩展 DoH 节点)
@@ -281,8 +317,8 @@ setup_common_feeds() {
     rm -rf feeds/packages/net/smartdns package/feeds/packages/smartdns 2>/dev/null || true
     rm -rf feeds/*/luci-app-smartdns feeds/*/smartdns feeds/*/*/luci-app-smartdns feeds/*/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/*/luci-app-smartdns package/feeds/*/*/smartdns 2>/dev/null || true
     rm -rf package/smartdns package/luci-app-smartdns 2>/dev/null || true
-    git clone --depth 1 https://github.com/pymumu/openwrt-smartdns.git package/smartdns
-    git clone --depth 1 https://github.com/pymumu/luci-app-smartdns.git package/luci-app-smartdns
+    safe_git_clone "https://github.com/pymumu/openwrt-smartdns.git" "package/smartdns"
+    safe_git_clone "https://github.com/pymumu/luci-app-smartdns.git" "package/luci-app-smartdns"
 
     # 切换上游为社区活跃增强分支 PikuZheng/smartdns (解决 HTTP/2 泄漏、musl 内存碎片化、高并发崩溃及 OpenSSL 3.5.8 适配)
     sed -i 's#https://www.github.com/pymumu/smartdns.git#https://github.com/PikuZheng/smartdns.git#g' package/smartdns/Makefile 2>/dev/null || true
@@ -337,7 +373,7 @@ setup_common_feeds() {
 
     rm -rf feeds/packages/lang/golang
     rm -rf package/feeds/packages/golang
-    git clone --depth 1 -b "${golang_branch}" https://github.com/sbwml/packages_lang_golang feeds/packages/lang/golang
+    safe_git_clone "https://github.com/sbwml/packages_lang_golang" "feeds/packages/lang/golang" "${golang_branch}"
     echo "Golang tracking upstream latest branch: ${golang_branch}"
 
     # 针对 Go 27+ 适配补丁与 x86-64-v2 微架构优化：
@@ -421,11 +457,38 @@ setup_common_feeds() {
         echo "sing-geosite tracking upstream latest release: ${geosite_tag}"
     fi
 
+    # 动态追踪 v2fly/geoip 与 v2fly/domain-list-community 最新 Release 规则库 (v2ray-geodata)，
+    # 确保 HONK (eBPF) 的国内外 IP 与域名分流规则库 100% 同步全球每日最新数据
+    local v2_geoip_tag=""
+    v2_geoip_tag=$(git ls-remote --tags --refs https://github.com/v2fly/geoip.git 2>/dev/null \
+        | grep -oE 'refs/tags/[0-9]{8,}$' \
+        | sed 's#refs/tags/##' \
+        | sort -V \
+        | tail -n 1 || true)
+    local v2_geosite_tag=""
+    v2_geosite_tag=$(git ls-remote --tags --refs https://github.com/v2fly/domain-list-community.git 2>/dev/null \
+        | grep -oE 'refs/tags/[0-9]{8,}$' \
+        | sed 's#refs/tags/##' \
+        | sort -V \
+        | tail -n 1 || true)
+    for v2geo_mk in feeds/packages/net/v2ray-geodata/Makefile package/feeds/packages/v2ray-geodata/Makefile; do
+        if [ -f "$v2geo_mk" ]; then
+            [ -n "${v2_geoip_tag}" ] && sed -i "s/^GEOIP_VER:=.*/GEOIP_VER:=${v2_geoip_tag}/g" "$v2geo_mk" 2>/dev/null || true
+            [ -n "${v2_geosite_tag}" ] && sed -i "s/^GEOSITE_VER:=.*/GEOSITE_VER:=${v2_geosite_tag}/g" "$v2geo_mk" 2>/dev/null || true
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$v2geo_mk" 2>/dev/null || true
+            sed -i 's/^[[:space:]]*HASH:=.*/  HASH:=skip/g' "$v2geo_mk" 2>/dev/null || true
+            sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$v2geo_mk" 2>/dev/null || true
+        fi
+    done
+    if [ -n "${v2_geoip_tag}" ] || [ -n "${v2_geosite_tag}" ]; then
+        echo "v2ray-geodata tracking upstream latest release: geoip=${v2_geoip_tag:-default}, geosite=${v2_geosite_tag:-default}"
+    fi
+
     # 动态获取 upstream gdy666/luci-app-lucky 最新官方源码与稳定二进制 Release 版本
     rm -rf feeds/luci/applications/luci-app-lucky package/feeds/luci/luci-app-lucky 2>/dev/null || true
     rm -rf feeds/*/luci-app-lucky package/feeds/*/luci-app-lucky 2>/dev/null || true
     rm -rf package/lucky 2>/dev/null || true
-    git clone --depth 1 https://github.com/gdy666/luci-app-lucky.git package/lucky
+    safe_git_clone "https://github.com/gdy666/luci-app-lucky.git" "package/lucky"
 
     local lucky_tag=""
     lucky_tag=$(git ls-remote --tags --refs https://github.com/gdy666/lucky.git 2>/dev/null \
@@ -435,13 +498,18 @@ setup_common_feeds() {
         | tail -n 1 || true)
 
     if [ -n "${lucky_tag}" ]; then
-        if [ -f package/lucky/lucky/Makefile ]; then
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${lucky_tag}/g" package/lucky/lucky/Makefile
-            echo "Lucky tracking upstream latest release: v${lucky_tag}"
-        fi
+        for lucky_mk in package/lucky/lucky/Makefile package/lucky/luci-app-lucky/Makefile package/lucky/Makefile; do
+            if [ -f "$lucky_mk" ]; then
+                sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${lucky_tag}/g" "$lucky_mk" 2>/dev/null || true
+                sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" "$lucky_mk" 2>/dev/null || true
+                sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$lucky_mk" 2>/dev/null || true
+                sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$lucky_mk" 2>/dev/null || true
+            fi
+        done
+        echo "Lucky tracking upstream latest release: v${lucky_tag}"
     fi
 
-    # 动态检测并升级 Dnsmasq 至官方最新正式版本 (2.93)
+    # 动态检测并升级 Dnsmasq 至官方最新正式版本 (2.93+)
     # 彻底修复 CVE-2026-2291 域名内存分配堆溢出漏洞、DNSSEC CNAME/通配符边界校验错误与 DHCPv6 中继回归问题
     local dnsmasq_tag=""
     dnsmasq_tag=$(curl -sL --connect-timeout 5 --max-time 10 https://thekelleys.org.uk/dnsmasq/ 2>/dev/null \

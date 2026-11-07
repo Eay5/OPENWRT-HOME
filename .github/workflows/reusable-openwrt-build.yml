@@ -107,7 +107,7 @@ env:
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
   CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
-  CCACHE_MAXSIZE: 2G
+  CCACHE_MAXSIZE: 4G
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
@@ -154,9 +154,9 @@ jobs:
           sudo -E apt update
           sudo -E apt -y --no-install-recommends install build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git "${NCURSES_PACKAGE}" libssl-dev \
-            python3-setuptools rsync swig unzip zlib1g-dev file wget \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget curl jq pigz zstd \
             llvm python3-pyelftools libpython3-dev ccache \
-            libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+            libelf-dev libbpf-dev pkg-config device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
             autoconf automake libtool cmake ninja-build meson python3-pip
           sudo ln -sf "/usr/share/zoneinfo/${TZ:-Asia/Shanghai}" /etc/localtime
           echo "${TZ:-Asia/Shanghai}" | sudo tee /etc/timezone >/dev/null
@@ -167,7 +167,15 @@ jobs:
       - name: Clone OpenWrt source
         run: |
           df -hT "$PWD"
-          git clone --depth 1 --single-branch "$REPO_URL" -b "$REPO_BRANCH" openwrt
+          for attempt in 1 2 3; do
+            rm -rf openwrt 2>/dev/null || true
+            if git clone --depth 1 --single-branch "$REPO_URL" -b "$REPO_BRANCH" openwrt; then
+              break
+            fi
+            echo "克隆 OpenWrt 源码失败 (第 ${attempt}/3 次)，5 秒后重试..."
+            sleep 5
+          done
+          [ -d "openwrt/.git" ] || { echo "ERROR: 无法克隆 OpenWrt 源码"; exit 1; }
 
       - name: Prepare build directories
         run: |
@@ -785,6 +793,9 @@ jobs:
           SINGBOX_PKG="$(find_pkg 'sing-box')"
           GEOIP_PKG="$(find_pkg 'sing-geoip')"
           GEOSITE_PKG="$(find_pkg 'sing-geosite')"
+          V2_GEOIP_PKG="$(find_pkg 'v2ray-geoip')"
+          V2_GEOSITE_PKG="$(find_pkg 'v2ray-geosite')"
+          ARGON_PKG="$(find_pkg 'luci-theme-argon')"
           HONK_PKG="$(find_pkg 'honk-')"
           [ -z "${HONK_PKG}" ] && HONK_PKG="$(find_pkg 'honk')"
           HONK_LUCI_PKG="$(find_pkg 'luci-app-honk')"
@@ -801,11 +812,13 @@ jobs:
           echo "========================================================="
           echo "🔹 Golang 编译器   : Go ${GO_MAKE_VER:-未知} (GOAMD64=v2)"
           echo "🔹 Dnsmasq-full    : ${DNSMASQ_PKG:-未找到包}"
-          echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG:-未找到包} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
-          echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG:-未找到包}"
+          echo "🔹 Argon 主题      : ${ARGON_PKG:-未找到包}"
+          [ -n "${SMARTDNS_PKG}" ] && echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
+          [ -n "${SMARTDNS_LUCI_PKG}" ] && echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG}"
           if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
             echo "🔹 Honk (eBPF)     : ${HONK_PKG:-未找到包} (Version: ${HONK_MAKE_VER:-未知})"
             echo "🔹 Honk LuCI       : ${HONK_LUCI_PKG:-未找到包}"
+            echo "🔹 V2Ray Geo库     : ${V2_GEOIP_PKG:-未找到} / ${V2_GEOSITE_PKG:-未找到}"
           fi
           if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
             echo "🔹 Lucky 核心包    : ${LUCKY_PKG:-未找到包}"
@@ -826,17 +839,22 @@ jobs:
             echo "内核系列: ${KERNEL_SERIES} (${KERNEL_VERSION})"
             echo "Golang  : Go ${GO_MAKE_VER:-未知} (GOAMD64=v2, C/C++: -O2 -march=x86-64-v2)"
             echo "Dnsmasq : ${DNSMASQ_PKG:-未找到包}"
-            echo ""
-            echo "[SmartDNS]"
-            echo "  核心包文件名: ${SMARTDNS_PKG:-未找到包}"
-            echo "  Makefile 版本: ${SMARTDNS_MAKE_VER:-未知}"
-            echo "  Git Commit   : ${SMARTDNS_COMMIT:-未知}"
-            echo "  LuCI 界面包  : ${SMARTDNS_LUCI_PKG:-未找到包}"
+            echo "Argon   : ${ARGON_PKG:-未找到包}"
+            if [ -n "${SMARTDNS_PKG}" ] || [ -n "${SMARTDNS_LUCI_PKG}" ]; then
+              echo ""
+              echo "[SmartDNS]"
+              echo "  核心包文件名: ${SMARTDNS_PKG:-未找到包}"
+              echo "  Makefile 版本: ${SMARTDNS_MAKE_VER:-未知}"
+              echo "  Git Commit   : ${SMARTDNS_COMMIT:-未知}"
+              echo "  LuCI 界面包  : ${SMARTDNS_LUCI_PKG:-未找到包}"
+            fi
             if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
               echo ""
               echo "[HONK (eBPF) 核心套件]"
               echo "  Honk 核心包   : ${HONK_PKG:-未找到包}"
               echo "  LuCI 界面包   : ${HONK_LUCI_PKG:-未找到包}"
+              echo "  V2Ray-geoip   : ${V2_GEOIP_PKG:-未找到包}"
+              echo "  V2Ray-geosite : ${V2_GEOSITE_PKG:-未找到包}"
             fi
             if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
               echo ""
@@ -859,13 +877,18 @@ jobs:
             echo "### 📦 核心组件与插件构建版本"
             echo "| 组件名称 | 生成的安装包 (APK/IPK) | 源码/编译器版本 |"
             echo "| :--- | :--- | :--- |"
+            echo "| **Linux 内核** | \`kernel-${KERNEL_VERSION}\` | \`${KERNEL_SERIES}\` |"
             echo "| **Golang 编译器** | - | \`Go ${GO_MAKE_VER:-未知}\` (GOAMD64=v2) |"
             echo "| **Dnsmasq-full** | \`${DNSMASQ_PKG:-未找到}\` | - |"
-            echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
-            echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
+            [ -n "${ARGON_PKG}" ] && echo "| **Argon 主题** | \`${ARGON_PKG}\` | - |"
+            if [ -n "${SMARTDNS_PKG}" ] || [ -n "${SMARTDNS_LUCI_PKG}" ]; then
+              echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
+              echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
+            fi
             if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
               echo "| **Honk (eBPF)** | \`${HONK_PKG:-未找到}\` | \`${HONK_MAKE_VER:-未知}\` |"
               echo "| **Honk LuCI (Doona)** | \`${HONK_LUCI_PKG:-未找到}\` | - |"
+              echo "| **V2Ray GeoIP / Site** | \`${V2_GEOIP_PKG:-未找到}\` | \`${V2_GEOSITE_PKG:-未找到}\` |"
             fi
             if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
               echo "| **Lucky Core** | \`${LUCKY_PKG:-未找到}\` | - |"
@@ -876,7 +899,8 @@ jobs:
               echo "| **HomeProxy** | \`${HOMEPROXY_PKG:-未找到}\` | - |"
               echo "| **Sing-geoip / geosite** | \`${GEOIP_PKG:-未找到}\` | \`${GEOSITE_PKG:-未找到}\` |"
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > "$GITHUB_WORKSPACE/package_versions_table.md"
+          cat "$GITHUB_WORKSPACE/package_versions_table.md" >> "$GITHUB_STEP_SUMMARY"
 
           echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER:-未知}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"
 
@@ -1046,6 +1070,11 @@ jobs:
 
             if [ -f "$GITHUB_WORKSPACE/gofile_links.txt" ]; then
               cat "$GITHUB_WORKSPACE/gofile_links.txt"
+              echo
+            fi
+
+            if [ -f "$GITHUB_WORKSPACE/package_versions_table.md" ]; then
+              cat "$GITHUB_WORKSPACE/package_versions_table.md"
               echo
             fi
 
