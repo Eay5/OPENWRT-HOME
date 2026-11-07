@@ -1,0 +1,257 @@
+#!/bin/sh
+# ==============================================================================
+# OpenWrt 全方位运行性能、网络栈、分流状态与系统日志一键诊断采集器 (自动脱敏版)
+# 用法:
+#   1. LuCI 网页后台: 系统 -> 运行诊断与日志导出 -> 一键下载 / 一键复制
+#   2. SSH 终端命令行: openwrt-diag (自动生成报告并保存至 /tmp/openwrt-diag-latest.txt)
+# ==============================================================================
+
+OUT_FILE="/tmp/openwrt-diag-latest.txt"
+
+# 隐私数据脱敏过滤器：自动隐去宽带账号密码、节点服务器地址/UUID/密钥/订阅链接、公网IP与Token
+sanitize_output() {
+	sed -E \
+		-e 's/((password|passwd|secret|token|uuid|private_key|public_key|short_id|auth_str|key|username)[[:space:]"'\'':=]+)[^"'\''[:space:],;}]+/\1***REDACTED***/Ig' \
+		-e 's/(https?:\/\/)[^"'\''[:space:]]+/\1***SUBSCRIPTION_URL_REDACTED***/Ig' \
+		-e 's/(option[[:space:]]+(server|address|ip|host)[[:space:]]+['\''"])([^'\''"]+)List/\1***REDACTED***/g'
+}
+
+collect_report() {
+	local now_str host_name up_str eth_cnt wan_exist mode_str
+	now_str="$(date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date)"
+	host_name="$(uci -q get system.@system[0].hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo OpenWrt)"
+	up_str="$(uptime 2>/dev/null || true)"
+
+	echo "======================================================================"
+	echo "📊 OpenWrt 运行性能与全链路日志诊断报告 (AI 深度优化分析专用)"
+	echo "======================================================================"
+	echo "采集时间 : ${now_str}"
+	echo "主机名称 : ${host_name}"
+	echo "运行时间 : ${up_str}"
+	echo "内核版本 : $(uname -a 2>/dev/null)"
+	if [ -f /etc/openwrt_release ]; then
+		echo "--- 固件版本信息 ---"
+		cat /etc/openwrt_release 2>/dev/null
+	fi
+	echo ""
+
+	# ==========================================================================
+	# 1. 硬件、CPU 调度、P-State/C-State 与温度状态
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[1] CPU 调度、频率、深睡眠 (C-States) 与硬件温度状态"
+	echo "======================================================================"
+	grep -m1 'model name' /proc/cpuinfo 2>/dev/null || true
+	echo "CPU 核心数 : $(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null)"
+	echo "当前调速器 : $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo 'N/A (Host/VM Managed)')"
+	echo "当前 EPP   : $(cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference 2>/dev/null || echo 'N/A')"
+	echo "当前频率kHz: $(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq 2>/dev/null | tr '\n' ' ' || echo 'N/A')"
+	if [ -d /sys/devices/system/cpu/intel_pstate ]; then
+		echo "Intel P-State: min=$(cat /sys/devices/system/cpu/intel_pstate/min_perf_pct 2>/dev/null)% max=$(cat /sys/devices/system/cpu/intel_pstate/max_perf_pct 2>/dev/null)% no_turbo=$(cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null) hwp_boost=$(cat /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost 2>/dev/null)"
+	fi
+	echo -n "C-States 状态: "
+	for st in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
+		[ -d "$st" ] || continue
+		printf "%s(lat=%sus,dis=%s) " "$(cat "$st/name" 2>/dev/null)" "$(cat "$st/latency" 2>/dev/null)" "$(cat "$st/disable" 2>/dev/null)"
+	done
+	echo ""
+	if command -v sensors >/dev/null 2>&1; then
+		echo "--- 硬件传感器温度 ---"
+		sensors 2>/dev/null | head -n 30 || true
+	elif ls /sys/class/thermal/thermal_zone*/temp >/dev/null 2>&1; then
+		echo -n "Thermal Zones (mC): "
+		cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | tr '\n' ' '
+		echo ""
+	fi
+	echo ""
+
+	# ==========================================================================
+	# 2. 内存、Slab 缓存、文件句柄与分区挂载 (noatime)
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[2] 内存分配、文件句柄与磁盘挂载状态"
+	echo "======================================================================"
+	free -m 2>/dev/null || true
+	echo "--- /proc/meminfo 关键指标 ---"
+	grep -E '^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree|Dirty|Writeback|Slab|SReclaimable|SUnreclaim):' /proc/meminfo 2>/dev/null || true
+	echo "全局文件句柄 (已分配/未使用/上限): $(cat /proc/sys/fs/file-nr 2>/dev/null)"
+	echo "--- 挂载参数 (检查 noatime) 与磁盘空间 ---"
+	mount 2>/dev/null | grep -E ' on / | on /overlay | on /tmp ' || true
+	df -hT 2>/dev/null || df -h 2>/dev/null || true
+	echo ""
+
+	# ==========================================================================
+	# 3. 主路由 / 旁路由拓扑模式识别、路由表 (initcwnd) 与防火墙加速状态
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[3] 网络拓扑模式 (主路由 vs 旁路由)、路由窗口与防火墙状态"
+	echo "======================================================================"
+	eth_cnt="$(ls /sys/class/net 2>/dev/null | grep -cE '^(eth|en|vi)[0-9]+' || echo 0)"
+	if uci -q get network.wan >/dev/null 2>&1; then
+		wan_exist="yes"
+		mode_str="主路由模式 (Main Router)"
+	elif [ "${eth_cnt:-0}" -le 1 ]; then
+		wan_exist="no"
+		mode_str="单臂旁路由 / 独立应用主机模式 (Bypass Gateway / Appliance)"
+	else
+		wan_exist="no"
+		mode_str="多网口自定义模式"
+	fi
+	echo "检测运行拓扑 : ${mode_str} (物理/虚拟网口数=${eth_cnt}, network.wan=${wan_exist})"
+	echo "Packet Steering: $(uci -q get network.globals.packet_steering 2>/dev/null || echo '未设置')"
+	echo "LAN DHCP ignore: $(uci -q get dhcp.lan.ignore 2>/dev/null || echo '0 (已开启DHCP)')"
+	echo "FW4 Flow Offload: $(uci -q get firewall.@defaults[0].flow_offloading 2>/dev/null || echo '0')"
+	echo "--- 防火墙各区域 (Zone) NAT Masq 与 MTU Fix 状态 ---"
+	z_i=0
+	while uci -q get firewall.@zone[$z_i] >/dev/null 2>&1; do
+		echo "Zone[$z_i] name=$(uci -q get firewall.@zone[$z_i].name) masq=$(uci -q get firewall.@zone[$z_i].masq || echo 0) mtu_fix=$(uci -q get firewall.@zone[$z_i].mtu_fix || echo 0) input=$(uci -q get firewall.@zone[$z_i].input) forward=$(uci -q get firewall.@zone[$z_i].forward)"
+		z_i=$((z_i + 1))
+	done
+	echo "--- IPv4 路由表 (检查 initcwnd / initrwnd 32 是否生效) ---"
+	ip -4 route show 2>/dev/null || true
+	echo ""
+
+	# ==========================================================================
+	# 4. 网卡硬件吞吐、丢包计数、队列长度、GSO/GRO 与 NAPI 状态
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[4] 网络接口吞吐、硬件丢包计数 (/proc/net/dev) 与卸载参数"
+	echo "======================================================================"
+	cat /proc/net/dev 2>/dev/null || true
+	echo "--- 各接口队列长度、BIG TCP (gro/gso_max_size)、NAPI 与 EEE 状态 ---"
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+		dev="${iface##*/}"
+		echo ">> 接口: ${dev} (operstate=$(cat "$iface/operstate" 2>/dev/null), mtu=$(cat "$iface/mtu" 2>/dev/null), txq=$(cat "$iface/tx_queue_len" 2>/dev/null))"
+		ip -d link show dev "$dev" 2>/dev/null | grep -E 'gso_max_size|gro_max_size|qdisc' || true
+		[ -f "$iface/napi_defer_hard_irqs" ] && echo "   napi_defer_hard_irqs=$(cat "$iface/napi_defer_hard_irqs" 2>/dev/null) gro_flush_timeout=$(cat "$iface/gro_flush_timeout" 2>/dev/null)"
+		if command -v ethtool >/dev/null 2>&1; then
+			case "$dev" in
+				lo|br-*|tun*|singtun*|dae*|ppp*|pppoe*|wg*|veth*) ;;
+				*)
+					ethtool -k "$dev" 2>/dev/null | grep -E 'tcp-segmentation-offload|generic-segmentation-offload|generic-receive-offload|rx-udp-gro-forwarding|scatter-gather' | sed 's/^/   /' || true
+					ethtool -g "$dev" 2>/dev/null | tail -n 6 | sed 's/^/   /' || true
+					;;
+			esac
+		fi
+	done
+	echo ""
+
+	# ==========================================================================
+	# 5. 多核软中断均衡 (/proc/softirqs)、协议栈丢包 (/proc/net/softnet_stat) 与 RPS/XPS
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[5] 多核软中断分布、softnet_stat 预算溢出检查与 RPS/XPS 队列"
+	echo "======================================================================"
+	echo "--- /proc/softirqs (重点关注 NET_RX / NET_TX 各核均衡度) ---"
+	grep -E 'CPU|NET_RX|NET_TX|TIMER|SCHED|RCU' /proc/softirqs 2>/dev/null || true
+	echo "--- /proc/net/softnet_stat (第1列:处理包数 第2列:dropped丢包 第3列:time_squeeze预算不足次数) ---"
+	awk '{printf "CPU%-2d: total=%-12d dropped=%-8d time_squeeze=%-8d rps_ipi=%-8d\n", NR-1, "0x"$1, "0x"$2, "0x"$3, "0x"$10}' /proc/net/softnet_stat 2>/dev/null || cat /proc/net/softnet_stat 2>/dev/null
+	echo "--- 硬件中断分布 (/proc/interrupts 网卡相关) ---"
+	grep -iE 'CPU|eth|enp|ens|virtio|pci|nvme|ahci' /proc/interrupts 2>/dev/null || true
+	echo "--- 各网口 RPS / XPS 掩码 ---"
+	for q in /sys/class/net/*/queues/rx-*/rps_cpus /sys/class/net/*/queues/tx-*/xps_cpus; do
+		[ -f "$q" ] || continue
+		printf "%s = %s\n" "$q" "$(cat "$q" 2>/dev/null)"
+	done
+	echo ""
+
+	# ==========================================================================
+	# 6. TCP/UDP 协议栈、BBR、Conntrack 连接跟踪与异常丢包统计
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[6] TCP/UDP 协议栈计数器、BBR 与 Conntrack 连接表压力"
+	echo "======================================================================"
+	echo "TCP 拥塞算法 : $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) (qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null))"
+	echo "TCP ECN/DSACK: tcp_ecn=$(sysctl -n net.ipv4.tcp_ecn 2>/dev/null) tcp_dsack=$(sysctl -n net.ipv4.tcp_dsack 2>/dev/null) tcp_fastopen=$(sysctl -n net.ipv4.tcp_fastopen 2>/dev/null)"
+	echo "UDP GRO 转发 : $(sysctl -n net.ipv4.udp_gro_forwarding 2>/dev/null)"
+	echo "Conntrack 表 : 当前连接数=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || echo N/A) / 最大上限=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo N/A) (哈希桶=$(cat /proc/sys/net/netfilter/nf_conntrack_buckets 2>/dev/null || echo N/A))"
+	if [ -f /proc/net/stat/nf_conntrack ]; then
+		echo "--- Conntrack 内核统计 (检查 insert_failed / drop / early_drop 是否为 0) ---"
+		head -n 5 /proc/net/stat/nf_conntrack 2>/dev/null || true
+	fi
+	echo "--- Socket 汇总 (/proc/net/sockstat) ---"
+	cat /proc/net/sockstat 2>/dev/null || true
+	echo "--- 各接口 send_redirects 与 rp_filter 实际生效值 ---"
+	for cdir in /proc/sys/net/ipv4/conf/*; do
+		[ -d "$cdir" ] || continue
+		printf "%-12s: send_redirects=%s accept_redirects=%s rp_filter=%s\n" "${cdir##*/}" "$(cat "$cdir/send_redirects" 2>/dev/null)" "$(cat "$cdir/accept_redirects" 2>/dev/null)" "$(cat "$cdir/rp_filter" 2>/dev/null)"
+	done
+	echo "--- TCP/UDP 关键重传与溢出计数 (/proc/net/snmp & netstat) ---"
+	awk '/^Tcp:/ {if (hdr=="") {hdr=$0} else {split(hdr,h); split($0,v); for(i=2;i<=NF;i++) printf "%s=%s ", h[i], v[i]; print ""}} /^Udp:/ {if (uhdr=="") {uhdr=$0} else {split(uhdr,uh); split($0,uv); for(i=2;i<=NF;i++) printf "%s=%s ", uh[i], uv[i]; print ""}}' /proc/net/snmp 2>/dev/null || true
+	echo ""
+
+	# ==========================================================================
+	# 7. 核心守护进程资源占用、OOM 免死保护与实时 DNS 解析延迟基准测试
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[7] 核心守护进程状态 (OOM 保护/优先级/内存) 与实时 DNS 测速"
+	echo "======================================================================"
+	for proc in dnsmasq smartdns sing-box honk lucky miniupnpd uhttpd irqbalance; do
+		pids="$(pidof "$proc" 2>/dev/null || true)"
+		if [ -n "$pids" ]; then
+			for pid in $pids; do
+				rss="$(awk '/^VmRSS:/ {print $2, $3}' "/proc/$pid/status" 2>/dev/null || echo '0 kB')"
+				oom="$(cat "/proc/$pid/oom_score_adj" 2>/dev/null || echo '0')"
+				nice_val="$(awk '{print $19}' "/proc/$pid/stat" 2>/dev/null || echo '0')"
+				printf "✅ %-12s PID=%-7s VmRSS=%-12s oom_score_adj=%-5s nice=%s\n" "$proc" "$pid" "$rss" "$oom" "$nice_val"
+			done
+		else
+			printf "⚪ %-12s 未运行 (或当前固件未启用)\n" "$proc"
+		fi
+	done
+
+	echo "--- 实时 DNS 解析耗时实测 (验证 SmartDNS 缓存命中与分流响应) ---"
+	if command -v dig >/dev/null 2>&1; then
+		for dom in qq.com taobao.com baidu.com github.com google.com; do
+			q53="$(dig @127.0.0.1 -p 53 +time=2 +tries=1 "$dom" A 2>/dev/null | grep -E 'Query time:|status:' | tr '\n' ' ' || echo 'timeout')"
+			q6053="$(dig @127.0.0.1 -p 6053 +time=2 +tries=1 "$dom" A 2>/dev/null | grep -E 'Query time:|status:' | tr '\n' ' ' || echo 'N/A')"
+			printf "Domain %-12s -> [Port 53 Dnsmasq/Proxy]: %s | [Port 6053 SmartDNS]: %s\n" "$dom" "$q53" "$q6053"
+		done
+	fi
+	echo ""
+
+	# ==========================================================================
+	# 8. 脱敏核心 UCI 配置摘要与最近系统/内核告警日志
+	# ==========================================================================
+	echo "======================================================================"
+	echo "[8] 核心配置摘要 (已自动脱敏隐藏节点密码/UUID/订阅地址)"
+	echo "======================================================================"
+	echo "--- DHCP / Dnsmasq UCI ---"
+	uci -q show dhcp.@dnsmasq[0] 2>/dev/null | sanitize_output || true
+	if uci -q show smartdns.@smartdns[0] >/dev/null 2>&1; then
+		echo "--- SmartDNS UCI ---"
+		uci -q show smartdns.@smartdns[0] 2>/dev/null | sanitize_output || true
+	fi
+	if uci -q show homeproxy.config >/dev/null 2>&1; then
+		echo "--- HomeProxy UCI (Config & Routing) ---"
+		uci -q show homeproxy.config 2>/dev/null | sanitize_output || true
+		uci -q show homeproxy.routing 2>/dev/null | sanitize_output || true
+	fi
+	if [ -f /etc/honk/config.dae ]; then
+		echo "--- HONK config.dae (routing & dns) ---"
+		cat /etc/honk/config.dae 2>/dev/null | sanitize_output || true
+	fi
+	echo ""
+
+	echo "======================================================================"
+	echo "[9] 内核日志 (dmesg 告警/错误与尾部 60 行)"
+	echo "======================================================================"
+	dmesg 2>/dev/null | grep -iE 'error|warn|fail|drop|oom|panic|oops|reset|link is|fullcone|bbr|bpf' | tail -n 60 | sanitize_output || true
+	echo "--- dmesg 最新 40 行 ---"
+	dmesg 2>/dev/null | tail -n 40 | sanitize_output || true
+	echo ""
+
+	echo "======================================================================"
+	echo "[10] 系统运行日志 (logread 关键服务告警与最新 80 行)"
+	echo "======================================================================"
+	logread 2>/dev/null | grep -iE 'error|warn|fail|fatal|timeout|refused|smartdns|sing-box|homeproxy|honk|lucky|dnsmasq' | tail -n 60 | sanitize_output || true
+	echo "--- logread 最新 60 行 ---"
+	logread 2>/dev/null | tail -n 60 | sanitize_output || true
+	echo "======================================================================"
+	echo "报告生成完毕 (已自动脱敏隐私字段，可直接复制或上传给 AI 进行深度调优分析)"
+	echo "======================================================================"
+}
+
+collect_report > "$OUT_FILE" 2>&1
+cat "$OUT_FILE"

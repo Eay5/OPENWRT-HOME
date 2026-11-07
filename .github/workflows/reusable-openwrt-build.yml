@@ -324,7 +324,7 @@ jobs:
           chmod +x "$DIY_P2_SH"
           cd openwrt
           "$GITHUB_WORKSPACE/$DIY_P2_SH"
-          chmod -R +x files/etc/init.d/ files/etc/uci-defaults/ files/etc/board.d/ 2>/dev/null || true
+          chmod -R +x files/etc/init.d/ files/etc/uci-defaults/ files/etc/board.d/ files/usr/bin/ 2>/dev/null || true
 
       - name: Sync config
         run: |

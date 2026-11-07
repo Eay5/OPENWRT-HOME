@@ -1,0 +1,13 @@
+{
+	"admin/system/diag_export": {
+		"title": "运行诊断与日志导出",
+		"order": 85,
+		"action": {
+			"type": "view",
+			"path": "system/diag_export"
+		},
+		"depends": {
+			"acl": [ "luci-app-diag-export" ]
+		}
+	}
+}
