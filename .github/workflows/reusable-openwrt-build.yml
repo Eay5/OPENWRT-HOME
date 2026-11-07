@@ -158,10 +158,10 @@ jobs:
             llvm python3-pyelftools libpython3-dev ccache \
             libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
             autoconf automake libtool cmake ninja-build meson python3-pip
-          sudo ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
-          echo "${TZ}" | sudo tee /etc/timezone
+          sudo ln -sf "/usr/share/zoneinfo/${TZ:-Asia/Shanghai}" /etc/localtime
+          echo "${TZ:-Asia/Shanghai}" | sudo tee /etc/timezone >/dev/null
           sudo mkdir -p /workdir
-          sudo chown "$USER:$(id -gn)" /workdir
+          sudo chown "${USER:-runner}:$(id -gn 2>/dev/null || echo runner)" /workdir 2>/dev/null || true
           echo "BUILD_ID=$(date +%Y%m%d%H%M%S)-$RANDOM" >> "$GITHUB_ENV"
 
       - name: Clone OpenWrt source
@@ -522,11 +522,15 @@ jobs:
               ensure_config CONFIG_KERNEL_DEBUG_INFO_REDUCED n
               ensure_config CONFIG_KERNEL_DEBUG_INFO_BTF y
               ensure_config CONFIG_KERNEL_MODULE_ALLOW_BTF_MISMATCH y
+              ensure_config CONFIG_PACKAGE_vmlinux-btf y
+              ensure_config CONFIG_PACKAGE_libstdcpp y
               ensure_config CONFIG_PACKAGE_kmod-sched-core y
               ensure_config CONFIG_PACKAGE_kmod-sched-bpf y
               ensure_config CONFIG_PACKAGE_kmod-veth y
+              ensure_config CONFIG_PACKAGE_kmod-nft-core y
               ensure_config CONFIG_PACKAGE_kmod-nft-queue y
               ensure_config CONFIG_PACKAGE_kmod-nfnetlink-queue y
+              ensure_config CONFIG_PACKAGE_kmod-nf-conntrack y
               ensure_config CONFIG_PACKAGE_ca-bundle y
               ensure_config CONFIG_PACKAGE_ip-full y
               ensure_config CONFIG_PACKAGE_kmod y
@@ -669,6 +673,8 @@ jobs:
             echo "Build failed"
             echo "=== Disk Space on Failure ==="
             df -hT .
+            echo "=== 详细失败错误日志 (最后 60 行) ==="
+            tail -n 60 build.log 2>/dev/null || true
             exit 1
           fi
 

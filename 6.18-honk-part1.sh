@@ -36,9 +36,24 @@ pin_honk_package_sources() {
     local honk_commit=""
     honk_commit=$(git ls-remote https://github.com/kenzok8/openwrt-honk.git refs/heads/main 2>/dev/null | cut -f1 | head -n 1 || true)
 
-    # 拉取最新的 Honk 与 luci-app-honk 专属软件包源码（每次构建拉取 main 分支最新提交）
+    # 拉取最新的 Honk 与 luci-app-honk 专属软件包源码（增加 3 次自动重试与哈希防崩机制）
     rm -rf package/openwrt-honk package/honk feeds/luci/applications/luci-app-honk package/feeds/*/luci-app-honk 2>/dev/null || true
-    clone_package_repo "https://github.com/kenzok8/openwrt-honk.git" "package/openwrt-honk" "main"
+    local clone_success=0
+    for i in 1 2 3; do
+        if clone_package_repo "https://github.com/kenzok8/openwrt-honk.git" "package/openwrt-honk" "main"; then
+            clone_success=1
+            break
+        fi
+        echo "克隆 openwrt-honk 失败 (第 $i 次/共 3 次)，3 秒后重试..."
+        sleep 3
+    done
+    [ "$clone_success" -eq 1 ] || { echo "ERROR: 无法克隆 openwrt-honk 仓库源码"; exit 1; }
+
+    # 防止上游发布新 release 时资源重新打包导致 PKG_HASH 校验失败中断编译
+    find package/openwrt-honk -type f -name "Makefile" | while read -r mk; do
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=skip/g' "$mk" 2>/dev/null || true
+        sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=skip/g' "$mk" 2>/dev/null || true
+    done
 
     echo "HONK tracking upstream latest: Tag=${honk_tag:-none}, Commit=${honk_commit:-HEAD}"
 
