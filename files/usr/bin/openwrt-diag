@@ -209,7 +209,7 @@ collect_report() {
 	echo "======================================================================"
 	echo "[7] 核心守护进程状态 (OOM 保护/优先级/内存)、监听端口与实时 DNS 测速"
 	echo "======================================================================"
-	for proc in dnsmasq smartdns sing-box honk lucky miniupnpd uhttpd irqbalance; do
+	for proc in dnsmasq smartdns sing-box honk honk-core lucky miniupnpd uhttpd irqbalance; do
 		pids="$(pidof "$proc" 2>/dev/null || true)"
 		if [ -n "$pids" ]; then
 			for pid in $pids; do
@@ -314,7 +314,7 @@ collect_report() {
 		ls -la /sys/fs/bpf /sys/fs/bpf/* 2>/dev/null || true
 		echo "--- TC qdisc 与 eBPF 钩子挂载状态 (验证网卡是否已挂载 clsact/bpf) ---"
 		tc qdisc show 2>/dev/null || true
-		for tdev in br-lan eth0 eth1 pppoe-wan; do
+		for tdev in br-lan eth0 eth1 dae0 dae0peer pppoe-wan; do
 			[ -d "/sys/class/net/$tdev" ] || continue
 			echo ">> tc filter dev ${tdev} ingress/egress:"
 			tc filter show dev "$tdev" ingress 2>/dev/null || true

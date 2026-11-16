@@ -142,7 +142,8 @@ apply_sysctl_tweaks() {
 	# 开启 MPTCP 多路径 TCP 支持 (Linux 6.18 原生特性)
 	sysctl -w net.mptcp.enabled=1 >/dev/null 2>&1 || true
 
-	# 调大 Conntrack Hash 桶深至 262144 (对应 104 万最大连接，保证 1:4 黄金哈希命中率，消除 CPU 查表瓶颈)
+	# 调大 Conntrack 连接表上限至 1048576 与 Hash 桶深至 262144 (消除 CPU 查表瓶颈与并发连接被截断)
+	sysctl -w net.netfilter.nf_conntrack_max=1048576 >/dev/null 2>&1 || true
 	for hash_file in /sys/module/nf_conntrack/parameters/hashsize /proc/sys/net/netfilter/nf_conntrack_buckets; do
 		[ -f "$hash_file" ] || continue
 		echo 262144 >"$hash_file" 2>/dev/null || true
@@ -350,7 +351,7 @@ apply_queue_tuning() {
 # 为核心网络与代理解析守护进程赋予 OOM 免死保护 (-900) 与高 CPU 调度权重，保障极端高负载下绝不断网
 apply_daemon_protection() {
 	local proc pid
-	for proc in dnsmasq smartdns sing-box honk lucky; do
+	for proc in dnsmasq smartdns sing-box honk honk-core lucky; do
 		for pid in $(pidof "$proc" 2>/dev/null); do
 			[ -w "/proc/$pid/oom_score_adj" ] && echo -900 >"/proc/$pid/oom_score_adj" 2>/dev/null || true
 			renice -n -5 -p "$pid" >/dev/null 2>&1 || true
