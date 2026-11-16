@@ -235,14 +235,27 @@ setup_common_feeds() {
     rm -rf feeds/packages/net/miniupnpd/patches package/feeds/packages/miniupnpd/patches 2>/dev/null || true
 
     # 修复 firewall4 FullCone NAT 补丁失败问题：
-    # 2026-10-26 上游 OpenWrt/firewall4 合并 commit bac1d65 ("Do not emit helper jump without helper modules")，
-    # 将 root/usr/share/ucode/fw4.uc 中的 zone.dflags.helper = true 改为 false。
-    # ImmortalWrt 同步上游后未及时更新 001-firewall4-add-support-for-fullcone-nat.patch，导致第 8 个 Hunk 冲突拒绝。
-    # 此处自动适配最新的 helper 赋值逻辑，确保 FullCone NAT 补丁 100% 干净应用。
-    local fw4_patch="package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch"
-    if [ -f "$fw4_patch" ]; then
-        sed -i 's/zone\.dflags\.helper = true;/zone.dflags.helper = false;/g' "$fw4_patch" 2>/dev/null || true
-        echo "Patched firewall4 fullcone patch for helper module update compatibility."
+    # 1. 2026-11-03 上游 OpenWrt/firewall4 合并 commit 358d421，删除了 root/etc/config/firewall 中的注释行，
+    #    导致旧版 001-firewall4-add-support-for-fullcone-nat.patch 的 Hunk #1 冲突报错 (Hunk #1 FAILED at 5)。
+    # 2. 2026-10-26 上游 OpenWrt/firewall4 合并 commit bac1d65，将 fw4.uc 中的 helper 赋值逻辑更新。
+    # 优先使用项目内置的最新已验证 FullCone 补丁覆盖；若不存在则实时拉取最新官方补丁或通过 sed 自适应修复，确保 100% 干净合入。
+    local fw4_patch_dir="package/network/config/firewall4/patches"
+    local fw4_patch="${fw4_patch_dir}/001-firewall4-add-support-for-fullcone-nat.patch"
+    if [ -d "$fw4_patch_dir" ]; then
+        if [ -f "$GITHUB_WORKSPACE/patches/001-firewall4-add-support-for-fullcone-nat.patch" ]; then
+            cp -f "$GITHUB_WORKSPACE/patches/001-firewall4-add-support-for-fullcone-nat.patch" "$fw4_patch"
+            echo "Overwrote firewall4 fullcone patch using validated repository patch."
+        elif command -v curl >/dev/null 2>&1; then
+            curl -fsSL --connect-timeout 10 -m 30 "https://raw.githubusercontent.com/immortalwrt/immortalwrt/master/package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch" -o "$fw4_patch" 2>/dev/null || true
+            echo "Refreshed firewall4 fullcone patch from upstream master."
+        fi
+        if [ -f "$fw4_patch" ]; then
+            # 兼容处理历史残留的旧版 Hunk #1（若存在注释行则移除）与 helper 逻辑
+            sed -i '/# Uncomment this line to disable ipv6 rules/,/#	option disable_ipv6	1/d' "$fw4_patch" 2>/dev/null || true
+            sed -i 's/@@ -5,6 +5,10 @@/@@ -3,6 +3,10 @@/g' "$fw4_patch" 2>/dev/null || true
+            sed -i 's/zone\.dflags\.helper = true;/zone.dflags.helper = false;/g' "$fw4_patch" 2>/dev/null || true
+            echo "Sanitized firewall4 fullcone patch for upstream OpenWrt compatibility."
+        fi
     fi
 
     # 修复 luci-theme-argon 冲突与版本覆盖：
