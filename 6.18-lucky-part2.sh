@@ -1,12 +1,50 @@
 #!/bin/bash
+# ==============================================================================
+# 6.18-lucky 专属独立 Part 2 编译脚本（完全独立，不共用 common-proxy-verification.sh 与 files/）
+# ==============================================================================
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${script_dir}/common-proxy-verification.sh"
 
 target_kernel_series="6.18"
 target_default_ip="192.168.0.245"
 target_hostname="EAY-LUCKY"
+
+verify_lucky_stack() {
+    echo ""
+    echo "=== Verifying LUCKY standalone package stack ==="
+
+    rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+    rm -rf package/feeds/luci/luci-theme-argon feeds/luci/themes/luci-theme-argon 2>/dev/null || true
+    sed -i '/CONFIG_PACKAGE_luci-app-argon-config=/d' .config 2>/dev/null || true
+    echo "# CONFIG_PACKAGE_luci-app-argon-config is not set" >> .config
+
+    grep -q '^CONFIG_PACKAGE_lucky=y' .config || { echo "ERROR: lucky is disabled in .config"; exit 1; }
+    grep -q '^CONFIG_PACKAGE_luci-app-lucky=y' .config || { echo "ERROR: luci-app-lucky is disabled in .config"; exit 1; }
+    [ -d "package/lucky" ] || { echo "ERROR: Lucky package source not found in package/lucky"; exit 1; }
+
+    local forbidden_pkgs=(
+        "CONFIG_PACKAGE_luci-app-homeproxy"
+        "CONFIG_PACKAGE_sing-box"
+        "CONFIG_PACKAGE_smartdns"
+        "CONFIG_PACKAGE_luci-app-smartdns"
+        "CONFIG_PACKAGE_luci-app-sqm"
+        "CONFIG_PACKAGE_sqm-scripts"
+        "CONFIG_PACKAGE_luci-app-upnp"
+        "CONFIG_PACKAGE_miniupnpd"
+        "CONFIG_PACKAGE_luci-app-wol"
+        "CONFIG_PACKAGE_etherwake"
+    )
+
+    for pkg in "${forbidden_pkgs[@]}"; do
+        if grep -q "^${pkg}=y" .config; then
+            echo "ERROR: ${pkg} should be disabled in LUCKY build, but is enabled!"
+            exit 1
+        fi
+    done
+
+    echo "LUCKY standalone stack verified successfully."
+}
 
 config_is_enabled() {
     local key="$1"
@@ -177,12 +215,16 @@ sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-se
 echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
 echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
 
-# 清理 Lucky 专属版本不需要的 HomeProxy / SmartDNS 预置配置文件与通用代理脚本，
-# 防止 99-system-performance 覆写 Lucky 的 IPv6 双栈支持与专属入站 sysctl 参数
-rm -f files/etc/config/homeproxy files/etc/config/smartdns files/etc/uci-defaults/99-system-performance files/etc/init.d/dns-preload 2>/dev/null || true
+# 彻底重置 openwrt/files 并仅从专属目录 lucky-files/ 复制，做到与其它固件 100% 物理隔离
+rm -rf files
+mkdir -p files/etc/sysctl.d files/etc/uci-defaults
+if [ -d "${script_dir}/lucky-files" ]; then
+    cp -a "${script_dir}/lucky-files/." files/
+    chmod +x files/etc/init.d/performance-mode files/usr/bin/openwrt-diag 2>/dev/null || true
+    echo "Loaded isolated rootfs overlay from lucky-files/."
+fi
 
 # 注入针对外网访问内网服务的专属内核与网络优化
-mkdir -p files/etc/sysctl.d files/etc/uci-defaults
 
 cat << 'EOF' > files/etc/sysctl.d/99-lucky-inbound.conf
 # ==============================================================================

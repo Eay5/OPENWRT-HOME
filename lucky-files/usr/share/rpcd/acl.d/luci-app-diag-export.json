@@ -1,0 +1,22 @@
+{
+	"luci-app-diag-export": {
+		"description": "Grant access to OpenWrt runtime diagnostics and one-click log exporter",
+		"read": {
+			"cgi-io": [ "exec" ],
+			"file": {
+				"/usr/bin/openwrt-diag": [ "exec" ],
+				"/usr/bin/openwrt-diag *": [ "exec" ],
+				"/tmp/openwrt-diag-latest.txt": [ "read" ]
+			},
+			"ubus": {
+				"file": [ "exec", "read", "stat" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/tmp/openwrt-diag-latest.txt": [ "write" ]
+			}
+		}
+	}
+}
+

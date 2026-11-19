@@ -28,22 +28,1047 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   build:
-    uses: ./.github/workflows/reusable-openwrt-build.yml
-    secrets: inherit
-    with:
-      runner: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
-      enable_ssh: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh' }}
-      config_file: 6.18-lucky.config
-      diy_p1_sh: 6.18-lucky-part1.sh
-      diy_p2_sh: 6.18-lucky-part2.sh
-      kernel_series: "6.18"
-      firmware_artifact_prefix: ImmortalWrt-6.18-LUCKY
-      bin_artifact_prefix: ImmortalWrt_bin-LUCKY
-      release_tag_prefix: "LUCKY-"
-      release_title_template: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版]{{custom_tag}} {{build_time}}"
-      custom_firmware_tag: ${{ github.event.inputs.custom_name || '' }}
-      extra_feed_packages: lucky luci-app-lucky
-      config_sync_mode: lucky
-      repo_branch: master
+    runs-on: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
+    timeout-minutes: 180
+    permissions:
+      actions: write
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 中文注释：已移除 setup-node / setup-go。它们安装在 /opt/hostedtoolcache，随后会被下方清理磁盘步骤删除，
+      # 而 OpenWrt 自带 golang 宿主编译链，不依赖 Runner 上的 Go，因此这两步纯属浪费时间。
+
+      - name: Free disk space & setup build environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NCURSES_PACKAGE: libncurses-dev
+        run: |
+          echo "=== 1. Freeing disk space ==="
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /opt/hostedtoolcache
+          sudo rm -rf /usr/local/share/powershell /usr/share/swift /opt/microsoft /usr/lib/jvm
+          sudo systemctl stop docker 2>/dev/null || true
+          sudo rm -rf /var/lib/docker 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -hT
+
+          echo "=== 2. Creating 6G Swap space to avoid GCC 14 OOM ==="
+          sudo swapoff -a 2>/dev/null || true
+          sudo rm -f /swapfile 2>/dev/null || true
+          sudo fallocate -l 6G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=6144
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+          echo "=== 3. Installing dependencies ==="
+          sudo -E apt update
+          sudo -E apt -y --no-install-recommends install build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git "${NCURSES_PACKAGE}" libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget curl jq pigz zstd \
+            llvm python3-pyelftools libpython3-dev ccache dwarves \
+            libelf-dev libbpf-dev pkg-config device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+            autoconf automake libtool cmake ninja-build meson python3-pip
+          sudo ln -sf "/usr/share/zoneinfo/${TZ:-Asia/Shanghai}" /etc/localtime
+          echo "${TZ:-Asia/Shanghai}" | sudo tee /etc/timezone >/dev/null
+          sudo mkdir -p /workdir
+          sudo chown "${USER:-runner}:$(id -gn 2>/dev/null || echo runner)" /workdir 2>/dev/null || true
+          echo "BUILD_ID=$(date +%Y%m%d%H%M%S)-$RANDOM" >> "$GITHUB_ENV"
+
+      - name: Clone OpenWrt source
+        run: |
+          df -hT "$PWD"
+          for attempt in 1 2 3; do
+            rm -rf openwrt 2>/dev/null || true
+            if git clone --depth 1 --single-branch "$REPO_URL" -b "$REPO_BRANCH" openwrt; then
+              break
+            fi
+            echo "克隆 OpenWrt 源码失败 (第 ${attempt}/3 次)，5 秒后重试..."
+            sleep 5
+          done
+          [ -d "openwrt/.git" ] || { echo "ERROR: 无法克隆 OpenWrt 源码"; exit 1; }
+
+      - name: Prepare build directories
+        run: |
+          cd openwrt
+          rm -rf staging_dir build_dir bin tmp
+          mkdir -p dl bin staging_dir build_dir .ccache
+
+      - name: Set cache scopes
+        id: cache_scope
+        run: |
+          echo "dl_scope=$(date +%Y%m)" >> "$GITHUB_OUTPUT"
+          echo "ccache_scope=$(date +%G%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore download cache
+        id: restore_dl_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.dl_scope }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.dl_scope }}-
+            ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ env.CONFIG_FILE }}-
+            ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ steps.cache_scope.outputs.dl_scope }}-
+            ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-
+            ${{ runner.os }}-openwrt-dl-
+
+      - name: Purge stale Go module cache entries
+        run: |
+          rm -rf openwrt/dl/go-mod-cache/google.golang.org/protobuf@*
+          rm -rf openwrt/dl/go-mod-cache/cache/download/google.golang.org/protobuf
+          rm -rf openwrt/dl/go-mod-cache/github.com/urlesistiana
+          rm -rf openwrt/dl/go-mod-cache/cache/download/github.com/urlesistiana
+
+      - name: Restore ccache
+        id: restore_ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/.ccache
+          key: ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.ccache_scope }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ env.CONFIG_FILE }}-${{ steps.cache_scope.outputs.ccache_scope }}-
+            ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ env.CONFIG_FILE }}-
+            ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-${{ steps.cache_scope.outputs.ccache_scope }}-
+            ${{ runner.os }}-openwrt-ccache-${{ env.KERNEL_SERIES }}-
+            ${{ runner.os }}-openwrt-ccache-
+
+      - name: Configure ccache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=max_size="${CCACHE_MAXSIZE}" || true
+          # 中文注释：由于每次 CI 都会从源码重新构建交叉编译器 (make toolchain/install)，生成的 gcc 二进制既会改变 mtime 也会因构建元数据改变二进制哈希 (content)。
+          # 因此采用 "%compiler% -dumpmachine; %compiler% -dumpversion" 校验编译器目标架构与版本号，配合忽略绝对路径哈希 (hash_dir=false) 与时间戳放宽，
+          # 使跨次 CI 构建的交叉编译产物真正实现 85%+ 缓存命中率！
+          ccache --set-config=compiler_check="%compiler% -dumpmachine; %compiler% -dumpversion" || true
+          ccache --set-config=hash_dir=false || true
+          ccache --set-config=compression=true || true
+          ccache --set-config=compression_level=6 || true
+          ccache --set-config=sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime || true
+          ccache -s || true
+
+      - name: Validate custom files
+        run: |
+          ls -l "$GITHUB_WORKSPACE/"
+          [ -f "$CONFIG_FILE" ] && echo "$CONFIG_FILE found" || { echo "$CONFIG_FILE not found"; exit 1; }
+          [ -f "$DIY_P1_SH" ] && echo "$DIY_P1_SH found" || { echo "$DIY_P1_SH not found"; exit 1; }
+          [ -f "$DIY_P2_SH" ] && echo "$DIY_P2_SH found" || { echo "$DIY_P2_SH not found"; exit 1; }
+
+      - name: Load custom feeds
+        run: |
+          [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+          chmod +x "$DIY_P1_SH"
+          cd openwrt
+          "$GITHUB_WORKSPACE/$DIY_P1_SH"
+
+      - name: Install feed packages
+        run: |
+          cd openwrt
+          ./scripts/feeds install -a -f
+
+          # 修复 miniupnpd 2.3.11 编译补丁冲突
+          rm -rf package/feeds/packages/miniupnpd/patches feeds/packages/net/miniupnpd/patches 2>/dev/null || true
+
+          # 修复 firewall4 FullCone NAT 补丁与上游 commit bac1d65 冲突
+          sed -i 's/zone\.dflags\.helper = true;/zone.dflags.helper = false;/g' package/network/config/firewall4/patches/001-firewall4-add-support-for-fullcone-nat.patch 2>/dev/null || true
+
+          # 修复 luci-theme-argon 与独立旧版 luci-app-argon-config 冲突及 feed 覆盖，动态检测并应用最新版本号
+          rm -rf package/feeds/luci/luci-app-argon-config feeds/luci/applications/luci-app-argon-config package/luci-app-argon-config 2>/dev/null || true
+          rm -rf package/feeds/luci/luci-theme-argon feeds/luci/themes/luci-theme-argon 2>/dev/null || true
+          if [ -d "package/luci-theme-argon" ]; then
+            argon_ver=$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/luci-theme-argon/Makefile 2>/dev/null | tr -d '\r' | head -n 1)
+            argon_ver="${argon_ver:-3.1.1}"
+            argon_ver="${argon_ver#v}"
+            echo "Using dynamically detected Argon package (v${argon_ver}) from package/luci-theme-argon."
+            find package/luci-theme-argon -type f \( -name "footer*.ut" -o -name "footer*.htm" \) -exec sed -i -E \
+              -e "s/\\{# vPKG_VERSION #\\}/v${argon_ver}/g" \
+              -e "s/\\{# PKG_VERSION #\\}/${argon_ver}/g" \
+              -e "s/v3\.0\.0/v${argon_ver}/g" {} + 2>/dev/null || true
+          fi
+
+          if [ -f "package/smartdns/Makefile" ] || [ -d "package/smartdns" ]; then
+            echo "Using locally pinned SmartDNS packages from package/."
+            rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns package/feeds/*/*/smartdns package/feeds/*/*/luci-app-smartdns 2>/dev/null || true
+          fi
+
+          if [ -f "package/homeproxy/Makefile" ] || [ -d "package/homeproxy" ]; then
+            echo "Using locally pinned HomeProxy packages from package/."
+            rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy package/feeds/*/*/luci-app-homeproxy 2>/dev/null || true
+            if [ -f "$GITHUB_WORKSPACE/common-feed-setup.sh" ]; then
+              source "$GITHUB_WORKSPACE/common-feed-setup.sh"
+              patch_homeproxy_customizations 2>/dev/null || true
+            fi
+          fi
+
+          if [ -d "package/mosdns" ] || [ -f "package/mosdns/Makefile" ]; then
+            echo "Using locally pinned MosDNS packages from package/."
+            rm -rf package/feeds/packages/mosdns package/feeds/luci/luci-app-mosdns package/feeds/*/mosdns package/feeds/*/luci-app-mosdns package/feeds/*/*/mosdns package/feeds/*/*/luci-app-mosdns 2>/dev/null || true
+          fi
+
+          if [ -d "package/lucky" ] || [ -f "package/lucky/lucky/Makefile" ]; then
+            echo "Using locally pinned Lucky packages from package/."
+            rm -rf package/feeds/packages/lucky package/feeds/luci/luci-app-lucky package/feeds/*/lucky package/feeds/*/luci-app-lucky package/feeds/*/*/lucky package/feeds/*/*/luci-app-lucky 2>/dev/null || true
+          fi
+
+          if [ -d "package/openwrt-honk" ] || [ -d "package/honk" ]; then
+            echo "Using locally pinned Honk packages from package/openwrt-honk."
+            rm -rf package/feeds/*/honk package/feeds/*/luci-app-honk package/feeds/*/*/honk package/feeds/*/*/luci-app-honk 2>/dev/null || true
+          fi
+
+          if [ -n "${EXTRA_FEED_PACKAGES}" ]; then
+            ./scripts/feeds install -f ${EXTRA_FEED_PACKAGES}
+          fi
+
+          # 中文注释：极为关键！./scripts/feeds install -f 会再次把 feeds/luci 或 feeds/packages 里的旧版软链接创建到 package/feeds/ 下，
+          # 必须在它执行之后再次清除同名 feed 软链接，确保 100% 编译我们在 package/ 下拉取的最新版 HomeProxy / SmartDNS / Lucky / Honk / Argon！
+          rm -rf package/feeds/luci/luci-app-argon-config package/feeds/luci/luci-theme-argon 2>/dev/null || true
+          [ -d "package/smartdns" ] && rm -rf package/feeds/packages/smartdns package/feeds/luci/luci-app-smartdns package/feeds/*/smartdns package/feeds/*/luci-app-smartdns 2>/dev/null || true
+          [ -d "package/homeproxy" ] && rm -rf package/feeds/luci/luci-app-homeproxy package/feeds/*/luci-app-homeproxy 2>/dev/null || true
+          [ -d "package/lucky" ] && rm -rf package/feeds/packages/lucky package/feeds/luci/luci-app-lucky package/feeds/*/lucky package/feeds/*/luci-app-lucky 2>/dev/null || true
+          { [ -d "package/openwrt-honk" ] || [ -d "package/honk" ]; } && rm -rf package/feeds/*/honk package/feeds/*/luci-app-honk 2>/dev/null || true
+
+      - name: Load custom config
+        run: |
+          [ -e lucky-files ] && cp -a lucky-files openwrt/files
+          [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+          chmod +x "$DIY_P2_SH"
+          cd openwrt
+          "$GITHUB_WORKSPACE/$DIY_P2_SH"
+          chmod -R +x files/etc/init.d/ files/etc/uci-defaults/ files/etc/board.d/ files/usr/bin/ 2>/dev/null || true
+
+      - name: Sync config
+        run: |
+          cd openwrt
+
+          # 中文注释：覆盖 .config 中的指定开关，避免 make defconfig 继承旧值。
+          ensure_config() {
+            local key="$1"
+            local value="$2"
+
+            sed -i "/^${key}=.*/d" .config
+            sed -i "/^# ${key} is not set$/d" .config
+            echo "${key}=${value}" >> .config
+          }
+
+          make defconfig
+
+          case "${CONFIG_SYNC_MODE}" in
+            basic)
+              ;;
+            proxy_stack_required)
+              echo "Reapplying required proxy packages..."
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-i18n-opkg-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc n
+              ensure_config CONFIG_PACKAGE_luci-i18n-turboacc-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING n
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA n
+              ensure_config CONFIG_PACKAGE_luci-compat y
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy y
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn y
+              ensure_config CONFIG_PACKAGE_sing-box y
+              ensure_config CONFIG_PACKAGE_sing-geoip y
+              ensure_config CONFIG_PACKAGE_sing-geosite y
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
+              make defconfig
+              grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
+              ;;
+            homeproxy|homeproxy_618|passwall|passwall_618|ssr_plus_612)
+              echo "Reapplying forced package toggles for HomeProxy & SmartDNS..."
+              # 中文注释：必须开启 CONFIG_DEVEL 与 CONFIG_TARGET_OPTIONS，否则 OpenWrt 的 Kconfig 会在 make defconfig 时
+              # 直接清空 CONFIG_CCACHE 与 CONFIG_TARGET_OPTIMIZATION="-O2 -pipe -march=x86-64-v2"，导致固件回退到 -Os 且 ccache 失效！
+              ensure_config CONFIG_DEVEL y
+              ensure_config CONFIG_CCACHE y
+              ensure_config CONFIG_TARGET_OPTIONS y
+              ensure_config CONFIG_TARGET_OPTIMIZATION '"-O2 -pipe -march=x86-64-v2"'
+              ensure_config CONFIG_PACKAGE_ksmbd-server n
+              ensure_config CONFIG_PACKAGE_ksmbd-utils n
+              ensure_config CONFIG_PACKAGE_luci-app-ksmbd n
+              ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
+              ensure_config CONFIG_PACKAGE_autosamba n
+              ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+              # 中文注释：明确移除“网络唤醒”插件和底层唤醒命令，避免默认项把页面带回固件。
+              ensure_config CONFIG_PACKAGE_luci-app-wol n
+              ensure_config CONFIG_PACKAGE_etherwake n
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-i18n-opkg-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc n
+              ensure_config CONFIG_PACKAGE_luci-i18n-turboacc-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_OFFLOADING n
+              ensure_config CONFIG_PACKAGE_luci-app-turboacc_INCLUDE_BBR_CCA n
+              ensure_config CONFIG_PACKAGE_luci-compat y
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy y
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn y
+              ensure_config CONFIG_PACKAGE_sing-box y
+              ensure_config CONFIG_PACKAGE_sing-geoip y
+              ensure_config CONFIG_PACKAGE_sing-geosite y
+              ensure_config CONFIG_PACKAGE_kmod-tun y
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
+              ensure_config CONFIG_PACKAGE_libpcre2 y
+              ensure_config CONFIG_PACKAGE_coreutils y
+              ensure_config CONFIG_PACKAGE_coreutils-base64 y
+              ensure_config CONFIG_PACKAGE_ip-full y
+              ensure_config CONFIG_PACKAGE_jq y
+              ensure_config CONFIG_PACKAGE_xz y
+              ensure_config CONFIG_PACKAGE_xz-utils y
+              ensure_config CONFIG_PACKAGE_liblzma y
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_nping y
+              # 中文注释：启用 TLS 1.3 / AEAD / ChaCha20-Poly1305 / AES-GCM 硬件加密加速，提升 Sing-box 代理吞吐。
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aes y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-x86 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aead y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-gcm y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-ghash y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-chacha20poly1305 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha256 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha512 y
+              # 中文注释：给 Turbo ACC/TCP 调优提供更多可选拥塞控制算法，默认仍由启动脚本使用 BBR。
+              ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-hybla y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-scalable y
+              make defconfig
+              grep -q '^CONFIG_CCACHE=y' .config || { echo 'CONFIG_CCACHE was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_TARGET_OPTIMIZATION="-O2 -pipe -march=x86-64-v2"' .config || { echo 'CONFIG_TARGET_OPTIMIZATION was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was dropped during defconfig'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_etherwake=y' .config || { echo 'etherwake was unexpectedly enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_libpcre2=y' .config || { echo 'libpcre2 was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_xz=y' .config || { echo 'xz was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_xz-utils=y' .config || { echo 'xz-utils was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_liblzma=y' .config || { echo 'liblzma was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_kmod-tcp-bbr=y' .config || { echo 'kmod-tcp-bbr was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_kmod-tcp-hybla=y' .config || { echo 'kmod-tcp-hybla was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_kmod-tcp-scalable=y' .config || { echo 'kmod-tcp-scalable was not enabled'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was dropped during defconfig'; exit 1; }
+              ;;
+            lucky)
+              echo "Reapplying forced package toggles for dedicated LUCKY build..."
+              ensure_config CONFIG_DEVEL y
+              ensure_config CONFIG_CCACHE y
+              ensure_config CONFIG_TARGET_OPTIONS y
+              ensure_config CONFIG_TARGET_OPTIMIZATION '"-O2 -pipe -march=x86-64-v2"'
+              ensure_config CONFIG_PACKAGE_ksmbd-server n
+              ensure_config CONFIG_PACKAGE_ksmbd-utils n
+              ensure_config CONFIG_PACKAGE_luci-app-ksmbd n
+              ensure_config CONFIG_PACKAGE_kmod-fs-ksmbd n
+              ensure_config CONFIG_PACKAGE_autosamba n
+              ensure_config CONFIG_PACKAGE_luci-app-nlbwmon n
+              ensure_config CONFIG_PACKAGE_luci-app-wol n
+              ensure_config CONFIG_PACKAGE_etherwake n
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy n
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn n
+              ensure_config CONFIG_PACKAGE_sing-box n
+              ensure_config CONFIG_PACKAGE_sing-geoip n
+              ensure_config CONFIG_PACKAGE_sing-geosite n
+              ensure_config CONFIG_PACKAGE_ucode-mod-math n
+              ensure_config CONFIG_PACKAGE_smartdns n
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns n
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-sqm n
+              ensure_config CONFIG_PACKAGE_luci-i18n-sqm-zh-cn n
+              ensure_config CONFIG_PACKAGE_sqm-scripts n
+              ensure_config CONFIG_PACKAGE_kmod-sched-cake n
+              ensure_config CONFIG_PACKAGE_kmod-sched-core y
+              ensure_config CONFIG_PACKAGE_kmod-sched y
+              ensure_config CONFIG_PACKAGE_miniupnpd n
+              ensure_config CONFIG_PACKAGE_luci-app-upnp n
+              ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn n
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-i18n-opkg-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-compat y
+              ensure_config CONFIG_PACKAGE_lucky y
+              ensure_config CONFIG_PACKAGE_luci-app-lucky y
+              ensure_config CONFIG_PACKAGE_luci-i18n-lucky-zh-cn y
+              ensure_config CONFIG_PACKAGE_ca-bundle y
+              ensure_config CONFIG_PACKAGE_ca-certificates y
+              ensure_config CONFIG_PACKAGE_curl y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aes y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-x86 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aead y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-gcm y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-ghash y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-chacha20poly1305 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha256 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha512 y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
+              ensure_config CONFIG_PACKAGE_kmod-nft-offload y
+              ensure_config CONFIG_PACKAGE_kmod-nft-nat y
+              ensure_config CONFIG_PACKAGE_iptables-nft y
+              ensure_config CONFIG_PACKAGE_ip6tables-nft y
+              make defconfig
+              grep -q '^CONFIG_CCACHE=y' .config || { echo 'CONFIG_CCACHE was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_TARGET_OPTIMIZATION="-O2 -pipe -march=x86-64-v2"' .config || { echo 'CONFIG_TARGET_OPTIMIZATION was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_lucky=y' .config || { echo 'lucky was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-lucky=y' .config || { echo 'luci-app-lucky was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_iptables-nft=y' .config || { echo 'iptables-nft was dropped during defconfig'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_smartdns=y' .config || { echo 'smartdns was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-smartdns=y' .config || { echo 'luci-app-smartdns was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-sqm=y' .config || { echo 'luci-app-sqm was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-upnp=y' .config || { echo 'luci-app-upnp was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_miniupnpd=y' .config || { echo 'miniupnpd was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
+              ;;
+            honk)
+              echo "Reapplying forced package toggles for HONK (eBPF) build..."
+              ensure_config CONFIG_DEVEL y
+              ensure_config CONFIG_CCACHE y
+              ensure_config CONFIG_TARGET_OPTIONS y
+              ensure_config CONFIG_TARGET_OPTIMIZATION '"-O2 -pipe -march=x86-64-v2"'
+              # 开启内核 BTF 导出，供 honk eBPF CO-RE 重定位
+              # 中文注释：顶层 .config 必须使用 KERNEL_ 前缀，且 BTF 依赖完整 DEBUG_INFO（非 REDUCED）
+              ensure_config CONFIG_KERNEL_DEBUG_INFO y
+              ensure_config CONFIG_KERNEL_DEBUG_INFO_REDUCED n
+              ensure_config CONFIG_KERNEL_DEBUG_INFO_BTF y
+              ensure_config CONFIG_KERNEL_MODULE_ALLOW_BTF_MISMATCH y
+              ensure_config CONFIG_PACKAGE_vmlinux-btf y
+              ensure_config CONFIG_PACKAGE_libstdcpp y
+              ensure_config CONFIG_PACKAGE_kmod-sched-core y
+              ensure_config CONFIG_PACKAGE_kmod-sched-bpf y
+              ensure_config CONFIG_PACKAGE_kmod-veth y
+              ensure_config CONFIG_PACKAGE_kmod-nft-core y
+              ensure_config CONFIG_PACKAGE_kmod-nft-queue y
+              ensure_config CONFIG_PACKAGE_kmod-nfnetlink-queue y
+              ensure_config CONFIG_PACKAGE_kmod-nf-conntrack y
+              ensure_config CONFIG_PACKAGE_ca-bundle y
+              ensure_config CONFIG_PACKAGE_ip-full y
+              ensure_config CONFIG_PACKAGE_kmod y
+              ensure_config CONFIG_PACKAGE_coreutils y
+              ensure_config CONFIG_PACKAGE_coreutils-stat y
+              ensure_config CONFIG_PACKAGE_coreutils-base64 y
+              ensure_config CONFIG_PACKAGE_jsonfilter y
+              ensure_config CONFIG_PACKAGE_jshn y
+              ensure_config CONFIG_PACKAGE_usign y
+              ensure_config CONFIG_PACKAGE_ubus y
+              ensure_config CONFIG_PACKAGE_rpcd y
+              ensure_config CONFIG_PACKAGE_cgi-io y
+              ensure_config CONFIG_PACKAGE_sqlite3-cli y
+              ensure_config CONFIG_PACKAGE_v2ray-geoip y
+              ensure_config CONFIG_PACKAGE_v2ray-geosite y
+              ensure_config CONFIG_PACKAGE_honk y
+              ensure_config CONFIG_PACKAGE_luci-app-honk y
+              # 彻底剔除 HomeProxy 与 sing-box 相关组件
+              ensure_config CONFIG_PACKAGE_luci-app-homeproxy n
+              ensure_config CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn n
+              ensure_config CONFIG_PACKAGE_sing-box n
+              ensure_config CONFIG_PACKAGE_sing-geoip n
+              ensure_config CONFIG_PACKAGE_sing-geosite n
+              ensure_config CONFIG_PACKAGE_ucode-mod-math n
+              ensure_config CONFIG_PACKAGE_luci-app-passwall n
+              ensure_config CONFIG_PACKAGE_mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-mosdns n
+              ensure_config CONFIG_PACKAGE_luci-app-wol n
+              ensure_config CONFIG_PACKAGE_etherwake n
+              # 确保 SmartDNS 正常支持
+              ensure_config CONFIG_PACKAGE_smartdns y
+              ensure_config CONFIG_PACKAGE_smartdns-ui n
+              ensure_config CONFIG_PACKAGE_luci-app-smartdns y
+              ensure_config CONFIG_PACKAGE_luci-i18n-smartdns-zh-cn y
+              # 核心基础与语言包
+              ensure_config CONFIG_LUCI_LANG_zh_Hans y
+              ensure_config CONFIG_LUCI_LANG_zh_CN y
+              ensure_config CONFIG_PACKAGE_luci-i18n-base-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-i18n-firewall-zh-cn y
+              ensure_config CONFIG_PACKAGE_luci-app-argon-config n
+              ensure_config CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-i18n-opkg-zh-cn n
+              ensure_config CONFIG_PACKAGE_luci-compat y
+              # 硬件加速与网络性能
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aes y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-x86 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-aead y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-gcm y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-ghash y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-chacha20poly1305 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha256 y
+              ensure_config CONFIG_PACKAGE_kmod-crypto-sha512 y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-bbr y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-hybla y
+              ensure_config CONFIG_PACKAGE_kmod-tcp-scalable y
+              ensure_config CONFIG_PACKAGE_kmod-nft-offload y
+              make defconfig
+              grep -q '^CONFIG_CCACHE=y' .config || { echo 'CONFIG_CCACHE was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_TARGET_OPTIMIZATION="-O2 -pipe -march=x86-64-v2"' .config || { echo 'CONFIG_TARGET_OPTIMIZATION was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y' .config || { echo 'CONFIG_KERNEL_DEBUG_INFO_BTF was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_honk=y' .config || { echo 'honk was dropped during defconfig'; exit 1; }
+              grep -q '^CONFIG_PACKAGE_luci-app-honk=y' .config || { echo 'luci-app-honk was dropped during defconfig'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-homeproxy=y' .config || { echo 'luci-app-homeproxy was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_sing-box=y' .config || { echo 'sing-box was unexpectedly enabled'; exit 1; }
+              ! grep -q '^CONFIG_PACKAGE_luci-app-wol=y' .config || { echo 'luci-app-wol was unexpectedly enabled'; exit 1; }
+              ;;
+            *)
+              echo "Unknown config sync mode: ${CONFIG_SYNC_MODE}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Build tools and toolchain
+        run: |
+          cd openwrt
+          echo "Building tools..."
+          if ! make tools/install -j"$(nproc)" 2>&1 | tee tools_install.log; then
+            echo "Parallel tools build failed, retrying with single job..."
+            make tools/install -j1 V=s 2>&1 | tee -a tools_install.log
+          fi
+
+          echo "Building toolchain..."
+          if ! make toolchain/install -j"$(nproc)" 2>&1 | tee toolchain_install.log; then
+            echo "Parallel toolchain build failed, retrying with single job..."
+            make toolchain/install -j1 V=s 2>&1 | tee -a toolchain_install.log
+          fi
+
+          echo "Freeing disk space consumed by intermediate toolchain objects..."
+          find build_dir/toolchain-* -type f \( -name "*.o" -o -name "*.la" -o -name "*.lo" \) -delete 2>/dev/null || true
+          df -hT
+
+      - name: Upload toolchain logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lucky-toolchain-logs-ImmortalWrt-6.18-LUCKY-${{ env.BUILD_ID }}
+          retention-days: 3
+          path: |
+            openwrt/tools_install.log
+            openwrt/toolchain_install.log
+
+      - name: SSH connection to Actions
+        if: (github.event_name == 'workflow_dispatch' && github.event.inputs.ssh == 'true') || github.event.action == 'ssh'
+        uses: P3TERX/ssh2actions@v1.0.0
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: Download packages
+        id: package
+        run: |
+          cd openwrt
+          echo "Downloading packages..."
+          for i in 1 2 3 4 5; do
+            echo "=== Download attempt $i/5 ==="
+            make download -j8 2>&1 | tee -a download.log && break
+            echo "Download failed, removing broken files before retry..."
+            find dl -path 'dl/go-mod-cache' -prune -o -type f -size -1024c -exec rm -f {} \;
+            sleep 10
+          done
+          find dl -path 'dl/go-mod-cache' -prune -o -type f -size -1024c -exec ls -l {} \;
+          find dl -path 'dl/go-mod-cache' -prune -o -type f -size -1024c -exec rm -f {} \;
+
+      - name: Check disk space
+        run: |
+          df -hT
+
+      - name: Compile firmware
+        id: compile
+        run: |
+          set -o pipefail
+          cd openwrt
+          echo "=== Pre-compile Disk Space ==="
+          df -hT .
+
+          echo "Starting build with $(nproc) threads"
+          if make -j"$(nproc)" 2>&1 | tee build.log; then
+            echo "Build succeeded"
+          elif make -j1 V=s 2>&1 | tee -a build.log; then
+            echo "Single-thread build retry succeeded"
+          else
+            echo "Build failed"
+            echo "=== Disk Space on Failure ==="
+            df -hT .
+            echo "=== 详细失败错误日志 (最后 60 行) ==="
+            tail -n 60 build.log 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "=== Post-compile Disk Space ==="
+          df -hT .
+          ccache -s || true
+
+          echo "Checking generated firmware:"
+          ls -la bin/targets/*/* || echo "No firmware generated in bin/targets"
+          echo "status=success" >> "$GITHUB_ENV"
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -E 's/.*DEVICE_(.*)=y/\1/' | head -n 1 > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> "$GITHUB_ENV"
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M%S")" >> "$GITHUB_ENV"
+          echo "BUILD_TIME_DISPLAY=$(date +"%Y-%m-%d %H:%M:%S %Z")" >> "$GITHUB_ENV"
+          echo "BUILD_TIME_ISO=$(date -Iseconds)" >> "$GITHUB_ENV"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lucky-build-log-ImmortalWrt-6.18-LUCKY-${{ env.BUILD_ID }}
+          retention-days: 3
+          path: openwrt/build.log
+
+      - name: Save download cache
+        if: always() && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.restore_dl_cache.outputs.cache-primary-key }}
+
+      - name: Save ccache
+        if: always() && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/.ccache
+          key: ${{ steps.restore_ccache.outputs.cache-primary-key }}
+
+      - name: Get kernel version
+        if: env.status == 'success'
+        run: |
+          kernel_version=""
+          kernel_file="openwrt/include/kernel-${KERNEL_SERIES}"
+          [ ! -f "${kernel_file}" ] && kernel_file="openwrt/target/linux/generic/kernel-${KERNEL_SERIES}"
+
+          if [ -f "${kernel_file}" ]; then
+            kernel_pattern="${KERNEL_SERIES//./\\.}"
+            kernel_version="$(sed -n "s/^LINUX_VERSION-${kernel_pattern}[[:space:]]*[:?]?=[[:space:]]*//p" "${kernel_file}" 2>/dev/null | head -n 1 | tr -d '\r')"
+          fi
+
+          if [ -z "${kernel_version}" ]; then
+            patchver="$(sed -n 's/^KERNEL_PATCHVER:=//p' openwrt/target/linux/x86/Makefile 2>/dev/null | head -n 1 | tr -d '\r')"
+            if [ -n "${patchver}" ]; then
+              p_file="openwrt/include/kernel-${patchver}"
+              [ ! -f "${p_file}" ] && p_file="openwrt/target/linux/generic/kernel-${patchver}"
+              if [ -f "${p_file}" ]; then
+                p_pat="${patchver//./\\.}"
+                kernel_version="$(sed -n "s/^LINUX_VERSION-${p_pat}[[:space:]]*[:?]?=[[:space:]]*//p" "${p_file}" 2>/dev/null | head -n 1 | tr -d '\r')"
+                [ -n "${kernel_version}" ] && kernel_version="${patchver}.${kernel_version}"
+              fi
+            fi
+          fi
+
+          if [ -z "${kernel_version}" ]; then
+            kernel_version="${KERNEL_SERIES}"
+          elif [[ "${kernel_version}" =~ ^\.[0-9]+$ ]]; then
+            kernel_version="${KERNEL_SERIES}${kernel_version}"
+          elif [[ "${kernel_version}" =~ ^[0-9]+$ ]]; then
+            kernel_version="${KERNEL_SERIES}.${kernel_version}"
+          fi
+
+          echo "KERNEL_VERSION=${kernel_version}" >> "$GITHUB_ENV"
+          echo "Detected KERNEL_VERSION: ${kernel_version}"
+
+      - name: Check disk usage
+        if: (!cancelled())
+        run: |
+          # 提前清理 targets 下已有 .img.gz 对应的未压缩原始大镜像 (.img)，避免 Upload bin directory 重复上传数 GB 的未压缩镜像
+          for f in openwrt/bin/targets/*/*/*.img; do
+            [ -f "$f" ] || continue
+            if [ -f "${f}.gz" ]; then
+              rm -f "$f"
+              echo "已提前清理未压缩原始大镜像: $f"
+            fi
+          done
+          df -hT
+
+      - name: Upload bin directory
+        if: env.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt_bin-LUCKY${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/bin
+          compression-level: 0
+
+      - name: Inspect and display package versions
+        if: env.status == 'success'
+        run: |
+          set +e
+          cd openwrt
+
+          find_pkg() {
+            local pkg="$1"
+            local res
+            res=$(find bin/packages -type f \( -name "${pkg}-[0-9]*.apk" -o -name "${pkg}_[0-9]*.ipk" -o -name "${pkg}-[0-9]*.ipk" -o -name "${pkg}_*.apk" \) 2>/dev/null | head -n 1 || true)
+            if [ -z "${res}" ]; then
+              res=$(find bin/packages -type f -name "${pkg}*" 2>/dev/null | grep -E '\.(apk|ipk)$' | head -n 1 || true)
+            fi
+            if [ -n "${res}" ]; then
+              basename "${res}"
+            fi
+          }
+
+          SMARTDNS_PKG="$(find_pkg 'smartdns')"
+          SMARTDNS_LUCI_PKG="$(find_pkg 'luci-app-smartdns')"
+          SMARTDNS_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
+          SMARTDNS_COMMIT="$(sed -n 's/^PKG_SOURCE_VERSION:=[[:space:]]*//p' package/smartdns/Makefile 2>/dev/null | tr -d '\r')"
+
+          HOMEPROXY_PKG="$(find_pkg 'luci-app-homeproxy')"
+          SINGBOX_PKG="$(find_pkg 'sing-box')"
+          GEOIP_PKG="$(find_pkg 'sing-geoip')"
+          GEOSITE_PKG="$(find_pkg 'sing-geosite')"
+          V2_GEOIP_PKG="$(find_pkg 'v2ray-geoip')"
+          V2_GEOSITE_PKG="$(find_pkg 'v2ray-geosite')"
+          ARGON_PKG="$(find_pkg 'luci-theme-argon')"
+          HONK_PKG="$(find_pkg 'honk')"
+          HONK_LUCI_PKG="$(find_pkg 'luci-app-honk')"
+          HONK_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/openwrt-honk/honk/Makefile 2>/dev/null | tr -d '\r')"
+          [ -z "${HONK_MAKE_VER}" ] && HONK_MAKE_VER="$(sed -n 's/^PKG_VERSION:=[[:space:]]*//p' package/openwrt-honk/Makefile 2>/dev/null | tr -d '\r')"
+          LUCKY_PKG="$(find_pkg 'lucky')"
+          LUCKY_LUCI_PKG="$(find_pkg 'luci-app-lucky')"
+          DNSMASQ_PKG="$(find_pkg 'dnsmasq-full')"
+          GO_MAKE_VER="$(sed -n 's/^GO_VERSION_MAJOR_MINOR:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r').$(sed -n 's/^GO_VERSION_PATCH:=[[:space:]]*//p' feeds/packages/lang/golang/golang/Makefile 2>/dev/null | head -n 1 | tr -d '\r')"
+
+          echo "========================================================="
+          echo "📦 核心插件与组件版本明细 (Core Package Versions)"
+          echo "========================================================="
+          echo "🔹 Golang 编译器   : Go ${GO_MAKE_VER:-未知} (GOAMD64=v2)"
+          echo "🔹 Dnsmasq-full    : ${DNSMASQ_PKG:-未找到包}"
+          echo "🔹 Argon 主题      : ${ARGON_PKG:-未找到包}"
+          [ -n "${SMARTDNS_PKG}" ] && echo "🔹 SmartDNS 核心包 : ${SMARTDNS_PKG} (Makefile: ${SMARTDNS_MAKE_VER:-未知}, Commit: ${SMARTDNS_COMMIT:-未知})"
+          [ -n "${SMARTDNS_LUCI_PKG}" ] && echo "🔹 SmartDNS LuCI   : ${SMARTDNS_LUCI_PKG}"
+          if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
+            echo "🔹 Honk (eBPF)     : ${HONK_PKG:-未找到包} (Version: ${HONK_MAKE_VER:-未知})"
+            echo "🔹 Honk LuCI       : ${HONK_LUCI_PKG:-未找到包}"
+            echo "🔹 V2Ray Geo库     : ${V2_GEOIP_PKG:-未找到} / ${V2_GEOSITE_PKG:-未找到}"
+          fi
+          if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
+            echo "🔹 Lucky 核心包    : ${LUCKY_PKG:-未找到包}"
+            echo "🔹 Lucky LuCI      : ${LUCKY_LUCI_PKG:-未找到包}"
+          fi
+          if [ -n "${HOMEPROXY_PKG}" ] || [ -n "${SINGBOX_PKG}" ]; then
+            echo "🔹 HomeProxy       : ${HOMEPROXY_PKG:-未找到包}"
+            echo "🔹 Sing-box        : ${SINGBOX_PKG:-未找到包}"
+            echo "🔹 Sing-geoip/site : ${GEOIP_PKG:-未找到} / ${GEOSITE_PKG:-未找到}"
+          fi
+          echo "========================================================="
+
+          {
+            echo "========================================================="
+            echo "📦 OpenWrt 核心插件与组件版本清单 (Package Versions)"
+            echo "========================================================="
+            echo "构建时间: $(date +"%Y-%m-%d %H:%M:%S %Z")"
+            echo "内核系列: ${KERNEL_SERIES} (${KERNEL_VERSION})"
+            echo "Golang  : Go ${GO_MAKE_VER:-未知} (GOAMD64=v2, C/C++: -O2 -march=x86-64-v2)"
+            echo "Dnsmasq : ${DNSMASQ_PKG:-未找到包}"
+            echo "Argon   : ${ARGON_PKG:-未找到包}"
+            if [ -n "${SMARTDNS_PKG}" ] || [ -n "${SMARTDNS_LUCI_PKG}" ]; then
+              echo ""
+              echo "[SmartDNS]"
+              echo "  核心包文件名: ${SMARTDNS_PKG:-未找到包}"
+              echo "  Makefile 版本: ${SMARTDNS_MAKE_VER:-未知}"
+              echo "  Git Commit   : ${SMARTDNS_COMMIT:-未知}"
+              echo "  LuCI 界面包  : ${SMARTDNS_LUCI_PKG:-未找到包}"
+            fi
+            if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
+              echo ""
+              echo "[HONK (eBPF) 核心套件]"
+              echo "  Honk 核心包   : ${HONK_PKG:-未找到包}"
+              echo "  LuCI 界面包   : ${HONK_LUCI_PKG:-未找到包}"
+              echo "  V2Ray-geoip   : ${V2_GEOIP_PKG:-未找到包}"
+              echo "  V2Ray-geosite : ${V2_GEOSITE_PKG:-未找到包}"
+            fi
+            if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
+              echo ""
+              echo "[Lucky 核心套件]"
+              echo "  Lucky 核心包  : ${LUCKY_PKG:-未找到包}"
+              echo "  LuCI 界面包   : ${LUCKY_LUCI_PKG:-未找到包}"
+            fi
+            if [ -n "${HOMEPROXY_PKG}" ] || [ -n "${SINGBOX_PKG}" ]; then
+              echo ""
+              echo "[HomeProxy / Sing-box 核心套件]"
+              echo "  Sing-box    : ${SINGBOX_PKG:-未找到包}"
+              echo "  HomeProxy   : ${HOMEPROXY_PKG:-未找到包}"
+              echo "  Sing-geoip  : ${GEOIP_PKG:-未找到包}"
+              echo "  Sing-geosite: ${GEOSITE_PKG:-未找到包}"
+            fi
+            echo "========================================================="
+          } > package-versions.txt
+
+          {
+            echo "### 📦 核心组件与插件构建版本"
+            echo "| 组件名称 | 生成的安装包 (APK/IPK) | 源码/编译器版本 |"
+            echo "| :--- | :--- | :--- |"
+            echo "| **Linux 内核** | \`kernel-${KERNEL_VERSION}\` | \`${KERNEL_SERIES}\` |"
+            echo "| **Golang 编译器** | - | \`Go ${GO_MAKE_VER:-未知}\` (GOAMD64=v2) |"
+            echo "| **Dnsmasq-full** | \`${DNSMASQ_PKG:-未找到}\` | - |"
+            [ -n "${ARGON_PKG}" ] && echo "| **Argon 主题** | \`${ARGON_PKG}\` | - |"
+            if [ -n "${SMARTDNS_PKG}" ] || [ -n "${SMARTDNS_LUCI_PKG}" ]; then
+              echo "| **SmartDNS** | \`${SMARTDNS_PKG:-未找到}\` | \`${SMARTDNS_MAKE_VER:-未知}\` (${SMARTDNS_COMMIT:0:8}) |"
+              echo "| **SmartDNS LuCI** | \`${SMARTDNS_LUCI_PKG:-未找到}\` | - |"
+            fi
+            if [ -n "${HONK_PKG}" ] || [ -n "${HONK_LUCI_PKG}" ]; then
+              echo "| **Honk (eBPF)** | \`${HONK_PKG:-未找到}\` | \`${HONK_MAKE_VER:-未知}\` |"
+              echo "| **Honk LuCI (Doona)** | \`${HONK_LUCI_PKG:-未找到}\` | - |"
+              echo "| **V2Ray GeoIP / Site** | \`${V2_GEOIP_PKG:-未找到}\` | \`${V2_GEOSITE_PKG:-未找到}\` |"
+            fi
+            if [ -n "${LUCKY_PKG}" ] || [ -n "${LUCKY_LUCI_PKG}" ]; then
+              echo "| **Lucky Core** | \`${LUCKY_PKG:-未找到}\` | - |"
+              echo "| **Lucky LuCI** | \`${LUCKY_LUCI_PKG:-未找到}\` | - |"
+            fi
+            if [ -n "${HOMEPROXY_PKG}" ] || [ -n "${SINGBOX_PKG}" ]; then
+              echo "| **Sing-box** | \`${SINGBOX_PKG:-未找到}\` | - |"
+              echo "| **HomeProxy** | \`${HOMEPROXY_PKG:-未找到}\` | - |"
+              echo "| **Sing-geoip / geosite** | \`${GEOIP_PKG:-未找到}\` | \`${GEOSITE_PKG:-未找到}\` |"
+            fi
+          } > "$GITHUB_WORKSPACE/package_versions_table.md"
+          cat "$GITHUB_WORKSPACE/package_versions_table.md" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${SMARTDNS_PKG}" ] || [ -n "${SMARTDNS_MAKE_VER}" ]; then
+            echo "SMARTDNS_VER_DISPLAY=${SMARTDNS_PKG:-${SMARTDNS_MAKE_VER}} (${SMARTDNS_COMMIT:0:8})" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload package versions artifact
+        if: env.status == 'success' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Package-Versions${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          retention-days: 5
+          path: openwrt/package-versions.txt
+
+      - name: Organize firmware files
+        id: organize
+        if: env.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          if ls openwrt/bin/targets/*/* >/dev/null 2>&1; then
+            cd openwrt/bin/targets/*/*
+            rm -rf packages
+
+            # 1. 若已生成压缩好的 .img.gz，清理多余的巨大未压缩原始 .img（避免占用数GB并防止混淆）
+            for f in *.img; do
+              [ -f "$f" ] || continue
+              if [ -f "${f}.gz" ]; then
+                rm -f "$f"
+                echo "已清理未压缩原始大镜像: $f (保留对应的 $f.gz)"
+              fi
+            done
+
+            # 2. 智能规范重命名固件：添加版本特征前缀与构建时间/自定义名称，精准识别类型与后缀
+            prefix="ImmortalWrt-6.18-LUCKY"
+            custom_tag="${{ github.event.inputs.custom_name || '' }}"
+            build_stamp="$(date +"%Y%m%d-%H%M")"
+
+            if [ -n "$custom_tag" ]; then
+              clean_tag=$(echo "$custom_tag" | tr -cd 'a-zA-Z0-9_-')
+              name_tag="${clean_tag}-${build_stamp}"
+            else
+              name_tag="${build_stamp}"
+            fi
+
+            for file in *.img.gz; do
+              [ -f "$file" ] || continue
+              case "$file" in
+                *ext4-combined-efi.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-ext4-combined-efi.img.gz"
+                  ;;
+                *ext4-combined.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-ext4-combined.img.gz"
+                  ;;
+                *squashfs-combined-efi.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-squashfs-combined-efi.img.gz"
+                  ;;
+                *squashfs-combined.img.gz)
+                  new_name="${prefix}-${name_tag}-x86-64-squashfs-combined.img.gz"
+                  ;;
+                *rootfs.img.gz)
+                  fs=$(echo "$file" | grep -oE '(ext4|squashfs)' || echo "rootfs")
+                  new_name="${prefix}-${name_tag}-x86-64-${fs}-rootfs.img.gz"
+                  ;;
+                *)
+                  clean_base=$(basename "$file" .img.gz | sed -E 's/^(immortalwrt|openwrt)[-_]x86[-_]64[-_](generic[-_])?//g')
+                  new_name="${prefix}-${name_tag}-x86-64-${clean_base}.img.gz"
+                  ;;
+              esac
+
+              if [ "$file" != "$new_name" ]; then
+                mv -f "$file" "$new_name"
+                echo "固件已规范命名: $file -> $new_name"
+              fi
+            done
+            sha256sum *.img.gz > sha256sums 2>/dev/null || true
+
+            cp -f "$GITHUB_WORKSPACE/openwrt/package-versions.txt" . || true
+            echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+            echo "status=success" >> "$GITHUB_ENV"
+          else
+            echo "No firmware found in openwrt/bin/targets/"
+            echo "status=failure" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload firmware artifact
+        if: env.status == 'success' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-6.18-LUCKY${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+          retention-days: 5
+          compression-level: 0
+
+      - name: Upload firmware to GoFile
+        if: env.UPLOAD_RELEASE == 'true' && env.status == 'success' && !cancelled()
+        run: |
+          cd "${{ env.FIRMWARE }}"
+          gofile_table=""
+          for img in *.img.gz; do
+            [ -f "$img" ] || continue
+            echo "正在上传 $img 到 GoFile 开源云盘..."
+            resp=$(curl -s -m 180 -X POST https://upload.gofile.io/uploadfile -F "file=@${img}" 2>/dev/null || true)
+            gofile_url=$(echo "$resp" | jq -r '.data.downloadPage // empty' 2>/dev/null || true)
+            if [ -n "$gofile_url" ]; then
+              echo "GoFile 上传成功: $img -> $gofile_url"
+              gofile_table="${gofile_table}| \`${img}\` | [☁️ GoFile 高速下载直链](${gofile_url}) |\n"
+            else
+              echo "GoFile 上传异常或超时，已跳过"
+            fi
+          done
+
+          if [ -n "$gofile_table" ]; then
+            {
+              echo "### ☁️ GoFile 开源网盘备用下载"
+              echo "| 固件文件名称 | 开源云盘网页直链 |"
+              echo "| :--- | :--- |"
+              printf "%b" "$gofile_table"
+              echo ""
+            } > "$GITHUB_WORKSPACE/gofile_links.txt"
+          fi
+
+      - name: Create release metadata
+        if: env.UPLOAD_RELEASE == 'true' && env.status == 'success' && !cancelled()
+        run: |
+          date_short="$(date +"%Y.%m.%d")"
+          custom_tag="${{ github.event.inputs.custom_name || '' }}"
+          if [ -n "$custom_tag" ]; then
+            tag_display=" [${custom_tag}]"
+          else
+            tag_display=""
+          fi
+
+          release_title="${RELEASE_TITLE_TEMPLATE}"
+          release_title="${release_title//\{\{kernel\}\}/${KERNEL_VERSION}}"
+          release_title="${release_title//\{\{device\}\}/${DEVICE_NAME}}"
+          release_title="${release_title//\{\{date\}\}/${FILE_DATE}}"
+          release_title="${release_title//\{\{date_short\}\}/${date_short}}"
+          release_title="${release_title//\{\{custom_tag\}\}/${tag_display}}"
+          release_title="${release_title//\{\{build_time\}\}/${BUILD_TIME_DISPLAY}}"
+
+          # 若模板中未显式包含 {{custom_tag}} 且用户输入了自定义标签，则在标题后智能附加
+          if [ -n "$custom_tag" ] && [[ "$release_title" != *"[${custom_tag}]"* ]]; then
+            release_title="${release_title} [${custom_tag}]"
+          fi
+
+          tag="LUCKY-v${KERNEL_SERIES}-$(date +"%Y.%m.%d-%H%M%S")"
+          echo "release_tag=${tag}" >> "$GITHUB_ENV"
+          echo "RELEASE_TITLE=${release_title}" >> "$GITHUB_ENV"
+
+          repo="${{ github.repository }}"
+
+          {
+            if [ -n "${RELEASE_NOTES_TITLE}" ]; then
+              echo "${RELEASE_NOTES_TITLE}"
+              echo
+            fi
+
+            echo "## 🚀 固件高速下载（免翻墙 / 国内加速镜像）"
+            echo "> [!TIP]"
+            echo "> 国内网络环境下推荐优先点击【国内镜像直链】或【GoFile网盘】下载，满速不卡顿。"
+            echo
+            echo "| 固件文件名称 | 官方原链 (需科学) | 🚀 国内直连高速镜像 1 | ⚡ 国内直连高速镜像 2 |"
+            echo "| :--- | :--- | :--- | :--- |"
+            cd "${{ env.FIRMWARE }}"
+            for img in *.img.gz; do
+              [ -f "$img" ] || continue
+              official_url="https://github.com/${repo}/releases/download/${tag}/${img}"
+              mirror1="https://ghproxy.net/${official_url}"
+              mirror2="https://ghfast.top/${official_url}"
+              echo "| \`${img}\` | [GitHub原链](${official_url}) | [🚀 高速镜像1](${mirror1}) | [⚡ 高速镜像2](${mirror2}) |"
+            done
+            echo
+
+            if [ -f "$GITHUB_WORKSPACE/gofile_links.txt" ]; then
+              cat "$GITHUB_WORKSPACE/gofile_links.txt"
+              echo
+            fi
+
+            if [ -f "$GITHUB_WORKSPACE/package_versions_table.md" ]; then
+              cat "$GITHUB_WORKSPACE/package_versions_table.md"
+              echo
+            fi
+
+            echo "## 📋 构建详细信息"
+            echo "- **内核版本**: ${KERNEL_SERIES} (${KERNEL_VERSION})"
+            [ -n "${DEVICE_NAME}" ] && echo "- **设备架构**: ${DEVICE_NAME#_}"
+            [ -n "${custom_tag}" ] && echo "- **自定义版本备注**: \`${custom_tag}\`"
+            echo "- **构建时间**: ${BUILD_TIME_DISPLAY} (ISO: ${BUILD_TIME_ISO})"
+            echo "- **源码分支**: [${REPO_URL}](${REPO_URL}) (${REPO_BRANCH})"
+            echo "- **配置文件**: \`${CONFIG_FILE}\`"
+            [ -n "${SMARTDNS_VER_DISPLAY}" ] && echo "- **SmartDNS**: ${SMARTDNS_VER_DISPLAY}"
+            echo "- **构建机器**: \`${{ github.event.inputs.runner || 'ubuntu-24.04' }}\` (Run #${{ github.run_number }})"
+          } > "$GITHUB_WORKSPACE/release.txt"
+          cp -f "$GITHUB_WORKSPACE/release.txt" "${{ env.FIRMWARE }}/release-info.txt" || true
+
+      - name: Publish release
+        if: env.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          name: ${{ env.RELEASE_TITLE }}
+          tag_name: ${{ env.release_tag }}
+          body_path: ${{ github.workspace }}/release.txt
+          files: |
+            ${{ env.FIRMWARE }}/*
+            ${{ github.workspace }}/release.txt
+
+      - name: Delete old workflow runs
+        if: always() && !cancelled()
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 1
+          keep_minimum_runs: 3
+
+      - name: Delete old releases
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          keep_latest: 30
+          delete_tag_pattern: "^LUCKY-"
+          delete_tags: true

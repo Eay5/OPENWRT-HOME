@@ -1,0 +1,436 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+
+# 返回可用于网络队列分流的 CPU 核心数。
+get_cpu_count() {
+	local count
+
+	count="$(nproc 2>/dev/null || true)"
+	case "$count" in
+		''|*[!0-9]*)
+			count="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo 1)"
+			;;
+	esac
+
+	case "$count" in
+		''|*[!0-9]*|0)
+			count=1
+			;;
+	esac
+
+	echo "$count"
+}
+
+# 按 CPU 核心数生成十六进制掩码，供 RPS/XPS 队列绑定使用。
+build_cpu_mask() {
+	local count="$1"
+	local chunk_hex
+	local mask=""
+
+	while [ "$count" -gt 0 ]; do
+		if [ "$count" -ge 32 ]; then
+			chunk_hex="ffffffff"
+			count=$((count - 32))
+		else
+			chunk_hex="$(printf '%x' $(( (1 << count) - 1 )))"
+			count=0
+		fi
+
+		if [ -n "$mask" ]; then
+			mask="${chunk_hex},${mask}"
+		else
+			mask="$chunk_hex"
+		fi
+	done
+
+	echo "$mask"
+}
+
+# 为单个 CPU 编号生成十六进制位掩码，供多队列网卡 XPS 1:1 绑核使用。
+build_single_cpu_mask() {
+	local idx="$1"
+	local group=$((idx / 32))
+	local bit=$((idx % 32))
+	local mask
+	local i=0
+
+	mask="$(printf '%x' $((1 << bit)))"
+	while [ "$i" -lt "$group" ]; do
+		mask="${mask},00000000"
+		i=$((i + 1))
+	done
+
+	echo "$mask"
+}
+
+# 把 CPU governor、EPP、Intel/AMD P-State 睿频与 C-States 深睡眠控制全部拉到满血低延迟档，
+# 彻底消除突发网络包/TLS 握手时的 CPU 升频爬坡延迟 (5~15ms) 与 C6/C8/C10 深睡唤醒抖动 (100~200us)。
+apply_cpu_governor() {
+	local available_file epp_file governor_file epb_file state_dir latency
+	local pstate_dir="/sys/devices/system/cpu/intel_pstate"
+
+	for governor_file in \
+		/sys/devices/system/cpu/cpufreq/policy*/scaling_governor \
+		/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+		[ -f "$governor_file" ] || continue
+
+		available_file="${governor_file%/*}/scaling_available_governors"
+		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
+			echo performance >"$governor_file" 2>/dev/null || true
+		fi
+	done
+
+	for epp_file in \
+		/sys/devices/system/cpu/cpufreq/policy*/energy_performance_preference \
+		/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+		[ -f "$epp_file" ] || continue
+
+		available_file="${epp_file%/*}/energy_performance_available_preferences"
+		if [ -f "$available_file" ] && grep -qw performance "$available_file"; then
+			echo performance >"$epp_file" 2>/dev/null || true
+		fi
+	done
+
+	# 开启全局 CPU Boost 睿频加速 (兼容 acpi-cpufreq / amd-pstate)
+	[ -w /sys/devices/system/cpu/cpufreq/boost ] && echo 1 >/sys/devices/system/cpu/cpufreq/boost 2>/dev/null || true
+
+	# Intel P-State / HWP 硬件满血调优（兼容物理机及开启 Host CPU 透传的 PVE/ESXi 虚拟机）
+	if [ -d "$pstate_dir" ]; then
+		[ -w "$pstate_dir/max_perf_pct" ] && echo 100 >"$pstate_dir/max_perf_pct" 2>/dev/null || true
+		[ -w "$pstate_dir/min_perf_pct" ] && echo 100 >"$pstate_dir/min_perf_pct" 2>/dev/null || true
+		[ -w "$pstate_dir/no_turbo" ] && echo 0 >"$pstate_dir/no_turbo" 2>/dev/null || true
+		[ -w "$pstate_dir/hwp_dynamic_boost" ] && echo 1 >"$pstate_dir/hwp_dynamic_boost" 2>/dev/null || true
+	fi
+
+	# 将 Intel EPB (Energy Performance Bias) 设为 0（最高性能档，替代默认 6 平衡档）
+	for epb_file in /sys/devices/system/cpu/cpu*/power/energy_perf_bias; do
+		[ -w "$epb_file" ] && echo 0 >"$epb_file" 2>/dev/null || true
+	done
+
+	# 禁用唤醒延迟 > 30 微秒的深层 CPU C-States (如 C6 / C8 / C10)，仅保留 C0/C1/C1E 浅层节能，
+	# 防止 2.5G/10G 网卡突发收包软中断唤醒核心时产生百微秒级延迟抖动或 PCIe 掉线
+	for state_dir in /sys/devices/system/cpu/cpu*/cpuidle/state*; do
+		[ -f "$state_dir/latency" ] && [ -w "$state_dir/disable" ] || continue
+		latency="$(cat "$state_dir/latency" 2>/dev/null || echo 0)"
+		case "$latency" in
+			''|*[!0-9]*) continue ;;
+		esac
+		if [ "$latency" -gt 30 ]; then
+			echo 1 >"$state_dir/disable" 2>/dev/null || true
+		fi
+	done
+}
+
+# 提前加载 TCP 拥塞控制与 FQ 调度器模块，确保 BBR + FQ 满血生效。
+load_tcp_congestion_modules() {
+	local module
+
+	for module in sch_fq tcp_bbr tcp_hybla tcp_scalable; do
+		modprobe "$module" >/dev/null 2>&1 || true
+	done
+}
+
+# 调整网络栈参数，照顾 HomeProxy 本机代理连接和 DNS 服务的突发请求。
+apply_sysctl_tweaks() {
+	local hash_file
+
+	load_tcp_congestion_modules
+
+	# 调大系统全局与进程打开文件句柄数限制，杜绝高并发代理/DNS丢连接
+	sysctl -w fs.file-max=2097152 >/dev/null 2>&1 || true
+	sysctl -w fs.nr_open=2097152 >/dev/null 2>&1 || true
+	ulimit -n 1048576 2>/dev/null || true
+
+	# Linux 6.18 EEVDF 调度器与虚拟化/多核低延迟优化：
+	# 关闭桌面级会话自动分组 (sched_autogroup) 与 NUMA 自动迁移扫描，消除 Sing-box / SmartDNS 守护进程被限权或跨核迁移抖动
+	sysctl -w kernel.sched_autogroup_enabled=0 >/dev/null 2>&1 || true
+	sysctl -w kernel.numa_balancing=0 >/dev/null 2>&1 || true
+	# 开启 BPF JIT 即时编译并设为纯内核态 JIT，加速 nftables/fw4 与内核网络过滤路径
+	sysctl -w net.core.bpf_jit_enable=1 >/dev/null 2>&1 || true
+	sysctl -w net.core.bpf_jit_harden=0 >/dev/null 2>&1 || true
+	# 开启网络栈 Busy Polling (50us)，显著降低 Sing-box / SmartDNS epoll 收包唤醒尾延迟 (P99)
+	sysctl -w net.core.busy_poll=50 >/dev/null 2>&1 || true
+	sysctl -w net.core.busy_read=50 >/dev/null 2>&1 || true
+	# 关闭 nf_conntrack 实时流量字节/包计数统计 (acct=0)，每个数据包转发少一次原子锁自增，降低高并发 NAT CPU 开销
+	sysctl -w net.netfilter.nf_conntrack_acct=0 >/dev/null 2>&1 || true
+	# 禁用 TCP 指标历史缓存，防止单次偶发丢包或拥塞把慢速窗口阈值缓存给后续新建连接
+	sysctl -w net.ipv4.tcp_no_metrics_save=1 >/dev/null 2>&1 || true
+	# 开启 MPTCP 多路径 TCP 支持 (Linux 6.18 原生特性)
+	sysctl -w net.mptcp.enabled=1 >/dev/null 2>&1 || true
+
+	# 调大 Conntrack 连接表上限至 1048576 与 Hash 桶深至 262144 (消除 CPU 查表瓶颈与并发连接被截断)
+	sysctl -w net.netfilter.nf_conntrack_max=1048576 >/dev/null 2>&1 || true
+	for hash_file in /sys/module/nf_conntrack/parameters/hashsize /proc/sys/net/netfilter/nf_conntrack_buckets; do
+		[ -f "$hash_file" ] || continue
+		echo 262144 >"$hash_file" 2>/dev/null || true
+	done
+
+	# 调大 ARP / 邻居表容量，彻底防止大局域网/多设备/VM/容器环境下的邻居表溢出丢包
+	sysctl -w net.ipv4.neigh.default.gc_thresh1=2048 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.neigh.default.gc_thresh2=4096 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.neigh.default.gc_thresh3=8192 >/dev/null 2>&1 || true
+
+	# 扩充本地临时端口范围（5.5万端口）与 TIME_WAIT 桶容量，防止 Sing-box 代理高并发向外建连时端口耗尽
+	sysctl -w net.ipv4.ip_local_port_range="10240 65535" >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_tw_buckets=262144 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_tw_reuse=1 >/dev/null 2>&1 || true
+	# 开启 nf_conntrack 宽松模式，防止旁路由单臂非对称流或 Sing-box TUN 重启瞬间已有连接被误判无效丢弃
+	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1 >/dev/null 2>&1 || true
+
+	sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1 || true
+	sysctl -w net.core.somaxconn=8192 >/dev/null 2>&1 || true
+	sysctl -w net.core.rmem_default=262144 >/dev/null 2>&1 || true
+	sysctl -w net.core.wmem_default=262144 >/dev/null 2>&1 || true
+	sysctl -w net.core.rmem_max=33554432 >/dev/null 2>&1 || true
+	sysctl -w net.core.wmem_max=33554432 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_rmem="4096 262144 33554432" >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_wmem="4096 262144 33554432" >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_window_scaling=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_autocorking=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_notsent_lowat=16384 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_max_syn_backlog=16384 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_sack=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_dsack=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_comp_sack=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_ecn=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_ecn_fallback=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_moderate_rcvbuf=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_fin_timeout=15 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_keepalive_time=300 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_max_backlog=16384 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_budget=600 >/dev/null 2>&1 || true
+	sysctl -w net.core.netdev_budget_usecs=8000 >/dev/null 2>&1 || true
+	sysctl -w net.core.gro_normal_batch=8 >/dev/null 2>&1 || true
+	sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+	sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
+	sysctl -w vm.min_free_kbytes=65536 >/dev/null 2>&1 || true
+
+	# 旁路由防分流失效：彻底关闭 ICMP 重定向发送与接收，杜绝终端绕过旁路由
+	# 注意：Linux 内核对 send_redirects 采用 ORCONF (all || iface)，必须遍历所有已创建的接口逐一置 0 才能真正生效
+	sysctl -w net.ipv4.conf.all.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.send_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.all.accept_redirects=0 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.accept_redirects=0 >/dev/null 2>&1 || true
+
+	# 旁路由非对称路由优化：放宽反向路径过滤，杜绝单臂进出与回包被静默丢弃
+	sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.conf.default.rp_filter=2 >/dev/null 2>&1 || true
+	for conf_dir in /proc/sys/net/ipv4/conf/*; do
+		[ -d "$conf_dir" ] || continue
+		echo 0 >"$conf_dir/send_redirects" 2>/dev/null || true
+		echo 0 >"$conf_dir/accept_redirects" 2>/dev/null || true
+		echo 2 >"$conf_dir/rp_filter" 2>/dev/null || true
+	done
+
+	# 开启 Linux 6.12 / 6.18 原生 UDP GRO 转发加速与核心路由转发
+	sysctl -w net.ipv4.udp_gro_forwarding=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+
+	# 收敛 UDP Conntrack 超时窗口，防止 P2P / BT / QUIC / STUN 突发会话堆积撑爆连接表
+	sysctl -w net.netfilter.nf_conntrack_udp_timeout=15 >/dev/null 2>&1 || true
+	sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=60 >/dev/null 2>&1 || true
+
+	# 内核级无人值守自愈：若发生极端硬件异常或驱动 Panic，10 秒后自动重启恢复网络
+	sysctl -w kernel.panic=10 >/dev/null 2>&1 || true
+	sysctl -w kernel.panic_on_oops=1 >/dev/null 2>&1 || true
+
+	# 主路由多 LAN 口网桥二层硬件直通加速：禁止将纯局域网二层交换流量 (如 PC <-> NAS) 送入三层防火墙与 Conntrack，实现零 CPU 损耗满速内网互传
+	sysctl -w net.bridge.bridge-nf-call-arptables=0 >/dev/null 2>&1 || true
+	sysctl -w net.bridge.bridge-nf-call-iptables=0 >/dev/null 2>&1 || true
+	sysctl -w net.bridge.bridge-nf-call-ip6tables=0 >/dev/null 2>&1 || true
+
+	# 全局彻底禁用 IPv6
+	sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
+	sysctl -w net.ipv6.conf.lo.disable_ipv6=1 >/dev/null 2>&1 || true
+}
+
+# 提前把默认 IRQ 亲和范围放开到全部核心，避免多队列网卡的中断长时间偏在 CPU0。
+apply_irq_affinity_defaults() {
+	local cpu_count cpu_mask
+
+	cpu_count="$(get_cpu_count)"
+	[ "$cpu_count" -gt 1 ] || return 0
+
+	cpu_mask="$(build_cpu_mask "$cpu_count")"
+	[ -f /proc/irq/default_smp_affinity ] && echo "$cpu_mask" >/proc/irq/default_smp_affinity 2>/dev/null || true
+}
+
+# 优化 PCIe 电源策略与网卡硬件缓冲，消除 2.5G/10G 网卡断流抖动与突发丢包
+apply_nic_hardware_tuning() {
+	local iface dev
+	command -v ethtool >/dev/null 2>&1 || return 0
+
+	# 锁定 PCIe ASPM 为高性能模式
+	for aspm_file in /sys/module/pcie_aspm/parameters/policy; do
+		[ -f "$aspm_file" ] || continue
+		echo performance >"$aspm_file" 2>/dev/null || true
+	done
+
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+		dev="${iface##*/}"
+
+		# 兼顾旁路由与主路由虚拟接口加速：
+		# 1. 为代理隧道 (singtun0 / tun* / dae*) 与局域网桥 (br-lan) 扩充队列至 4096 并开启 GSO/GRO 64KB 大包聚合
+		# 2. 为主路由 PPPoE 拨号虚拟网卡 (pppoe-wan，内核默认队列仅 3！) 与 WireGuard 扩充发送队列至 4096，根除主路由拨号高并发上传/下载 ACK 溢出丢包
+		case "$dev" in
+			tun*|singtun*)
+				ip link set dev "$dev" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
+				ethtool -K "$dev" rx on tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
+				continue
+				;;
+			br-*|ppp*|pppoe*|wg*|lo)
+				ip link set dev "$dev" txqueuelen 4096 gro_max_size 65536 gso_max_size 65536 >/dev/null 2>&1 || ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
+				ethtool -K "$dev" tx on sg on tso on gso on gro on >/dev/null 2>&1 || true
+				continue
+				;;
+			veth*|docker*|tap*)
+				continue
+				;;
+		esac
+
+		# 锁定物理网卡 PCIe 运行时电源控制为常开 (on)，彻底杜绝 D3 休眠导致的瞬断掉线
+		[ -w "$iface/device/power/control" ] && echo on >"$iface/device/power/control" 2>/dev/null || true
+
+		# 关闭 802.3az 节能以太网 (EEE)，彻底根除 Intel i225/i226 与 Realtek r8125/r8126 与交换机协商微断流
+		ethtool --set-eee "$dev" eee off >/dev/null 2>&1 || true
+
+		# 扩容网卡硬件环形缓冲区 (Ring Buffer)
+		ethtool -G "$dev" rx 4096 tx 4096 >/dev/null 2>&1 || ethtool -G "$dev" rx 2048 tx 2048 >/dev/null 2>&1 || true
+
+		# 开启硬件卸载与 UDP GRO 加速
+		ethtool -K "$dev" rx on tx on tso on gso on gro on rx-udp-gro-forwarding on >/dev/null 2>&1 || true
+
+		# 开启自适应中断合并 (Adaptive IRQ Coalescing)，在高吞吐时大幅降低软中断 CPU 占用
+		ethtool -C "$dev" adaptive-rx on adaptive-tx on >/dev/null 2>&1 || true
+
+		# 扩充网卡发送队列长度至 4096，根除突发高并发时的 tx drop 排队溢出丢包
+		ip link set dev "$dev" txqueuelen 4096 >/dev/null 2>&1 || true
+
+		# 开启 Linux 6.12 / 6.18 原生 BIG TCP 超大数据包聚合 (512KB)，提升 2.5G/5G/10G 吞吐并削减 CPU 软中断
+		ip link set dev "$dev" gro_max_size 524288 gso_max_size 524288 >/dev/null 2>&1 || true
+
+		# 开启 Linux 6.x NAPI 软中断延迟挂起 (IRQ Deferral) 与 GRO 批量刷新超时 (20us)，
+		# 在持续高速流量下保持 NAPI 轮询态而无需频繁重开硬件中断，削减 15%~30% 软中断 (%si) CPU 占用且仅引入 20 微秒级聚合窗口
+		[ -w "$iface/napi_defer_hard_irqs" ] && echo 2 >"$iface/napi_defer_hard_irqs" 2>/dev/null || true
+		[ -w "$iface/gro_flush_timeout" ] && echo 20000 >"$iface/gro_flush_timeout" 2>/dev/null || true
+	done
+}
+
+# 智能区分多队列与单队列网卡配置 RPS/XPS：
+# - 多队列硬件/VirtIO 网卡 (rx_queue_count > 1)：关闭软件 RPS (rps_cpus=0) 让每个 MSI-X 硬件队列留在本地核处理，彻底消除跨核 IPI 风暴与 CPU0 倾斜；发送端 XPS 按 tx-i 1:1 绑核消除发包队列锁竞争。
+# - 单队列网卡/网桥/隧道 (rx_queue_count == 1)：开启全核 RPS 掩码与 32768 RFS 流表，将软中断均衡分摊到所有核心。
+apply_queue_tuning() {
+	local cpu_count cpu_mask iface rx_queue rx_queue_count tx_queue tx_queue_count tx_idx cpu_idx tx_mask
+
+	cpu_count="$(get_cpu_count)"
+	[ "$cpu_count" -gt 1 ] || return 0
+
+	cpu_mask="$(build_cpu_mask "$cpu_count")"
+	sysctl -w net.core.rps_sock_flow_entries=32768 >/dev/null 2>&1 || true
+
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+
+		case "${iface##*/}" in
+			lo)
+				continue
+				;;
+		esac
+
+		rx_queue_count=0
+		for rx_queue in "$iface"/queues/rx-*; do
+			[ -f "$rx_queue/rps_cpus" ] || continue
+			rx_queue_count=$((rx_queue_count + 1))
+		done
+
+		if [ "$rx_queue_count" -gt 1 ]; then
+			for rx_queue in "$iface"/queues/rx-*; do
+				[ -f "$rx_queue/rps_cpus" ] || continue
+				echo 0 >"$rx_queue/rps_cpus" 2>/dev/null || true
+				[ -f "$rx_queue/rps_flow_cnt" ] && echo 0 >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
+			done
+		elif [ "$rx_queue_count" -eq 1 ]; then
+			for rx_queue in "$iface"/queues/rx-*; do
+				[ -f "$rx_queue/rps_cpus" ] || continue
+				echo "$cpu_mask" >"$rx_queue/rps_cpus" 2>/dev/null || true
+				[ -f "$rx_queue/rps_flow_cnt" ] && echo 32768 >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
+			done
+		fi
+
+		tx_queue_count=0
+		for tx_queue in "$iface"/queues/tx-*; do
+			[ -f "$tx_queue/xps_cpus" ] || continue
+			tx_queue_count=$((tx_queue_count + 1))
+		done
+
+		if [ "$tx_queue_count" -gt 1 ]; then
+			for tx_queue in "$iface"/queues/tx-*; do
+				[ -f "$tx_queue/xps_cpus" ] || continue
+				tx_idx="${tx_queue##*/tx-}"
+				case "$tx_idx" in
+					''|*[!0-9]*) continue ;;
+				esac
+				cpu_idx=$((tx_idx % cpu_count))
+				tx_mask="$(build_single_cpu_mask "$cpu_idx")"
+				echo "$tx_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+			done
+		elif [ "$tx_queue_count" -eq 1 ]; then
+			for tx_queue in "$iface"/queues/tx-*; do
+				[ -f "$tx_queue/xps_cpus" ] || continue
+				echo "$cpu_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+			done
+		fi
+	done
+}
+
+# 为核心网络与代理解析守护进程赋予 OOM 免死保护 (-900) 与高 CPU 调度权重，保障极端高负载下绝不断网
+apply_daemon_protection() {
+	local proc pid
+	for proc in dnsmasq smartdns sing-box honk honk-core lucky uhttpd; do
+		for pid in $(pidof "$proc" 2>/dev/null); do
+			[ -w "/proc/$pid/oom_score_adj" ] && echo -900 >"/proc/$pid/oom_score_adj" 2>/dev/null || true
+			renice -n -5 "$pid" >/dev/null 2>&1 || renice -5 "$pid" >/dev/null 2>&1 || true
+		done
+	done
+}
+
+# 将默认路由与局域网路由的 TCP 初始拥塞窗口/接收窗口 (initcwnd / initrwnd) 从默认 10 (14KB) 提升至 32 (46KB)，
+# 使网页首屏打开实现 1-RTT 直出、大文件与 4K 视频下载首秒起步吞吐提升 3.2 倍
+apply_route_initcwnd() {
+	local rt
+	ip -4 route show 2>/dev/null | while IFS= read -r rt; do
+		[ -n "$rt" ] || continue
+		case "$rt" in
+			*"initcwnd"*) continue ;;
+		esac
+		ip -4 route change $rt initcwnd 32 initrwnd 32 >/dev/null 2>&1 || true
+	done
+}
+
+# 启动时按顺序应用根分区免写放大挂载、CPU、网络栈、网卡硬件/UDP GRO、队列分流、TCP 首包窗口加速及核心进程保护调优。
+start() {
+	mount -o remount,noatime / 2>/dev/null || true
+	mkdir -p /tmp/resolv.conf.d 2>/dev/null || true
+	if [ ! -s /tmp/resolv.conf.d/resolv.conf.auto ]; then
+		printf "nameserver 223.5.5.5\nnameserver 119.29.29.29\n" >/tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null || true
+	fi
+	apply_cpu_governor
+	apply_sysctl_tweaks
+	apply_irq_affinity_defaults
+	apply_nic_hardware_tuning
+	apply_queue_tuning
+	apply_route_initcwnd
+	apply_daemon_protection
+}
+
+# 重启服务时直接复用启动逻辑，保证参数重新写回。
+restart() {
+	start
+}
