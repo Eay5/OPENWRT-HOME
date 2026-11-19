@@ -351,7 +351,6 @@ group {
 }
 
 dns {
-    client_subnet: auto
     upstream {
         # 对接本机 SmartDNS (6053端口)：承接国内域名并发测速与 26万条内存极速缓存
         smartdns: '\''udp://127.0.0.1:6053'\'' -> direct
@@ -389,9 +388,7 @@ routing {
     # 2. BT/PT 下载进程与 DSCP 4 标记流量强制直连，防止大并发 P2P 连接挤爆代理节点拖慢网页
     pname(qbittorrent, transmission-daemon, aria2c) -> direct(must)
     dscp(4) -> direct(must)
-    # 3. 组播与局域网广播直连
-    dip(224.0.0.0/3, '\''ff00::/8'\'') -> direct
-    # 4. 路由器自身管理面板与私有局域网直连
+    # 3. 路由器自身管理面板与私有局域网直连
     # honk:local-direct-begin
     # honk:local-direct-end
     dip(geoip: private) && !dport(53) -> direct(must)
