@@ -177,52 +177,65 @@ sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-se
 echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
 echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
 
-# 清理 Lucky 专属版本不需要的 HomeProxy / SmartDNS 预置配置文件，避免残留死配置
-rm -f files/etc/config/homeproxy files/etc/config/smartdns 2>/dev/null || true
+# 清理 Lucky 专属版本不需要的 HomeProxy / SmartDNS 预置配置文件与通用代理脚本，
+# 防止 99-system-performance 覆写 Lucky 的 IPv6 双栈支持与专属入站 sysctl 参数
+rm -f files/etc/config/homeproxy files/etc/config/smartdns files/etc/uci-defaults/99-system-performance files/etc/init.d/dns-preload 2>/dev/null || true
 
 # 注入针对外网访问内网服务的专属内核与网络优化
 mkdir -p files/etc/sysctl.d files/etc/uci-defaults
 
-cat << 'EOF' > files/etc/sysctl.d/98-lucky-inbound.conf
+cat << 'EOF' > files/etc/sysctl.d/99-lucky-inbound.conf
 # ==============================================================================
 # Linux 6.18 LUCKY Dedicated Inbound / Reverse Proxy Tuning
 # ==============================================================================
 # 1. 100万级并发连接跟踪与 2 小时大文件长效连接保持（杜绝大文件下载中途断流）
 net.netfilter.nf_conntrack_max = 1048576
+net.netfilter.nf_conntrack_acct = 0
+net.netfilter.nf_conntrack_tcp_be_liberal = 1
 net.netfilter.nf_conntrack_tcp_timeout_established = 7200
 net.netfilter.nf_conntrack_tcp_timeout_close_wait = 15
 net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 15
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 15
 
-# 2. 扩充本地临时端口范围（5.5万端口），防止反向代理高并发时本地端口耗尽报错
+# 2. 扩充本地临时端口范围（5.5万端口），防止 40+ 反向代理高并发时本地端口耗尽报错
 net.ipv4.ip_local_port_range = 10240 65535
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 10
 
-# 3. TCP BBR + FQ 拥塞控制，跨公网大延迟丢包环境下保障 FileBrowser 大文件满速
+# 3. TCP BBR + FQ 拥塞控制 + 被动 ECN/DSACK，跨公网/4G/5G 高丢包环境下保障大文件满速
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_ecn = 2
+net.ipv4.tcp_ecn_fallback = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_dsack = 1
+net.ipv4.tcp_comp_sack = 1
 
-# 4. Linux 6.18 原生 UDP GRO 转发加速（加速 QUIC / HTTP3 / STUN 穿透）
+# 4. Linux 6.18 原生 UDP GRO 转发加速与 UDP 最小缓冲（加速 QUIC / HTTP3 / STUN 穿透）
 net.ipv4.udp_gro_forwarding = 1
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
+net.core.optmem_max = 131072
 net.ipv4.ip_forward = 1
 
-# 5. 握手与并发连接队列优化
+# 5. 握手与并发连接队列优化（禁用小包攒包延迟，首包零等待）
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_slow_start_after_idle = 0
 net.ipv4.tcp_autocorking = 0
+net.ipv4.tcp_no_metrics_save = 1
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 16384
 net.core.netdev_max_backlog = 32768
 
-# 6. 动态 TCP 缓冲区与大套接字缓冲（极大提升外网大文件双向拉取/上传带宽利用率，256KB 初始默认窗口起步即满速）
+# 6. 64MB 高 BDP 动态 TCP 缓冲区（极大提升跨省/公网大文件双向拉取/上传带宽利用率，256KB 初始默认窗口起步即满速）
 net.ipv4.tcp_window_scaling = 1
-net.ipv4.tcp_rmem = 4096 262144 33554432
-net.ipv4.tcp_wmem = 4096 262144 33554432
+net.ipv4.tcp_moderate_rcvbuf = 1
+net.ipv4.tcp_rmem = 4096 262144 67108864
+net.ipv4.tcp_wmem = 4096 262144 67108864
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
-net.core.rmem_max = 33554432
-net.core.wmem_max = 33554432
+net.core.rmem_max = 67108864
+net.core.wmem_max = 67108864
 
 # 外网高速上传防拥堵：调大 NAPI 轮询与协议栈数据包递交预算，杜绝突发接收丢包
 net.core.netdev_budget = 600
@@ -232,37 +245,37 @@ net.core.netdev_budget_usecs = 8000
 vm.dirty_ratio = 20
 vm.dirty_background_ratio = 5
 
-# 7. FileBrowser 大文件双向传输专属优化 (解决断流、超时与MTU黑洞卡死)
-# 自动探测路径 MTU，杜绝因 PPPoE 1492 与内网 1500 不匹配导致大文件点击下载/上传 0KB 转圈卡死
+# 7. FileBrowser / WebDAV / Emby 大文件双向传输专属优化 (解决断流、超时与 MTU 黑洞卡死)
 net.ipv4.tcp_mtu_probing = 1
 net.ipv4.tcp_base_mss = 1024
-
-# 减少大文件发送时在套接字缓冲区排队造成的缓冲膨胀与延迟
 net.ipv4.tcp_notsent_lowat = 16384
-
-# TCP 保活探测：长文件传输时保持连接不被中间节点掐断
 net.ipv4.tcp_keepalive_time = 300
 net.ipv4.tcp_keepalive_intvl = 15
 net.ipv4.tcp_keepalive_probes = 5
 
-# 扩充系统全局文件句柄至 200 万，完美支撑多线程（如 IDM 32 线程分块并发下载/上传）
+# 扩充系统全局文件句柄至 200 万，完美支撑多线程分块并发下载/上传与多反代端口
 fs.file-max = 2097152
 fs.nr_open = 2097152
 
-# 8. 独立应用主机模式：反向路径过滤放宽至 Loose Mode (rp_filter=2)
-# 杜绝主路由端口映射转发至本主机时，跨网段外网 IP 被内核误判为伪造源 IP 而丢弃
+# 8. 独立应用主机模式：保留 IPv6 双栈直连入站，关闭 ICMP 重定向，放宽反向路径校验 (Loose Mode)
+net.ipv6.conf.all.disable_ipv6 = 0
+net.ipv6.conf.default.disable_ipv6 = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.all.rp_filter = 2
 net.ipv4.conf.default.rp_filter = 2
 
-# 9. 独立主机暴露高位端口下的安全防扫描与抗拒绝服务与无人值守崩溃自愈
+# 9. 独立主机暴露高位端口下的安全防扫描、抗 SYN 泛洪与无人值守崩溃自愈
 net.ipv4.tcp_syncookies = 1
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 kernel.panic = 10
 kernel.panic_on_oops = 1
 EOF
 
-# 注入独立应用主机防火墙与服务默认设置
-cat << 'EOF' > files/etc/uci-defaults/98-lucky-appliance
+# 注入独立应用主机防火墙、服务保护与定时守护默认设置
+cat << 'EOF' > files/etc/uci-defaults/99-lucky-appliance
 #!/bin/sh
 if ! uci -q show network.globals >/dev/null 2>&1; then
     uci set network.globals='globals'
@@ -374,9 +387,20 @@ if uci -q get uhttpd.main >/dev/null 2>&1; then
     uci -q commit uhttpd
 fi
 sed -i '/helloworld/d;/video/d;/passwall/d;/mosdns/d;/openwrt_honk/d;/homeproxy/d;/lucky/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
+
+# 10. 注册每 5 分钟 Lucky 进程自愈守护与 OOM(-900)/Nice(-5) 续保（防止 Lucky 在线自更新重启后丢失免死保护）
+mkdir -p /etc/crontabs
+touch /etc/crontabs/root
+if ! grep -q "lucky-watchdog" /etc/crontabs/root 2>/dev/null; then
+    echo "*/5 * * * * [ -z \"\$(pidof lucky)\" ] && /etc/init.d/lucky start >/dev/null 2>&1; for p in lucky dnsmasq uhttpd; do for pid in \$(pidof \$p 2>/dev/null); do echo -900 >/proc/\$pid/oom_score_adj 2>/dev/null; renice -n -5 \$pid >/dev/null 2>&1; done; done # lucky-watchdog" >> /etc/crontabs/root
+fi
+/etc/init.d/cron enable >/dev/null 2>&1 || true
+/etc/init.d/cron restart >/dev/null 2>&1 || true
+
+sysctl -p /etc/sysctl.d/99-lucky-inbound.conf >/dev/null 2>&1 || true
 exit 0
 EOF
-chmod +x files/etc/uci-defaults/98-lucky-appliance
+chmod +x files/etc/uci-defaults/99-lucky-appliance
 
 echo "Basic settings applied."
 verify_lucky_stack "${target_kernel_series}"
