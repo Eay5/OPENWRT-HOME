@@ -237,8 +237,10 @@ exit 0
 EOF
 chmod +x files/etc/uci-defaults/98-honk-ebpf-init
 
-# 在 99-system-performance 之后执行：将 HONK 版本的 Dnsmasq (53) 直连本机 SmartDNS (127.0.0.1#6053)，
-# 避免无 HomeProxy 时回退到主路由 192.168.0.1#53 产生 20ms 额外转发延迟，实现局域网 0ms 缓存命中
+# 在 99-system-performance 之后执行：
+# 1. 将 HONK 版本的 Dnsmasq (53) 直连本机 SmartDNS (127.0.0.1#6053)，消除 20ms 转发延迟
+# 2. 自动把 /etc/honk/config.dae 与 system.dae 中的 Doona native_api.listen 同步为本机实际 LAN IP，
+#    并注册 hotplug 钩子，防止“打开 Doona”跳转到 127.0.0.1:9527
 cat << 'EOF' > files/etc/uci-defaults/99z-honk-dns-link
 #!/bin/sh
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
@@ -247,9 +249,45 @@ if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q set dhcp.@dnsmasq[0].noresolv='1'
 	uci -q commit dhcp
 fi
+
+sync_honk_listen_ip() {
+	local lan_ip
+	lan_ip="$(uci -q get network.lan.ipaddr 2>/dev/null | awk '{print $1}' | cut -d/ -f1)"
+	[ -n "$lan_ip" ] || lan_ip="$(ip -4 -o addr show dev br-lan 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+	[ -n "$lan_ip" ] || return 0
+	for f in /etc/honk/config.dae /etc/honk/system.dae; do
+		[ -f "$f" ] && sed -i "s|listen:[[:space:]]*'[^']*:\([0-9][0-9]*\)'|listen: '${lan_ip}:\1'|g" "$f" 2>/dev/null || true
+	done
+}
+sync_honk_listen_ip
 exit 0
 EOF
 chmod +x files/etc/uci-defaults/99z-honk-dns-link
+
+mkdir -p files/etc/hotplug.d/iface
+cat << 'EOF' > files/etc/hotplug.d/iface/99-honk-listen-sync
+#!/bin/sh
+[ "$INTERFACE" = "lan" ] || exit 0
+[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifupdate" ] || exit 0
+
+lan_ip="$(uci -q get network.lan.ipaddr 2>/dev/null | awk '{print $1}' | cut -d/ -f1)"
+[ -n "$lan_ip" ] || lan_ip="$(ip -4 -o addr show dev br-lan 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+[ -n "$lan_ip" ] || exit 0
+
+changed=0
+for f in /etc/honk/config.dae /etc/honk/system.dae; do
+	[ -f "$f" ] || continue
+	if grep -qE "listen:[[:space:]]*'127\.0\.0\.1:[0-9]+'" "$f" 2>/dev/null || \
+	   (grep -qE "listen:[[:space:]]*'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+'" "$f" 2>/dev/null && ! grep -q "listen: '${lan_ip}:" "$f" 2>/dev/null); then
+		sed -i "s|listen:[[:space:]]*'[^']*:\([0-9][0-9]*\)'|listen: '${lan_ip}:\1'|g" "$f" 2>/dev/null && changed=1
+	fi
+done
+
+if [ "$changed" = "1" ] && pidof honk-core >/dev/null 2>&1; then
+	/etc/init.d/honk reload >/dev/null 2>&1 || /etc/init.d/honk restart >/dev/null 2>&1 || true
+fi
+EOF
+chmod +x files/etc/hotplug.d/iface/99-honk-listen-sync
 
 # 4. 深度优化 Honk 与 SmartDNS 黄金搭配模板：
 #    - 国内 DNS (smartdns) 直接对接本地 SmartDNS (udp://127.0.0.1:6053)，享受 26万条内存缓存与国内大厂并发测速
@@ -282,7 +320,7 @@ apply_honk_dae_config() {
 experimental {
     native_api {
         enabled: true
-        listen: '\''127.0.0.1:9527'\''
+        listen: '\''192.168.0.233:9527'\''
         password_auth: true
         allow_anonymous_loopback: false
         config_write: true

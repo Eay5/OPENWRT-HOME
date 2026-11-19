@@ -458,10 +458,10 @@ if [ -x /etc/init.d/dns-preload ]; then
 	/etc/init.d/dns-preload enable >/dev/null 2>&1 || true
 fi
 
-# 10. UPnP IGD & PCP/NAT-PMP 主/旁双栖智能调优：
-# - 主路由模式：默认开启 UPnP IGD + NAT-PMP，并将广播速率上限提升至 2.5Gbps 下行 / 1Gbps 上行，保障主机游戏 NAT1 与 PT 满速打洞
-# - 旁路由模式：默认自动停用 UPnP，严禁旁路由在局域网广播 SSDP 抢答主路由的 UPnP IGD 导致游戏机/PT 端口映射失效
+# 10. UPnP IGD & PCP/NAT-PMP 默认全部开启，并放行全端口 (0-65535 allow)：
+# 广播速率上限提升至 2.5Gbps 下行 / 1Gbps 上行，保障主机游戏 NAT1 与 PT 满速打洞
 if uci -q get upnpd.config >/dev/null 2>&1; then
+	uci -q set upnpd.config.enabled='1'
 	uci -q set upnpd.config.enable_upnp='1'
 	uci -q set upnpd.config.enable_natpmp='1'
 	uci -q set upnpd.config.secure_mode='1'
@@ -472,14 +472,21 @@ if uci -q get upnpd.config >/dev/null 2>&1; then
 	uci -q set upnpd.config.upnp_lease_file='/var/run/miniupnpd.leases'
 	uci -q set upnpd.config.clean_ruleset_interval='600'
 	uci -q set upnpd.config.clean_ruleset_threshold='20'
-	if [ "$is_bypass_mode" = "1" ]; then
-		uci -q set upnpd.config.enabled='0'
-		[ -x /etc/init.d/miniupnpd ] && /etc/init.d/miniupnpd disable >/dev/null 2>&1 || true
-		[ -x /etc/init.d/miniupnpd ] && /etc/init.d/miniupnpd stop >/dev/null 2>&1 || true
-	else
-		uci -q set upnpd.config.enabled='1'
-	fi
+
+	# 重置 ACL 规则，默认放行 0-65535 全端口映射 (allow)
+	while uci -q delete upnpd.@perm_rule[0]; do :; done
+	uci -q add upnpd perm_rule >/dev/null
+	uci -q set upnpd.@perm_rule[-1].action='allow'
+	uci -q set upnpd.@perm_rule[-1].ext_ports='0-65535'
+	uci -q set upnpd.@perm_rule[-1].int_addr='0.0.0.0/0'
+	uci -q set upnpd.@perm_rule[-1].int_ports='0-65535'
+	uci -q set upnpd.@perm_rule[-1].comment='Allow all ports 0-65535'
+
 	uci -q commit upnpd
+	if [ -x /etc/init.d/miniupnpd ]; then
+		/etc/init.d/miniupnpd enable >/dev/null 2>&1 || true
+		/etc/init.d/miniupnpd restart >/dev/null 2>&1 || true
+	fi
 fi
 
 # 11. LuCI Web 后台 (uhttpd) 高并发与零卡顿调优：
