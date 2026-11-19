@@ -247,8 +247,37 @@ chmod +x files/etc/uci-defaults/98-honk-ebpf-init
 #    - 在 eBPF 内核态精准阻断非国内的海外 QUIC (UDP 443)，既让 YouTube/Google 秒切稳定 TCP，又保留国内抖音/B站 QUIC 加速
 #    - fallback: proxy 确保非国内海外流量 100% 正常走节点代理
 apply_honk_dae_config() {
-    local dae_content='include {
-    system.dae
+    local dae_content='global {
+    wan_interface: auto
+    lan_interface: br-lan
+    log_level: info
+    dial_mode: domain
+    allow_insecure: false
+    auto_config_kernel_parameter: true
+    data_dir: '\''/etc/honk'\''
+    log_file: '\'''\''
+    tcp_check_url: '\''https://www.gstatic.com/generate_204'\''
+    tcp_check_http_method: HEAD
+    udp_check_dns: dns.google.com:53, 8.8.8.8
+    check_interval: 300s
+    bootstrap_resolver: '\''1.1.1.1:53'\''
+    store_subscribe: true
+    nfqueue_enable: true
+}
+
+experimental {
+    native_api {
+        enabled: true
+        listen: '\''127.0.0.1:9527'\''
+        password_auth: true
+        allow_anonymous_loopback: false
+        config_write: true
+        ui: '\''/usr/share/doona'\''
+    }
+
+    cache_file {
+        enabled: true
+    }
 }
 
 group {
@@ -258,6 +287,7 @@ group {
 }
 
 dns {
+    client_subnet: auto
     upstream {
         # 对接本机 SmartDNS (6053端口)：承接国内域名并发测速与 26万条内存极速缓存
         smartdns: '\''udp://127.0.0.1:6053'\'' -> direct
@@ -313,6 +343,16 @@ routing {
         if [ -d "${dae_path%/*}" ]; then
             printf '%s\n' "$dae_content" > "$dae_path"
             echo "Injected optimized config.dae into ${dae_path}"
+        fi
+    done
+
+    # 兼容修复：上游 honk-core v0.1.0-beta.6 的 config validate JSON 尚未输出 runtime.nfqueue_enable 字段，
+    # 导致 control.sh 自检报 nfqueue_runtime_unavailable 阻止初始化与启动。
+    # 当核心未返回该字段时，自动回退读取 config.dae / system.dae 中的 nfqueue_enable 值（默认 true）。
+    for ctrl_path in package/openwrt-honk/honk/files/control.sh package/openwrt-honk/files/control.sh package/honk/files/control.sh; do
+        if [ -f "$ctrl_path" ]; then
+            sed -i 's|\*) config_error=nfqueue_runtime_unavailable; fail "honk-core 无法报告解析后的 nfqueue_enable，请更新 Honk 核心"; return 1 ;;|*) if grep -qE "nfqueue_enable:[[:space:]]*false" /etc/honk/config.dae /etc/honk/system.dae 2>/dev/null; then runtime_nfqueue_enable=false; else runtime_nfqueue_enable=true; fi ;;|g' "$ctrl_path"
+            echo "Patched ${ctrl_path} for honk-core nfqueue_enable compatibility."
         fi
     done
 }
