@@ -237,6 +237,20 @@ exit 0
 EOF
 chmod +x files/etc/uci-defaults/98-honk-ebpf-init
 
+# 在 99-system-performance 之后执行：将 HONK 版本的 Dnsmasq (53) 直连本机 SmartDNS (127.0.0.1#6053)，
+# 避免无 HomeProxy 时回退到主路由 192.168.0.1#53 产生 20ms 额外转发延迟，实现局域网 0ms 缓存命中
+cat << 'EOF' > files/etc/uci-defaults/99z-honk-dns-link
+#!/bin/sh
+if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
+	uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
+	uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#6053'
+	uci -q set dhcp.@dnsmasq[0].noresolv='1'
+	uci -q commit dhcp
+fi
+exit 0
+EOF
+chmod +x files/etc/uci-defaults/99z-honk-dns-link
+
 # 4. 深度优化 Honk 与 SmartDNS 黄金搭配模板：
 #    - 国内 DNS (smartdns) 直接对接本地 SmartDNS (udp://127.0.0.1:6053)，享受 26万条内存缓存与国内大厂并发测速
 #    - 海外 DNS (googledoh / cfdoh) 采用纯 IP 免死锁 Google & Cloudflare DoH 走代理防污染（双公网 DoH 互备）
