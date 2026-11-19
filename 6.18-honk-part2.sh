@@ -311,8 +311,8 @@ apply_honk_dae_config() {
     tcp_check_url: '\''https://www.gstatic.com/generate_204'\''
     tcp_check_http_method: HEAD
     udp_check_dns: dns.google.com:53, 8.8.8.8
-    check_interval: 300s
-    bootstrap_resolver: '\''1.1.1.1:53'\''
+    check_interval: 30s
+    bootstrap_resolver: '\''223.5.5.5:53'\''
     store_subscribe: true
     nfqueue_enable: true
 }
@@ -353,13 +353,16 @@ dns {
             qtype(https) -> reject
             # 局域网私有域名 (如 *.lan、路由器主机名) 放行给 Dnsmasq 进行本地解析
             qname(geosite: private) -> asis
-            # 国内域名交由 SmartDNS 进行国内多大厂并发测速，返回最优 CDN 节点 IP
-            qname(geosite: cn) -> smartdns
-            # 海外与未命中域名优先通过 Google DoH 解析，回退 Cloudflare DoH
+            # 国内域名及苹果/Steam/游戏/AI/OneDrive 国内大流量 CDN 全量交由本机 SmartDNS (21上游并发+0ms缓存) 返回最优本省边缘 IP
+            qname(geosite: cn, geosite: apple-cn, geosite: category-games@cn, geosite: steam@cn, geosite: category-ai-cn, geosite: onedrive) -> smartdns
+            # 海外与未命中域名优先通过 Google DoH 解析
             fallback: googledoh
         }
         response {
             upstream(smartdns) -> accept
+            qname(geosite: private) -> accept
+            # 远端返回国内 IP 时也直接采信，避免双栈 CDN 绕路
+            ip(geoip: cn) -> accept
             # 阻断海外域名解析出私有保留 IP (投毒特征防护)
             !qname(geosite: cn) && ip(geoip: private) && !qname(geosite: private) -> reject
             fallback: accept
@@ -368,20 +371,29 @@ dns {
 }
 
 routing {
-    # 1. 强制放行本机 SmartDNS 自身发出的上游解析流量，彻底杜绝 eBPF 拦截回环死锁；Dnsmasq 转发流量交由上方 dns {} 引擎分流
-    pname(smartdns) -> direct(must)
-    # 2. 组播与局域网广播直连
+    # 1. 强制放行本机 SmartDNS 与常见内网服务进程流量，彻底杜绝 eBPF 拦截回环死锁
+    pname(smartdns, AdGuardHome, mosdns, frpc) -> direct(must)
+    # 2. BT/PT 下载进程与 DSCP 4 标记流量强制直连，防止大并发 P2P 连接挤爆代理节点拖慢网页
+    pname(qbittorrent, transmission-daemon, aria2c) -> direct(must)
+    dscp(4) -> direct(must)
+    # 3. 组播与局域网广播直连
     dip(224.0.0.0/3, '\''ff00::/8'\'') -> direct
-    # 3. 路由器自身管理面板与私有局域网直连
+    # 4. 路由器自身管理面板与私有局域网直连
     # honk:local-direct-begin
     # honk:local-direct-end
     dip(geoip: private) && !dport(53) -> direct(must)
-    # 4. 国内 IP 与国内域名直连放行
+    # 5. 国内 IP 与国内大流量 CDN 域名 (含苹果更新/AppStore、Steam、国内游戏、AI、OneDrive) 走 eBPF 直连跑满物理宽带
     dip(geoip: cn) && !dport(53) -> direct(must)
+    domain(geosite: private) -> direct
     domain(geosite: cn) -> direct
-    # 5. 在 eBPF 内核态精准阻断海外 QUIC (UDP 443)，迫使客户端浏览器秒切极速稳定的 TCP (TLS 1.3)
+    domain(geosite: apple-cn) -> direct
+    domain(geosite: category-games@cn) -> direct
+    domain(geosite: steam@cn) -> direct
+    domain(geosite: category-ai-cn) -> direct
+    domain(geosite: onedrive) -> direct
+    # 6. 在 eBPF 内核态精准阻断走海外代理的 QUIC (UDP 443)，迫使海外网站秒切极速稳定的 TCP (TLS 1.3)，同时保留国内 HTTP/3 加速
     l4proto(udp) && dport(443) -> block
-    # 6. 其余所有海外流量自动走代理节点
+    # 7. 其余所有海外流量自动走代理节点
     fallback: proxy
 }'
 

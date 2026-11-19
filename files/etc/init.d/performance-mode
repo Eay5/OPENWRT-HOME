@@ -189,6 +189,7 @@ apply_sysctl_tweaks() {
 	sysctl -w net.ipv4.tcp_window_scaling=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
+	sysctl -w net.ipv4.tcp_autocorking=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_mtu_probing=1 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_slow_start_after_idle=0 >/dev/null 2>&1 || true
 	sysctl -w net.ipv4.tcp_notsent_lowat=16384 >/dev/null 2>&1 || true

@@ -30,6 +30,7 @@ fi
 # 优化 Dnsmasq 缓存大小与 DHCP 运行性能
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
 	uci -q set dhcp.@dnsmasq[0].cachesize='10000'
+	uci -q set dhcp.@dnsmasq[0].dnsforwardmax='1024'
 	uci -q set dhcp.@dnsmasq[0].quietdhcp='1'
 	uci -q set dhcp.@dnsmasq[0].authoritative='1'
 	uci -q set dhcp.@dnsmasq[0].ednspacket_max='1232'
@@ -103,6 +104,7 @@ net.ipv4.tcp_congestion_control = bbr
 # 2. TCP Latency & Proxy Stream Tuning (Reduces bufferbloat & TLS handshake latency)
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_autocorking = 0
 net.ipv4.tcp_no_metrics_save = 1
 net.mptcp.enabled = 1
 net.ipv4.tcp_notsent_lowat = 16384
@@ -425,7 +427,8 @@ if uci -q get smartdns.@smartdns[0] >/dev/null 2>&1; then
 	uci -q set smartdns.@smartdns[0].serve_expired_ttl='172800'
 	uci -q set smartdns.@smartdns[0].serve_expired_reply_ttl='3'
 	uci -q set smartdns.@smartdns[0].serve_expired_prefetch_time='21600'
-	uci -q set smartdns.@smartdns[0].speed_check_mode='ping,tcp:443,tcp:80'
+	uci -q set smartdns.@smartdns[0].response_mode='first-ping'
+	uci -q set smartdns.@smartdns[0].speed_check_mode='tcp:443,tcp:80,ping'
 	uci -q set smartdns.@smartdns[0].cache_size='262144'
 	uci -q set smartdns.@smartdns[0].cache_file='/tmp/smartdns.cache'
 	uci -q set smartdns.@smartdns[0].cache_persist='1'
