@@ -7,7 +7,9 @@ if ! uci -q show network.globals >/dev/null 2>&1; then
 	uci set network.globals='globals'
 fi
 
-uci -q set network.globals.packet_steering='1'
+# 关闭 OpenWrt 原生 packet_steering，防止其将多队列硬件/VirtIO 网卡的 rps_cpus 强行覆写为 001 (全部挤向 CPU0)；
+# 改由 /etc/init.d/performance-mode 按多队列/单队列自适应管理 RSS/RPS/XPS。
+uci -q set network.globals.packet_steering='0'
 
 # 彻底关闭 IPv6
 if uci -q get network.lan >/dev/null 2>&1; then
@@ -215,12 +217,13 @@ ip -4 route show 2>/dev/null | while IFS= read -r rt; do
 	case "$rt" in *"initcwnd"*) continue ;; esac
 	ip -4 route change $rt initcwnd 32 initrwnd 32 >/dev/null 2>&1 || true
 done
-for proc in dnsmasq smartdns sing-box honk honk-core lucky; do
+for proc in dnsmasq smartdns sing-box honk honk-core lucky uhttpd; do
 	for pid in $(pidof "$proc" 2>/dev/null); do
 		[ -w "/proc/$pid/oom_score_adj" ] && echo -900 >"/proc/$pid/oom_score_adj" 2>/dev/null || true
-		renice -n -5 -p "$pid" >/dev/null 2>&1 || true
+		renice -n -5 "$pid" >/dev/null 2>&1 || renice -5 "$pid" >/dev/null 2>&1 || true
 	done
 done
+[ -x /etc/init.d/performance-mode ] && /etc/init.d/performance-mode restart >/dev/null 2>&1 || true
 HOTPLUG_EOF
 chmod +x /etc/hotplug.d/iface/99-tun-tuning
 
@@ -491,7 +494,13 @@ if uci -q get uhttpd.main >/dev/null 2>&1; then
 	uci -q commit uhttpd
 fi
 
-# 12. 清理本地编译临时 feed 名称在软件源配置中的残留，确保刷机后执行 apk update 100% 绿灯不报 404
+# 12. 禁用非必要的 netserver (netperf 12865 端口) 常驻后台，减少内存占用与冗余监听端口
+if [ -x /etc/init.d/netserver ]; then
+	/etc/init.d/netserver disable >/dev/null 2>&1 || true
+	/etc/init.d/netserver stop >/dev/null 2>&1 || true
+fi
+
+# 13. 清理本地编译临时 feed 名称在软件源配置中的残留，确保刷机后执行 apk update 100% 绿灯不报 404
 sed -i '/helloworld/d;/video/d;/passwall/d;/mosdns/d;/openwrt_honk/d;/homeproxy/d;/lucky/d' /etc/apk/repositories.d/* /etc/apk/repositories /etc/opkg/distfeeds.conf 2>/dev/null || true
 
 sysctl -p /etc/sysctl.d/99-performance.conf >/dev/null 2>&1 || true

@@ -47,6 +47,23 @@ build_cpu_mask() {
 	echo "$mask"
 }
 
+# 为单个 CPU 编号生成十六进制位掩码，供多队列网卡 XPS 1:1 绑核使用。
+build_single_cpu_mask() {
+	local idx="$1"
+	local group=$((idx / 32))
+	local bit=$((idx % 32))
+	local mask
+	local i=0
+
+	mask="$(printf '%x' $((1 << bit)))"
+	while [ "$i" -lt "$group" ]; do
+		mask="${mask},00000000"
+		i=$((i + 1))
+	done
+
+	echo "$mask"
+}
+
 # 判断当前是否为 Intel 处理器，避免把 Intel 专属参数写到其它 CPU 的 sysfs 节点。
 is_intel_cpu() {
 	grep -q 'vendor_id[[:space:]]*:[[:space:]]*GenuineIntel' /proc/cpuinfo 2>/dev/null
@@ -117,11 +134,11 @@ apply_intel_pstate_tweaks() {
 	done
 }
 
-# 提前加载 TCP 拥塞控制模块，让 Turbo ACC 或 sysctl 能看到 BBR/Hybla/Scalable。
+# 提前加载 TCP 拥塞控制与 FQ 调度器模块，确保 BBR + FQ 满血生效。
 load_tcp_congestion_modules() {
 	local module
 
-	for module in tcp_bbr tcp_hybla tcp_scalable; do
+	for module in sch_fq tcp_bbr tcp_hybla tcp_scalable; do
 		modprobe "$module" >/dev/null 2>&1 || true
 	done
 }
@@ -317,9 +334,11 @@ apply_nic_hardware_tuning() {
 	done
 }
 
-# 为每个网卡队列设置 RPS/XPS 和 flow entries，减少单核心吃满时的软中断瓶颈。
+# 智能区分多队列与单队列网卡配置 RPS/XPS：
+# - 多队列物理网卡 (rx_queue_count > 1)：关闭软件 RPS (rps_cpus=0) 让每个 MSI-X 硬件队列留在本地核处理，彻底消除跨核 IPI 风暴与 CPU0 倾斜；发送端 XPS 按 tx-i 1:1 绑核消除发包队列锁竞争。
+# - 单队列网卡/网桥/隧道 (rx_queue_count == 1)：开启全核 RPS 掩码与 32768 RFS 流表，将软中断均衡分摊到所有核心。
 apply_queue_tuning() {
-	local cpu_count cpu_mask flow_cnt iface rx_queue rx_queue_count tx_queue
+	local cpu_count cpu_mask iface rx_queue rx_queue_count tx_queue tx_queue_count tx_idx cpu_idx tx_mask
 
 	cpu_count="$(get_cpu_count)"
 	[ "$cpu_count" -gt 1 ] || return 0
@@ -339,34 +358,56 @@ apply_queue_tuning() {
 		rx_queue_count=0
 		for rx_queue in "$iface"/queues/rx-*; do
 			[ -f "$rx_queue/rps_cpus" ] || continue
-			echo "$cpu_mask" >"$rx_queue/rps_cpus" 2>/dev/null || true
 			rx_queue_count=$((rx_queue_count + 1))
 		done
 
-		if [ "$rx_queue_count" -gt 0 ]; then
-			flow_cnt=$((32768 / rx_queue_count))
-			[ "$flow_cnt" -ge 256 ] || flow_cnt=256
-
+		if [ "$rx_queue_count" -gt 1 ]; then
 			for rx_queue in "$iface"/queues/rx-*; do
-				[ -f "$rx_queue/rps_flow_cnt" ] || continue
-				echo "$flow_cnt" >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
+				[ -f "$rx_queue/rps_cpus" ] || continue
+				echo 0 >"$rx_queue/rps_cpus" 2>/dev/null || true
+				[ -f "$rx_queue/rps_flow_cnt" ] && echo 0 >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
+			done
+		elif [ "$rx_queue_count" -eq 1 ]; then
+			for rx_queue in "$iface"/queues/rx-*; do
+				[ -f "$rx_queue/rps_cpus" ] || continue
+				echo "$cpu_mask" >"$rx_queue/rps_cpus" 2>/dev/null || true
+				[ -f "$rx_queue/rps_flow_cnt" ] && echo 32768 >"$rx_queue/rps_flow_cnt" 2>/dev/null || true
 			done
 		fi
 
+		tx_queue_count=0
 		for tx_queue in "$iface"/queues/tx-*; do
 			[ -f "$tx_queue/xps_cpus" ] || continue
-			echo "$cpu_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+			tx_queue_count=$((tx_queue_count + 1))
 		done
+
+		if [ "$tx_queue_count" -gt 1 ]; then
+			for tx_queue in "$iface"/queues/tx-*; do
+				[ -f "$tx_queue/xps_cpus" ] || continue
+				tx_idx="${tx_queue##*/tx-}"
+				case "$tx_idx" in
+					''|*[!0-9]*) continue ;;
+				esac
+				cpu_idx=$((tx_idx % cpu_count))
+				tx_mask="$(build_single_cpu_mask "$cpu_idx")"
+				echo "$tx_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+			done
+		elif [ "$tx_queue_count" -eq 1 ]; then
+			for tx_queue in "$iface"/queues/tx-*; do
+				[ -f "$tx_queue/xps_cpus" ] || continue
+				echo "$cpu_mask" >"$tx_queue/xps_cpus" 2>/dev/null || true
+			done
+		fi
 	done
 }
 
 # 为核心网络与代理解析守护进程赋予 OOM 免死保护 (-900) 与高 CPU 调度权重，保障极端高负载下绝不断网
 apply_daemon_protection() {
 	local proc pid
-	for proc in dnsmasq smartdns sing-box honk honk-core lucky; do
+	for proc in dnsmasq smartdns sing-box honk honk-core lucky uhttpd; do
 		for pid in $(pidof "$proc" 2>/dev/null); do
 			[ -w "/proc/$pid/oom_score_adj" ] && echo -900 >"/proc/$pid/oom_score_adj" 2>/dev/null || true
-			renice -n -5 -p "$pid" >/dev/null 2>&1 || true
+			renice -n -5 "$pid" >/dev/null 2>&1 || renice -5 "$pid" >/dev/null 2>&1 || true
 		done
 	done
 }
