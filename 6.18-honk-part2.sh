@@ -258,8 +258,19 @@ sync_honk_listen_ip() {
 	for f in /etc/honk/config.dae /etc/honk/system.dae; do
 		[ -f "$f" ] && sed -i "s|listen:[[:space:]]*'[^']*:\([0-9][0-9]*\)'|listen: '${lan_ip}:\1'|g" "$f" 2>/dev/null || true
 	done
+	# 必须确保 /etc/honk/system.dae 保持 0600 权限，否则 control.sh 启动自检会报错拦截！
+	[ -f /etc/honk/system.dae ] && chmod 0600 /etc/honk/system.dae 2>/dev/null || true
 }
 sync_honk_listen_ip
+
+# 注册每 5 分钟核心守护进程 OOM(-900) 与高优先级(nice -5) 续保，防止重启 Honk/Dnsmasq 后丢失保护
+mkdir -p /etc/crontabs
+touch /etc/crontabs/root
+if ! grep -q "honk-oom-guard" /etc/crontabs/root 2>/dev/null; then
+	echo "*/5 * * * * for p in honk-core smartdns dnsmasq uhttpd; do for pid in \$(pidof \$p 2>/dev/null); do echo -900 >/proc/\$pid/oom_score_adj 2>/dev/null; renice -n -5 \$pid >/dev/null 2>&1; done; done # honk-oom-guard" >> /etc/crontabs/root
+fi
+/etc/init.d/cron enable >/dev/null 2>&1 || true
+/etc/init.d/cron restart >/dev/null 2>&1 || true
 exit 0
 EOF
 chmod +x files/etc/uci-defaults/99z-honk-dns-link
@@ -282,6 +293,7 @@ for f in /etc/honk/config.dae /etc/honk/system.dae; do
 		sed -i "s|listen:[[:space:]]*'[^']*:\([0-9][0-9]*\)'|listen: '${lan_ip}:\1'|g" "$f" 2>/dev/null && changed=1
 	fi
 done
+[ -f /etc/honk/system.dae ] && chmod 0600 /etc/honk/system.dae 2>/dev/null || true
 
 if [ "$changed" = "1" ] && pidof honk-core >/dev/null 2>&1; then
 	/etc/init.d/honk reload >/dev/null 2>&1 || /etc/init.d/honk restart >/dev/null 2>&1 || true
@@ -303,7 +315,7 @@ apply_honk_dae_config() {
     wan_interface: auto
     lan_interface: br-lan
     log_level: info
-    dial_mode: domain
+    dial_mode: domain++
     allow_insecure: false
     auto_config_kernel_parameter: true
     data_dir: '\''/etc/honk'\''
@@ -373,6 +385,7 @@ dns {
 routing {
     # 1. 强制放行本机 SmartDNS 与常见内网服务进程流量，彻底杜绝 eBPF 拦截回环死锁
     pname(smartdns, AdGuardHome, mosdns, frpc) -> direct(must)
+    pname(dnsmasq) && l4proto(udp) && dport(53) -> direct(must)
     # 2. BT/PT 下载进程与 DSCP 4 标记流量强制直连，防止大并发 P2P 连接挤爆代理节点拖慢网页
     pname(qbittorrent, transmission-daemon, aria2c) -> direct(must)
     dscp(4) -> direct(must)

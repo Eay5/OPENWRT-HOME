@@ -549,6 +549,7 @@ jobs:
               ensure_config CONFIG_PACKAGE_vmlinux-btf y
               ensure_config CONFIG_PACKAGE_libstdcpp y
               ensure_config CONFIG_PACKAGE_kmod-sched-core y
+              ensure_config CONFIG_PACKAGE_kmod-sched y
               ensure_config CONFIG_PACKAGE_kmod-sched-bpf y
               ensure_config CONFIG_PACKAGE_kmod-veth y
               ensure_config CONFIG_PACKAGE_kmod-nft-core y
