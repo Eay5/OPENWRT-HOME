@@ -78,8 +78,12 @@ setup_lucky_argon_theme() {
 setup_lucky_feeds() {
     echo "Setting up standalone feeds for 6.18 LUCKY..."
 
-    # 1. 清理与 Lucky 无关的第三方源及代理残留
+    # 1. 清理 feeds.conf.default 中与 Lucky 无关的第三方源，并更新官方 feeds 索引
     sed -i '/helloworld/d;/passwall/d;/mosdns/d;/openwrt_honk/d' feeds.conf.default 2>/dev/null || true
+    echo "Updating official feeds for 6.18 LUCKY..."
+    ./scripts/feeds update -a
+
+    # 1.1 清理与 Lucky 无关的代理残留（必须在 feeds update -a 之后执行，彻底清除官方源中的无关包）
     rm -rf package/homeproxy feeds/luci/applications/luci-app-homeproxy package/feeds/luci/luci-app-homeproxy 2>/dev/null || true
     rm -rf package/smartdns package/luci-app-smartdns feeds/luci/applications/luci-app-smartdns package/feeds/luci/luci-app-smartdns 2>/dev/null || true
     rm -rf feeds/packages/net/sing-box package/feeds/packages/sing-box 2>/dev/null || true

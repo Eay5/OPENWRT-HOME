@@ -488,7 +488,8 @@ jobs:
               ensure_config CONFIG_PACKAGE_luci-i18n-sqm-zh-cn n
               ensure_config CONFIG_PACKAGE_sqm-scripts n
               ensure_config CONFIG_PACKAGE_kmod-sched-cake n
-              ensure_config CONFIG_PACKAGE_kmod-sched-core n
+              ensure_config CONFIG_PACKAGE_kmod-sched-core y
+              ensure_config CONFIG_PACKAGE_kmod-sched y
               ensure_config CONFIG_PACKAGE_miniupnpd n
               ensure_config CONFIG_PACKAGE_luci-app-upnp n
               ensure_config CONFIG_PACKAGE_luci-i18n-upnp-zh-cn n
