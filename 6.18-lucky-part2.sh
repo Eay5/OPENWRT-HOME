@@ -177,6 +177,9 @@ sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/emortal/default-se
 echo "CONFIG_PACKAGE_zoneinfo-core=y" >> .config
 echo "CONFIG_PACKAGE_zoneinfo-asia=y" >> .config
 
+# 清理 Lucky 专属版本不需要的 HomeProxy / SmartDNS 预置配置文件，避免残留死配置
+rm -f files/etc/config/homeproxy files/etc/config/smartdns 2>/dev/null || true
+
 # 注入针对外网访问内网服务的专属内核与网络优化
 mkdir -p files/etc/sysctl.d files/etc/uci-defaults
 
@@ -207,6 +210,7 @@ net.ipv4.ip_forward = 1
 # 5. 握手与并发连接队列优化
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_autocorking = 0
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 16384
 net.core.netdev_max_backlog = 32768
@@ -263,7 +267,8 @@ cat << 'EOF' > files/etc/uci-defaults/98-lucky-appliance
 if ! uci -q show network.globals >/dev/null 2>&1; then
     uci set network.globals='globals'
 fi
-uci -q set network.globals.packet_steering='1'
+# 关闭 OpenWrt 原生 packet_steering，防止将多队列网卡全部挤向 CPU0；由 performance-mode 自动管理多核 RSS/XPS
+uci -q set network.globals.packet_steering='0'
 uci -q commit network
 
 # 1. 独立主机纯净模式：彻底关闭本机的 DHCP 服务，严禁抢答局域网主路由的 DHCP 分配导致冲突
@@ -272,9 +277,13 @@ if uci -q get dhcp.lan >/dev/null 2>&1; then
     uci -q commit dhcp
 fi
 
-# 2. 扩容本地 DNS 缓存至 10000 条，保障 Lucky 本地解析和 DDNS API 探测毫秒级响应
+# 2. 清理不存在的 127.0.0.1#5333 死上游，扩容本地 DNS 缓存与并发上限，保障 Lucky DDNS/ACME 毫秒级响应
 if uci -q get dhcp.@dnsmasq[0] >/dev/null 2>&1; then
+    uci -q del dhcp.@dnsmasq[0].server 2>/dev/null || true
+    uci -q add_list dhcp.@dnsmasq[0].server='223.5.5.5'
+    uci -q add_list dhcp.@dnsmasq[0].server='119.29.29.29'
     uci -q set dhcp.@dnsmasq[0].cachesize='10000'
+    uci -q set dhcp.@dnsmasq[0].dnsforwardmax='1024'
     uci -q set dhcp.@dnsmasq[0].min_cache_ttl='60'
     uci -q commit dhcp
 fi
