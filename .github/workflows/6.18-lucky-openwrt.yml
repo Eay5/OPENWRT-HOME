@@ -32,6 +32,30 @@ permissions:
   contents: write
   actions: write
 
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: 6.18-lucky.config
+  DIY_P1_SH: 6.18-lucky-part1.sh
+  DIY_P2_SH: 6.18-lucky-part2.sh
+  KERNEL_SERIES: "6.18"
+  EXTRA_FEED_PACKAGES: "lucky luci-app-lucky"
+  CONFIG_SYNC_MODE: lucky
+  RELEASE_TITLE_TEMPLATE: "🌐 ImmortalWrt {{kernel}} [LUCKY · 内网穿透版]{{custom_tag}} {{build_time}}"
+  RELEASE_NOTES_TITLE: ""
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+  CCACHE_DIR: ${{ github.workspace }}/openwrt/.ccache
+  CCACHE_MAXSIZE: 4G
+  CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+  CCACHE_NOHASHDIR: "true"
+  CCACHE_SLOPPINESS: "file_macro,time_macros,include_file_mtime,include_file_ctime"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+
 jobs:
   build:
     runs-on: ${{ github.event.inputs.runner || 'ubuntu-24.04' }}
